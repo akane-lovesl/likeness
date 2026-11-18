@@ -24,7 +24,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
   const styleRef = it.refs.find(r => r.role === 'style' && inputs[r.id]);
   const variant = l => (i === 0 ? l : { ...l, ramp: l.ramp?.map(c => c), keep: Math.min(1, (l.keep ?? .2) + i * .15), bloom: (l.bloom || 0) + i * .08 });
   const words = spec.text || '';
-  let out, note = '', kept = null;
+  let out, note = '', kept = null, shows = [];
   switch (subject ? it.op : 'create') {
     case 'reference': {
       const ref = await canvasOf(styleRef.id), ramp = P.paletteOf(ref, 5);
@@ -57,8 +57,10 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
     case 'create': {
       const look = it.look || lookFromWords(words, LOOKS, { moods: false }), desc = P.sceneFrom(words, look?.ramp || null, seed + i * 13);
       if (layers) desc.layers = kept = [];
+      // words with no colours in them take the light of the room they were said in
+      if (!desc.pal && !desc.ramp && spec.room?.colors) desc.pal = spec.room.colors;
       out = P.scene(desc, 768, 1024); if (look) { out = P.grade(out, look, .6, seed); kept?.push({ label: 'All of it in ' + look.name, canvas: P.copy(out, out.width / 2, out.height / 2) }); }
-      note = look ? 'scenery, ' + look.name : 'scenery from the words';
+      note = look ? 'scenery, ' + look.name : 'scenery from the words'; shows = P.describeScene(desc);
       break;
     }
     default: {
@@ -66,7 +68,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
       out = P.grade(subject, variant(look), look.strength ?? .9, seed); note = look.name;
     }
   }
-  return { canvas: out, note, layers: kept };
+  return { canvas: out, note, layers: kept, shows };
 }
 
 /** The words the device knew, as a line for the card: Heard “rainy” · “Tokyo” · “jazz bar”. */
@@ -76,7 +78,12 @@ function heard(text) {
 }
 
 const SAY = {
-  create: (s, h) => `A first sketch of “${s.text.slice(0, 60)}${s.text.length > 60 ? '…' : ''}”.`,
+  create: (s, h, shows = []) => {
+    // what was asked, without the asking, and what the sketch shows of it
+    const what = s.text.replace(/^\s*(?:please\s+)?(?:(?:paint|draw|sketch|make|create|imagine|render|generate|picture|show)(?: me| us)?|give me)\s+/i, '').replace(/[.!?]+$/, '').trim();
+    const of = what.length > 64 ? what.slice(0, 63) + '…' : what;
+    return shows.length ? `A first sketch of ${of}: ${shows.slice(0, 3).join(', ')}.` : `A first sketch of “${of}”.`;
+  },
   edit: (s, h) => `${h(s.intent.subject)}, changed as you asked.`, restyle: (s, h) => `${h(s.intent.subject)}, in ${s.intent.look?.name || 'a new look'}.`,
   reference: (s, h) => `${h(s.intent.subject)} in ${h(s.intent.refs.find(r => r.role === 'style')?.id)}’s colours.`, blend: (s, h) => `${h(s.intent.subject)} and ${h(s.intent.refs[0]?.id)}, folded into one.`,
   region: (s, h) => `Changed what you pinned on ${h(s.intent.subject)}.`, remove: (s, h) => `Cleared it from ${h(s.intent.subject)}.`,
@@ -125,7 +132,7 @@ export const local = {
       yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + made[i].note } };
     }
     const handle = id => inputs[id]?.handle || 'it';
-    yield { type: 'reply', text: (SAY[spec.intent.op] || SAY.edit)(spec, handle), suggestions: NEXT[spec.intent.op] || NEXT.edit };
+    yield { type: 'reply', text: (SAY[spec.intent.op] || SAY.edit)(spec, handle, made[0]?.shows || []), suggestions: NEXT[spec.intent.op] || NEXT.edit };
     yield { type: 'done', ms: performance.now() - t0 };
   },
   cancel(id) { cancelled.add(id); },

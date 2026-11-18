@@ -164,13 +164,18 @@ export function sceneFrom(text, ramp = null, seed = 1) {
   const weather = said || (vibe && ['rain', 'snow', 'petals'].includes(vibe.sky || '') ? vibe.sky : vibe?.sky === 'drizzle' ? 'rain' : '');
   const things = ['lighthouse', 'boat', 'tree', 'house', 'teacup', 'flowers', 'heart', 'castle', 'balloon'].filter(k => new RegExp('\\b' + (k === 'flowers' ? 'flower' : k)).test(t) || (k === 'flowers' && /garden|rose|tulip|meadow|bloom/.test(t)) || (k === 'castle' && /palace|tower/.test(t)));
   if (inside && has(t, /\bbar\b|jazz|cocktail|martini|wine|whisk|speakeasy|club|\bpub\b|lounge|champagne/)) things.push('glass');
+  // who sits for it: a few simple silhouettes, and what they wear
+  const who = has(t, /\bcats?\b|kitten|kitty/) ? 'cat' : has(t, /\bdogs?\b|pupp(?:y|ies)|\bpup\b|corgi|terrier|labrador|poodle/) ? 'dog' : has(t, /\bbirds?\b|robin|sparrow|parrot|\bowl\b|\bcrow\b|raven|finch/) ? 'bird' : has(t, /rabbit|bunny|bunnies|\bhare\b/) ? 'rabbit'
+    : has(t, /portrait|\bwom[ae]n\b|\bm[ae]n\b|\bgirl\b|\bboy\b|\bperson\b|\blady\b|gentleman|princess|prince\b|\bking\b|\bqueen\b|knight|wizard|\bwitch\b(?!['’]s)|myself/) ? 'person' : '';
+  const wears = !who ? '' : has(t, /\bhat\b|top hat|bowler/) ? 'hat' : has(t, /crown|tiara|princess|prince\b|\bking\b|\bqueen\b/) ? 'crown' : has(t, /\bbow\b|ribbon/) ? 'bow' : '';
+  const hair = who === 'person' && has(t, /wom[ae]n|girl|lady|princess|queen|witch|\bher\b/);
   if (!inside && land === 'sea' && has(t, /\bkoi\b|goldfish|\bfish\b|carp/)) things.push('koi');
   if (!inside && has(t, /\bgrove\b|orchard|(?:lemon|orange|olive|apple|cherry|peach|fig) trees?|citrus/)) things.push('grove');
   if (!inside && has(t, /tree ?house/)) things.push('treehouse');
   if (!inside && (land === 'sea' || land === 'desert') && has(t, /\bpalms?\b|tropic|island|lagoon|hawaii|caribbean|maldives|tiki|bali|oasis/)) things.push('palm');
   const colour = Object.entries(COLOUR_WORDS).find(([w]) => new RegExp('\\b' + w + '\\b').test(t))?.[1];
   // colour words alone make a ramp; words the room maker knows bring a whole palette instead (pal)
-  return { light, land, inside, weather, things, ramp: ramp || (!vibe && colour ? rampAround(colour) : null), arch: has(t, /arch|castle|palace|chapel/), seed, pal: vibe?.colors || null, marks: vibe?.marks || [], props, shelf, sign: sign.toUpperCase(),
+  return { light, land, inside, weather, things, ramp: ramp || (!vibe && colour ? rampAround(colour) : null), arch: has(t, /arch|castle|palace|chapel/), seed, pal: vibe?.colors || null, marks: vibe?.marks || [], props, shelf, sign: sign.toUpperCase(), who, wears, hair,
     fruit: Object.entries(FRUIT).find(([k]) => t.includes(k))?.[1] || null, frozen: has(t, /frozen|\bicy\b|\bice\b|glacier|arctic|polar/), skyline: land === 'sea' && (props.includes('neon') || has(t, CITY)) };
 }
 export const COLOUR_WORDS = { red: '#c8322d', crimson: '#a5122a', scarlet: '#e0301e', pink: '#ec7fa0', rose: '#d9667f', blush: '#f2b8c6', orange: '#ec7a2c', peach: '#f6b08a', coral: '#f07560', gold: '#d6a540', golden: '#d6a540', yellow: '#f0c93a', lemon: '#f3e05a', green: '#3f8f4f', emerald: '#1f8a5c', mint: '#93d8b8', sage: '#8fa883', olive: '#7d7a32', teal: '#1f8a8a', turquoise: '#33c3c0', cyan: '#35d2e8', blue: '#2f6fdc', navy: '#1a2e6b', cobalt: '#2148b8', sky: '#7dbbf0', lavender: '#b39ddb', lilac: '#c8a2d8', purple: '#7a3ea8', violet: '#6a3fd0', plum: '#6b2a5a', magenta: '#d5248f', brown: '#7a4a2a', chocolate: '#5a3218', silver: '#b8c0cc', white: '#f4f2ee', black: '#141414', grey: '#8a8a8a', gray: '#8a8a8a', cream: '#f4ead2', ivory: '#f6f0dc', burgundy: '#6e1a2c', amber: '#e09a2a', copper: '#b8673a' };
@@ -193,6 +198,32 @@ function notesFor(d) {
     light: p.includes('mirrorball') ? 'A mirror ball, and the light it throws' : p.includes('chandelier') ? 'A chandelier, five candles' : p.includes('lamp') ? 'A low lamp' + (night ? ', and its pool of light' : '') : '',
     weather: ({ rain: d.inside ? 'Rain on the glass' : 'Rain', snow: d.inside ? 'Snow, outside' : 'Snow falling', petals: 'Petals in the air' })[d.weather] || '',
   };
+}
+
+/** The sitter, in words: "a cat in a hat", "someone in a crown". */
+const sitter = (/** @type {any} */ d) => ({ cat: 'a cat', dog: 'a dog', bird: 'a bird', rabbit: 'a rabbit', person: 'someone' })[d.who] + ({ hat: ' in a hat', crown: ' in a crown', bow: ' with a bow' })[d.wears || ''] || '';
+
+/**
+ * What a sketch shows, as a few short phrases for the reply, most telling first:
+ * "the JAZZ sign", "the town lit up outside", "rain on the glass".
+ */
+export function describeScene(d) {
+  const p = d.props || [], night = d.light === 'night' || d.light === 'dusk', out = [];
+  if (d.who) out.push(sitter(d));
+  if (d.sign) out.push('the ' + d.sign + ' sign');
+  if (p.includes('shelves')) out.push(({ books: 'shelves of books', jars: 'jars and bottles on every shelf', sweets: 'jars of sweets', bread: 'loaves on the shelves' })[d.shelf] || 'full shelves');
+  if (p.includes('mirrorball')) out.push('a mirror ball'); else if (p.includes('chandelier')) out.push('a chandelier');
+  if (p.includes('tiles')) out.push('tiles on the wall');
+  if (p.includes('webs')) out.push('cobwebs');
+  if (p.includes('train')) out.push('the country going by');
+  if (p.includes('plants')) out.push('plants and ivy');
+  const land = ({ sea: d.frozen ? 'the ice' : d.skyline ? 'a town across the water' : 'the sea', city: night ? 'the town lit up' : 'the town', fields: 'rows to the horizon', forest: 'the woods', mountains: 'the mountains', desert: 'mesas and a saguaro', under: 'light coming down through the water', space: 'a ringed planet', hills: 'hills' })[d.land];
+  if (d.inside) { if (d.land !== 'hills') out.push(land + ' outside'); } else if (d.land !== 'hills') out.push(land);
+  if (d.things?.includes('glass')) out.push('a cocktail on the bar');
+  const things = (d.things || []).filter((/** @type {string} */ k) => !['teacup', 'glass'].includes(k)).map((/** @type {string} */ k) => THING[k]).filter(Boolean);
+  if (things.length) out.push(things.join(' and '));
+  if (d.weather) out.push(({ rain: d.inside ? 'rain on the glass' : 'rain', snow: d.inside ? 'snow outside' : 'snow falling', petals: 'petals in the air' })[d.weather]);
+  return out.filter(Boolean);
 }
 
 /** A flat, poster-like scene from words. Not a render: a sketch for the idea's shape and colour. Pass desc.layers (an array) to keep each layer as it is laid down, with its note. */
@@ -516,6 +547,19 @@ export function scene(desc, w = 768, h = 1024) {
   } else { hz = drawOutdoor(0, 0, w, h); mark(notes.land); }
 
   for (const thing of desc.things) drawThing(x, thing, w, h, desc.inside ? horizon + h * .06 : hz, rnd, desc);
+  if (desc.who) {
+    // the sitter: a silhouette in front, rimmed with light after dark, wearing what the words say
+    const person = desc.who === 'person', size = w * (person ? .7 : .44), cx = w * (person ? .5 : .44), base = person ? h * 1.02 : desc.inside ? h * .97 : Math.min(h * .93, hz + h * .3);
+    const tone = pal ? mix(luminance(pal.ink) < luminance(pal.ground) ? pal.ink : pal.ground, '#000000', .3) : (L === 'night' ? '#0b0d18' : '#2a2320');
+    if (!person) { x.fillStyle = 'rgb(0 0 0 / .2)'; x.beginPath(); x.ellipse(cx, base, size * .36, size * .045, 0, 0, Math.PI * 2); x.fill(); }
+    if (L === 'night') figure(x, desc, cx - size / 2 - size * .012, base - size - size * .012, size, pal ? pal.accent2 : '#9fb4ff');
+    const head = figure(x, desc, cx - size / 2, base - size, size, tone);
+    const hat = pal ? pal.accent : '#c9372c';
+    if (desc.wears === 'hat') { x.fillStyle = hat; x.fillRect(head.x - head.r * 1.25, head.y - head.r * .95, head.r * 2.5, head.r * .3); x.fillRect(head.x - head.r * .78, head.y - head.r * 2.3, head.r * 1.56, head.r * 1.45); x.fillStyle = pal ? pal.accent2 : '#f4efe6'; x.fillRect(head.x - head.r * .78, head.y - head.r * 1.15, head.r * 1.56, head.r * .26); }
+    if (desc.wears === 'crown') { x.fillStyle = '#e2b13c'; sticker(x, 'crown', head.x, head.y - head.r * 1.25, head.r * 2.2, 0); }
+    if (desc.wears === 'bow') { x.fillStyle = hat; sticker(x, 'bow', head.x + head.r * .75, head.y - head.r * .7, head.r * 1.3, .3); }
+    mark(cap(sitter(desc)));
+  }
   const listed = desc.things.map((/** @type {string} */ k) => THING[k]).filter(Boolean);
   if (listed.length) mark(cap(listed.join(', ')) + (desc.inside ? (desc.things.includes('glass') ? ' on the bar' : ' on the table') : ''));
   x.save();
@@ -532,6 +576,36 @@ export function scene(desc, w = 768, h = 1024) {
   x.putImageData(grainy, 0, 0);
   vignette(c, .35);
   return c;
+}
+
+/**
+ * A sitter as one flat shape, drawn in a 100-unit box (feet at the bottom) at ox, oy and size s.
+ * Returns where the head is, for a hat or a crown.
+ */
+function figure(x, d, ox, oy, s, fill) {
+  const k = s / 100, T = Math.PI * 2, at = (/** @type {number} */ hx, /** @type {number} */ hy, /** @type {number} */ r) => ({ x: ox + hx * k, y: oy + hy * k, r: r * k });
+  const blob = (/** @type {number} */ cx, /** @type {number} */ cy, /** @type {number} */ rx, /** @type {number} */ ry, rot = 0) => { x.beginPath(); x.ellipse(cx, cy, rx, ry, rot, 0, T); x.fill(); };
+  const tri = (/** @type {number[]} */ ...p) => { x.beginPath(); x.moveTo(p[0], p[1]); x.lineTo(p[2], p[3]); x.lineTo(p[4], p[5]); x.closePath(); x.fill(); };
+  x.save(); x.translate(ox, oy); x.scale(k, k); x.fillStyle = x.strokeStyle = fill; x.lineCap = 'round';
+  let head;
+  if (d.who === 'cat') {
+    blob(45, 74, 23, 26); blob(55, 35, 14, 13); tri(42, 30, 44, 12, 53, 23); tri(57, 23, 66, 12, 68, 30);
+    x.lineWidth = 6.5; x.beginPath(); x.moveTo(27, 93); x.bezierCurveTo(8, 93, 5, 72, 14, 60); x.stroke(); head = at(55, 34, 14);
+  } else if (d.who === 'dog') {
+    blob(44, 72, 22, 28); blob(54, 34, 14, 13); blob(67, 39, 10, 6.5); blob(44, 37, 5, 12, .35);
+    x.lineWidth = 6; x.beginPath(); x.moveTo(25, 88); x.quadraticCurveTo(12, 84, 12, 68); x.stroke(); head = at(54, 33, 14);
+  } else if (d.who === 'bird') {
+    blob(48, 68, 23, 15, -.3); blob(67, 50, 10, 10); tri(76, 47, 88, 51, 76, 55); tri(30, 74, 8, 86, 28, 64);
+    x.lineWidth = 2.5; x.beginPath(); x.moveTo(46, 80); x.lineTo(44, 98); x.moveTo(54, 79); x.lineTo(55, 98); x.stroke(); head = at(67, 48, 10);
+  } else if (d.who === 'rabbit') {
+    blob(46, 77, 22, 23); blob(56, 48, 12, 11); blob(50, 23, 4.5, 15, -.15); blob(62, 23, 4.5, 15, .15); blob(25, 86, 6, 6); head = at(56, 47, 12);
+  } else {
+    if (d.hair) { x.save(); x.globalAlpha = .85; blob(50, 44, 20, 28); x.restore(); }
+    x.beginPath(); x.moveTo(10, 100); x.bezierCurveTo(10, 72, 28, 63, 50, 63); x.bezierCurveTo(72, 63, 90, 72, 90, 100); x.closePath(); x.fill();
+    x.fillRect(43, 48, 14, 18); blob(50, 35, 15, 18); head = at(50, 30, 16);
+  }
+  x.restore();
+  return head;
 }
 
 function sticker(x, name, px, py, size, rot = 0) {

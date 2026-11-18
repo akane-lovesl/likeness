@@ -14,6 +14,9 @@ const POOL = {
   vary: ['More like the first', 'In watercolour', 'Wilder', 'Make it night'],
 };
 const ANYWHERE = ['Try a backdrop', 'Three variations', 'Golden hour light', 'Make it night', 'In watercolour', 'As a postcard', 'Softer light'];
+/** Ideas that would only say again what was just said: no "Make it night" after "midnight", no rain after "rainy". */
+const ALREADY = /** @type {[RegExp, RegExp][]} */ ([[/night|midnight|moon|after dark|starlit/, /make it night/], [/rain|drizzle|storm|monsoon/, /rain/], [/golden|sunset|dusk/, /golden hour/],
+  [/watercolou?r/, /watercolou?r/], [/old photo|sepia|antique/, /old photograph/], [/postcard/, /postcard/], [/close.?up|closer/, /closer in/]]);
 const norm = s => String(s || '').toLowerCase().replace(/@[a-z]{1,2}\b/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
 
 /**
@@ -21,8 +24,9 @@ const norm = s => String(s || '').toLowerCase().replace(/@[a-z]{1,2}\b/g, '').re
  * @returns {string[]}
  */
 export function nextIdeas({ op, offered = [], recent = [], previous = [], turn = 0 }) {
-  const said = new Set(recent.map(norm)), before = new Set(previous.map(norm)), seen = new Set();
-  const fresh = s => { const k = norm(s); if (!k || seen.has(k) || [...said].some(r => r === k || (r.length > 4 && k.includes(r)))) return false; seen.add(k); return true; };
+  const said = new Set(recent.map(norm)), before = new Set(previous.map(norm)), seen = new Set(), last = norm(recent[recent.length - 1]);
+  const repeats = (/** @type {string} */ k) => ALREADY.some(([was, idea]) => idea.test(k) && was.test(last));
+  const fresh = s => { const k = norm(s); if (!k || seen.has(k) || repeats(k) || [...said].some(r => r === k || (r.length > 4 && k.includes(r)))) return false; seen.add(k); return true; };
   const engine = offered.filter(fresh).slice(0, 2);
   const pool = [...(POOL[op] || POOL.edit), ...ANYWHERE].filter(fresh);
   const shift = turn % Math.max(1, pool.length);

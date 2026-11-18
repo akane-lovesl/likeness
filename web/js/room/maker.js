@@ -560,6 +560,25 @@ function compose({ said, hits, name, head = name, place = '', take = 0, anchors 
 }
 
 /**
+ * The colours and feel of some words, for anything that wants to paint them (the sketcher on the device, for one):
+ * the palette a room would have, whether it is after dark, the light and weather said, and its strongest ornaments.
+ * Null when nothing in the words is known.
+ * @param {string} text
+ */
+export function vibeOf(text) {
+  const hits = readVibe(String(text || ''));
+  const A = hits.flatMap(x => x.cue.c.map((hex, i) => ({ hex, w: x.w * ([1, .8, .6, .45][i] ?? .35), firm: x.cue.kind === 'colour' && !x.cue.soft })));
+  if (!A.length) return null;
+  const sum = (/** @type {'dark' | 'muted' | 'vivid'} */ k) => hits.reduce((n, x) => n + (x.cue[k] || 0), 0);
+  const dark = sum('dark') >= 2, timed = hits.find(x => x.cue.kind === 'time' && x.cue.light);
+  return {
+    dark, colors: paletteFrom(A, { dark, muted: Math.min(1, sum('muted')), vivid: Math.min(1, sum('vivid')) }),
+    light: timed?.cue.light || null, sky: tally(hits, 'sky', { weather: 3, season: 2 })[0]?.[0] || null,
+    marks: glyphs(hits).map(([g]) => g).slice(0, 3),
+  };
+}
+
+/**
  * A room from words. Take 0 is the maker's first reading of them; every later take settles the close calls another
  * way: another accent, another ornament or frame, the line told differently.
  * @param {string} text

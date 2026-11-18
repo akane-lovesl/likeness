@@ -49,7 +49,7 @@ export function readIntent(text, ctx) {
   }
   const subject = ids.find(id => !refs.some(r => r.id === id)) || null;
   const others = ids.filter(id => id !== subject && !refs.some(r => r.id === id)).map(id => ({ id, role: 'with' }));
-  const look = ctx.look || lookFromWords(low, ctx.looks) || null;
+  const look = ctx.look || lookFromWords(low, ctx.looks, { moods: !!subject }) || null; // with nothing to restyle, a mood is part of what to paint
 
   let op = 'create';
   if (pins.length) op = 'region';

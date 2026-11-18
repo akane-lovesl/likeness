@@ -26,19 +26,24 @@ export const LOOKS = [
   { id: 'hoarfrost', name: 'Hoarfrost', line: 'Ice-blue morning, breath in the air.', ramp: ['#14233a', '#3d5f86', '#8fb4d6', '#dceaf6', '#ffffff'], keep: .25, bloom: .3, grain: .04, prompt: 'icy winter morning, hoarfrost, pale blue light, crisp cold air, faint mist' },
 ];
 
-/** Words that name a look, for reading requests like "in watercolour". */
-/** @type {[RegExp, string][]} */
+/**
+ * Words that name a look, for reading requests like "in watercolour". Some name a medium (watercolour, film, pixels);
+ * the rest a mood (golden, midnight, dreamy), marked so: those restyle a picture you have, but when something new is
+ * painted they are part of what to paint, and the painter reads them itself.
+ * @type {[RegExp, string, ('mood')?][]}
+ */
 const WORDS = [
   [/water ?colou?r|aquarelle/, 'watercolour'], [/\boil\b|old master|impasto|rembrandt/, 'oil'], [/pencil|sketch|drawing|charcoal|\bink\b|sumi/, 'ink-wash'],
-  [/anime|cel|cartoon|comic|manga/, 'cel-pop'], [/pixel|8.?bit|retro game|game ?boy/, 'pixel-pocket'], [/neon|cyber|synthwave|vaporwave/, 'neon-noir'],
-  [/film|analog|polaroid|70s|seventies|vintage/, 'film-77'], [/golden|sunset|warm light/, 'golden-hour'], [/winter|frost|icy|snowy|cold/, 'hoarfrost'],
-  [/dream|pastel|soft/, 'pastel-dream'], [/riso|risograph|zine|screen ?print/, 'riso'], [/porcelain|delft|china|blue and white/, 'porcelain'],
-  [/cyanotype|blueprint/, 'cyanotype'], [/sepia|antique|old photo|victorian/, 'sepia-letter'], [/moon|midnight|night/, 'moonlit'], [/velvet|candle|moody|romantic/, 'velvet-hour'],
+  [/anime|cel|cartoon|comic|manga/, 'cel-pop'], [/pixel|8.?bit|retro game|game ?boy/, 'pixel-pocket'], [/neon|cyber|synthwave|vaporwave/, 'neon-noir', 'mood'],
+  [/film|analog|polaroid/, 'film-77'], [/70s|seventies|vintage/, 'film-77', 'mood'], [/golden|sunset|warm light/, 'golden-hour', 'mood'], [/winter|frost|icy|snowy|cold/, 'hoarfrost', 'mood'],
+  [/dream|pastel|soft/, 'pastel-dream', 'mood'], [/riso|risograph|zine|screen ?print/, 'riso'], [/porcelain|delft|china|blue and white/, 'porcelain'],
+  [/cyanotype|blueprint/, 'cyanotype'], [/sepia|old photo/, 'sepia-letter'], [/antique|victorian/, 'sepia-letter', 'mood'], [/moon|midnight|night/, 'moonlit', 'mood'], [/velvet|candle|moody|romantic/, 'velvet-hour', 'mood'],
 ];
-export function lookFromWords(text, looks = LOOKS) {
+/** The look some words name. Pass moods: false when painting something new, so only a medium counts. */
+export function lookFromWords(text, looks = LOOKS, { moods = true } = {}) {
   const t = text.toLowerCase();
   for (const l of looks) if (l.mine && t.includes(l.name.toLowerCase())) return l;
-  for (const [re, id] of WORDS) if (re.test(t)) return looks.find(l => l.id === id) || null;
+  for (const [re, id, kind] of WORDS) if ((moods || kind !== 'mood') && re.test(t)) return looks.find(l => l.id === id) || null;
   return null;
 }
 

@@ -50,7 +50,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX) {
       out = P.grade(subject, variant(look), .55 + rnd() * .35, seed); note = look.name; break;
     }
     case 'create': {
-      const look = it.look || lookFromWords(words), desc = P.sceneFrom(words, look?.ramp || null, seed + i * 13);
+      const look = it.look || lookFromWords(words, LOOKS, { moods: false }), desc = P.sceneFrom(words, look?.ramp || null, seed + i * 13);
       out = P.scene(desc, 768, 1024); if (look) out = P.grade(out, look, .6, seed); note = look ? 'scenery, ' + look.name : 'scenery from the words';
       break;
     }

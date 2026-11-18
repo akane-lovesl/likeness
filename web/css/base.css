@@ -25,7 +25,8 @@ img, canvas { display: block; -webkit-user-drag: none; }
 .sky--back { z-index: 2; }
 .light { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: opacity 1.2s var(--ease), background 1.2s; }
 .screens { position: absolute; inset: 0; z-index: 4; }
-.sky--front { z-index: 80; }
+.sky--front { z-index: 80; transition: opacity var(--t-mid) var(--ease); }
+.stage:has(.focus.is-in, .camera.is-in) .sky--front { opacity: 0; }   /* the weather waits outside while you look closely */
 
 /* Time of day washes over the room behind the cards, never over the words. */
 .stage[data-light='dawn'] .light { background: linear-gradient(to top, rgb(255 160 140 / .32), rgb(255 214 170 / .14) 45%, transparent 75%); mix-blend-mode: soft-light; }

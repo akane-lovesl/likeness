@@ -2,10 +2,10 @@
  * The desk: the one screen you live on. A greeting from the room, the thread of what you asked and what came back,
  * and the composer. Pictures arrive by the + button, by pasting, or by dropping them on the stage.
  */
-import { h, icon, toast } from '../core/dom.js';
+import { h, icon, toast, sheet } from '../core/dom.js';
 import { glyph } from '../room/ornaments.js';
 import { on } from '../core/bus.js';
-import { app, addItem, addPrint, threadPrints, printById, newThread } from '../state.js';
+import { app, addItem, addPrint, threadPrints, printById, newThread, settings } from '../state.js';
 import { atmosphere } from '../room/theme.js';
 import { skyFor } from '../room/atmosphere.js';
 import { sparksFor } from '../room/sparks.js';
@@ -24,6 +24,7 @@ import { openFocus } from './focus.js';
 import { openRooms } from './rooms.js';
 import { openSky } from './skysheet.js';
 import { openAlbum } from './album.js';
+import { openCamera, canFilm } from './camera.js';
 
 
 export function deskScreen() {
@@ -122,7 +123,25 @@ export function deskScreen() {
     await addItem({ type: 'prints', prints: ids, mine: true });
     comp.addToTray(ids); sound.play('pin');
   }
-  async function attach() { addFiles(await chooseFiles()); }
+  /** Bring a picture: from your photos, or through the look camera when there is a camera. */
+  async function attach() {
+    if (!canFilm()) { addFiles(await chooseFiles()); return; }
+    await sheet(close => [
+      h('div.sheet__head', null, h('h2.t-title', null, 'Bring a picture')),
+      h('div.bring', null,
+        h('button.bring__opt', { onclick: () => { const files = chooseFiles(); close(); files.then(addFiles); } }, h('span', { html: icon('image') }), h('b', null, 'From your photos'), h('span.t-soft', null, 'Or paste one, or drop it anywhere')),
+        h('button.bring__opt', { onclick: () => { close(); openCamera({ onTake: took, onFallback: async () => addFiles(await chooseFiles()) }); } }, h('span', { html: icon('camera') }), h('b', null, 'Through a look'), h('span.t-soft', null, 'The camera, live, in any look you like'))),
+    ], { label: 'Bring a picture' });
+  }
+  /** A photograph from the look camera; with a look on, the studio is asked to paint it in that look at once. */
+  async function took(blob, w, hh, look) {
+    const p = await addPrint({ blob, w, h: hh, origin: 'camera', provenance: { kind: 'photo', label: 'Your picture' } });
+    nearEnd = true;
+    await addItem({ type: 'prints', prints: [p.id], mine: true });
+    sound.play('pin');
+    if (look) send({ text: `@${p.handle} in ${look.name}`, intent: { op: 'restyle', subject: p.id, refs: [], look: { ...look, strength: .9 }, pins: [] }, pace: settings.get('pace', 'fine') });
+    else comp.addToTray([p.id]);
+  }
   async function samples() {
     const scenes = [['lighthouse by the sea at dusk with a boat', 'Sample · lighthouse'], ['tea room interior with a teacup by the window, golden', 'Sample · tea room']];
     const ids = [];

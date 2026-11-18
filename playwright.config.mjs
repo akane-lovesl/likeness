@@ -31,6 +31,8 @@ export default defineConfig({
     isMobile: true,
     hasTouch: true,
     trace: 'retain-on-failure',
+    permissions: ['camera'],
+    launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
   },
   projects: [
     { name: 'showcase', testMatch: /showcase[\\/].*\.spec\.mjs$/, use: { baseURL: SHOWCASE } },

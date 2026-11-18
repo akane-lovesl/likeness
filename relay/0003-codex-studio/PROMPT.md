@@ -34,7 +34,7 @@ There are three editions, each always labelled honestly. Never let one pass for 
 - The briefs Codex is given (`likeness/brief.py`).
 - Settings (`studio.toml`).
 - `likeness probe codex`.
-- 35 pytest tests and a 10-test browser suite.
+- 35 pytest tests and an 11-test browser suite.
 
 **Not proven anywhere yet.** All of these are yours to settle:
 
@@ -183,7 +183,15 @@ Use it as the user would, for real, for a while, and fix what bothers you: slown
 
 ### 10. The phone, last
 
-`uv run likeness serve` prints a pairing link and a QR code. The phone must be on the same network as this machine; allow Python through the Windows firewall on private networks when asked. Scan the code once and the phone stays paired; strangers get a polite refusal. Then do the whole walk-through from step 6 on the phone, including *Bring a picture* from the camera.
+`uv run likeness serve` prints a pairing link and a QR code. The phone must be on the same network as this machine; allow Python through the Windows firewall on private networks when asked. Scan the code once and the phone stays paired; strangers get a polite refusal. Then do the whole walk-through from step 6 on the phone.
+
+**The look camera needs HTTPS.** Under *Bring a picture → Through a look*, the camera is live and the looks are sketched on the device. Browsers only allow the camera on a secure origin, so over plain `http://` on the network the app quietly falls back to the phone's own photo picker, which still offers the camera.
+
+To get the live camera on the phone:
+
+1. Make a certificate for this machine's network address, for example with `mkcert`, and install its root on the phone.
+2. Run `uv run likeness serve --cert cert.pem --key key.pem`.
+3. Keep the certificate and key in `private/`.
 
 ### 11. Finish
 

@@ -45,7 +45,8 @@ def serve(args) -> int:
     config = settings.load(home)
     engine = engines.create(args.engine or config["studio"].get("engine", "auto"), config, home)
     app = create_app(engine, home=home, open_door=args.open, config=config)
-    local, phone = f"http://127.0.0.1:{args.port}/", f"http://{_lan_address()}:{args.port}/?pair={pairing_key(home)}"
+    scheme = "https" if args.cert and args.key else "http"
+    local, phone = f"{scheme}://127.0.0.1:{args.port}/", f"{scheme}://{_lan_address()}:{args.port}/?pair={pairing_key(home)}"
     honest = "  (every picture is a stand-in, stamped as one)" if engine.kind == "simulator" else ""
     print(f"\n  Likeness {__version__}  ·  {engine.describe()['label']}{honest}\n\n  On this machine   {local}\n  On your phone     {phone}\n")
     try:
@@ -55,7 +56,8 @@ def serve(args) -> int:
     except Exception:
         pass
     print("  The phone must be on the same network. Scan the code once; it stays paired.\n  Ctrl+C stops the studio.\n", flush=True)
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    tls = {"ssl_certfile": args.cert, "ssl_keyfile": args.key} if scheme == "https" else {}
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning", **tls)
     return 0
 
 
@@ -74,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8787)
     p.add_argument("--open", action="store_true", help="let any device on the network in without pairing")
+    p.add_argument("--cert", default="", help="a TLS certificate (PEM), to serve over HTTPS: phones only allow the camera on a secure origin")
+    p.add_argument("--key", default="", help="the certificate's private key (PEM)")
 
     p = sub.add_parser("probe", help="check an engine on this machine")
     p.add_argument("engine", choices=["codex"])

@@ -64,3 +64,16 @@ test('changing the room changes the whole place', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.room)).toBe(id);
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ground'))).not.toBe(before);
 });
+
+test('the look camera shows the world in a look, and the shutter sends it to be painted', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').first().click();
+  await page.getByRole('button', { name: /Through a look/ }).click();
+  await expect(page.locator('.camera__view')).toBeVisible();
+  await page.locator('.camera__look').nth(2).click();
+  await expect(page.locator('.camera__look[aria-selected="true"]')).not.toHaveText('As it is');
+  await page.waitForTimeout(800);
+  await page.locator('.camera__shutter').click();
+  await expect(page.locator('section.camera')).toHaveCount(0);
+  await expect(made(page, 'Sketch')).toHaveCount(1, { timeout: 30_000 });
+});

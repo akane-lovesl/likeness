@@ -41,6 +41,7 @@ uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speakin
   - Pictures get handles (A, B, …). Type `@` to call a picture and `#` to call a look.
   - While you type, the app reads what you mean (change, restyle, use as a reference, blend, pin, backdrop, variations) and shows it with a time estimate before you send.
   - Every reply ends with three ideas for what to say next.
+- **The look camera.** Point the camera and see the world in any look, sketched live on the device. Take the picture, and the studio paints it in that look.
 - **Pins.** Tap part of a picture and an on-device segmenter (MediaPipe) selects it, or paint it with a finger. Each pin gets its own note, and only those parts change.
 - **Looks.** Styles as data: a prompt for the model, plus a recipe the device can sketch at once. Make your own from words or from a picture.
 - **Backdrops.** Not a hundred presets. The studio suggests places for *this* picture, and two dials move the ideas between near and far, and between real and dreamt.

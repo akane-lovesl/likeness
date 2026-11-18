@@ -7,7 +7,8 @@ import { glyph } from '../room/ornaments.js';
 import { on } from '../core/bus.js';
 import { app, addItem, addPrint, threadPrints, printById, newThread, settings } from '../state.js';
 import { atmosphere } from '../room/theme.js';
-import { skyFor } from '../room/atmosphere.js';
+import { skyFor, skySettings } from '../room/atmosphere.js';
+import { outsideWeather } from '../room/outside.js';
 import { sparksFor } from '../room/sparks.js';
 import { WEATHERS, LIGHTS, partOfDay, clockLight } from '../room/rooms.js';
 import { studio } from '../studio/studio.js';
@@ -74,7 +75,7 @@ export function deskScreen() {
     const day = new Date().toLocaleDateString('en-GB', { weekday: 'long' }), empty = !app.thread.items.length;
     const box = h('div.hello', null,
       h('p.hello__line.t-title', null, room.voice.hello[partOfDay()]),
-      h('p.hello__sky.t-mono.t-soft', null, h('span', { html: glyph(weather?.glyph || 'sun') }), [day, LIGHTS.find(l => l.id === light)?.label, weather?.label, s.mood ? s.mood.label + ' day' : null].filter(Boolean).join(' · ')));
+      h('p.hello__sky.t-mono.t-soft', null, h('span', { html: glyph(weather?.glyph || 'sun') }), [day, LIGHTS.find(l => l.id === light)?.label, weather?.label, outsideNow(s), s.mood ? s.mood.label + ' day' : null].filter(Boolean).join(' · ')));
     if (empty) box.append(h('div.starters', null,
       starter(0, 'image', 'Bring a picture', 'A photo, a screenshot, a drawing', () => attach()),
       starter(1, 'sparkle', 'Start from words', 'Describe it and watch it appear', () => comp.setText('Paint ')),
@@ -83,6 +84,8 @@ export function deskScreen() {
     else box.querySelector('.hello__sky').append(h('button.hello__new', { onclick: async () => { await newThread(); toast('A fresh page'); } }, 'New page'));
     return box;
   }
+  /** "9° outside" when the weather in here is the weather out there. */
+  function outsideNow(s) { const o = outsideWeather(); return o && !skySettings().weather && !s.mood && o.weather === s.weather && Number.isFinite(o.temp) ? `${o.temp}° outside` : null; }
   function starter(i, ic, title, line, fn) { return h('button.starter', { style: { '--i': i }, onclick: fn }, h('span.starter__icon', { html: icon(ic) }), h('span.starter__text', null, h('b', null, title), h('span', null, line)), h('span', { html: icon('arrow') })); }
 
   function itemEl(item) {

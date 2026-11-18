@@ -5,6 +5,7 @@ import { paint } from './room/theme.js';
 import { sky } from './room/sky.js';
 import { applySky, roomById, changeRoom, setSky } from './room/atmosphere.js';
 import { on } from './core/bus.js';
+import { refreshOutside } from './room/outside.js';
 import { sound } from './core/sound.js';
 import { screens } from './core/dom.js';
 import { deskScreen } from './ui/desk.js';
@@ -16,6 +17,9 @@ sky.mount(stage);
 paint(room); sky.setRoom(room); applySky();
 sound.set(settings.get('sound', false), room.sound);
 on('room', r => { sky.setRoom(r); applySky(); });
+const lookOutside = () => refreshOutside().then(o => { if (o) applySky(); }).catch(() => {});
+lookOutside(); setInterval(lookOutside, 15 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) lookOutside(); });
 screens().append(deskScreen());
 
 /** A handle for tests and for poking around in the console. */

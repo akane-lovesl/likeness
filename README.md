@@ -52,7 +52,10 @@ uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speakin
   - the voice the studio talks in, and the wipe that carries you in.
 
   Seven are built in. Invent more from a sentence or a picture.
-- **Today's sky.** A mood sets the weather and light for the day, and it resets at dawn. Each room offers three new sparks to start from every day.
+- **Today's sky.**
+  - A mood sets the weather and light for the day, and it resets at dawn.
+  - If you switch it on, the weather outside comes in: your rounded position goes to open-meteo.com, and nothing else leaves the device.
+  - Each room offers three new sparks to start from every day.
 - **Memory.**
   - Every picture remembers how it was made. Open it to see the chain of asks that led there, and hold it to compare with the one before.
   - A standing note of your taste travels with every request.

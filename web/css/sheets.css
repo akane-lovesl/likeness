@@ -178,3 +178,7 @@
 .bring__opt > span:first-child svg { width: 6.4cqw; height: 6.4cqw; }
 .bring__opt b { font: var(--d-weight) calc(4.6cqw * var(--d-scale)) / 1.1 var(--font-display); letter-spacing: var(--d-track); }
 .bring__opt .t-soft { font-size: calc(3.2cqw * var(--t-scale)); }
+
+/* Weather from outside */
+.sky__outside { display: grid; gap: 1.6cqw; margin-top: 3.4cqw; }
+.sky__outnote { margin: 0; font-size: calc(3cqw * var(--t-scale)); line-height: 1.4; }

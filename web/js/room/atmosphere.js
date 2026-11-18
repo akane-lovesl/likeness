@@ -8,6 +8,7 @@ import { sky } from './sky.js';
 import { app, settings } from '../state.js';
 import { emit } from '../core/bus.js';
 import { sound } from '../core/sound.js';
+import { outsideWeather } from './outside.js';
 
 export const today = () => new Date().toISOString().slice(0, 10);
 export const allRooms = () => [...ROOMS, ...app.rooms];
@@ -17,7 +18,7 @@ export function skySettings() { const s = settings.get('sky', {}); return s.day 
 export function setSky(patch) { settings.set('sky', { ...skySettings(), ...patch, day: today() }); applySky(); }
 export function skyFor(room = atmosphere.room) {
   const s = skySettings(), mood = MOODS.find(m => m.id === s.mood);
-  return { weather: s.weather || mood?.weather || room.sky?.weather || 'clear', light: s.light || mood?.light || room.sky?.light || 'auto', intensity: s.intensity ?? mood?.intensity ?? .7, wind: mood?.wind ?? .35, tempo: mood?.tempo ?? 1, mood: mood || null };
+  return { weather: s.weather || mood?.weather || outsideWeather()?.weather || room.sky?.weather || 'clear', light: s.light || mood?.light || room.sky?.light || 'auto', intensity: s.intensity ?? mood?.intensity ?? .7, wind: mood?.wind ?? .35, tempo: mood?.tempo ?? 1, mood: mood || null };
 }
 export function applySky() {
   const s = skyFor();

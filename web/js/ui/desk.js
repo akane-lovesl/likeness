@@ -8,6 +8,7 @@ import { on } from '../core/bus.js';
 import { app, addItem, addPrint, threadPrints, printById, newThread } from '../state.js';
 import { atmosphere } from '../room/theme.js';
 import { skyFor } from '../room/atmosphere.js';
+import { sparksFor } from '../room/sparks.js';
 import { WEATHERS, LIGHTS, partOfDay, clockLight } from '../room/rooms.js';
 import { studio } from '../studio/studio.js';
 import { readIntent } from '../studio/intent.js';
@@ -24,7 +25,6 @@ import { openRooms } from './rooms.js';
 import { openSky } from './skysheet.js';
 import { openAlbum } from './album.js';
 
-const STARTER_IDEAS = ['A lighthouse inside a teacup, at dusk', 'Rain on a neon street, seen through a café window', 'A castle on a hill in watercolour'];
 
 export function deskScreen() {
   const el = h('section.screen.desk', { 'aria-label': 'Desk' });
@@ -104,7 +104,7 @@ export function deskScreen() {
   function ideas() {
     const items = app.thread.items, last = [...items].reverse().find(i => i.type === 'job' && i.state === 'done');
     const lastPrints = [...items].reverse().find(i => i.prints?.length);
-    if (!items.length) comp.setIdeas(STARTER_IDEAS, t => { comp.setText(t); });
+    if (!items.length) comp.setIdeas(sparksFor(atmosphere.room), t => { comp.setText(t); });
     else if (lastPrints && lastPrints.type === 'prints') comp.setIdeas(['Make it a watercolour', 'Give it a new backdrop', 'Three variations', 'Golden hour light'], t => sendIdea(t, lastPrints.prints));
     else if (last?.suggestions?.length) comp.setIdeas(last.suggestions, t => sendIdea(t, last.prints));
     else comp.setIdeas([], () => {});

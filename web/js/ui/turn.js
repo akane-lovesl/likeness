@@ -11,6 +11,7 @@ import { skyFor } from '../room/atmosphere.js';
 import { studio } from '../studio/studio.js';
 import { sketch } from '../studio/local.js';
 import { describeIntent } from '../studio/intent.js';
+import { nextIdeas } from '../studio/next.js';
 import { estimate, record, progressAt } from '../core/estimate.js';
 import { sound } from '../core/sound.js';
 import { sky } from '../room/sky.js';
@@ -194,17 +195,25 @@ async function develop(item, events, { learn }) {
           const ms = Date.now() - item.startedAt;
           if (learn) record(studio.mode, item.op, item.pace, item.n, ms);
           clearInterval(card.timer);
-          await patchItem(item, { state: 'done', ms: ev.ms || ms, reply: reply?.text || pickDone(), suggestions: reply?.suggestions || [] });
+          await patchItem(item, { state: 'done', ms: ev.ms || ms, reply: reply?.text || pickDone(), suggestions: ideasAfter(item, reply) });
           break;
         }
       }
     }
-    if (item.state === 'running') { clearInterval(card?.timer); await patchItem(item, { state: 'done', ms: Date.now() - item.startedAt, reply: reply?.text || pickDone(), suggestions: reply?.suggestions || [] }); }
+    if (item.state === 'running') { clearInterval(card?.timer); await patchItem(item, { state: 'done', ms: Date.now() - item.startedAt, reply: reply?.text || pickDone(), suggestions: ideasAfter(item, reply) }); }
   } catch (e) {
     clearInterval(card?.timer);
     sound.play('error');
     await patchItem(item, { state: e.cancelled ? 'stopped' : 'failed', error: e.cancelled ? '' : (e.message || String(e)), hint: e.hint || '', retry: { text: item.text || '', pace: item.pace } });
   }
   emit('turn:done', item);
+}
+
+/** Three fresh ideas for what to say next: the engine's own, minus what was just asked, topped up from the room of possibilities. */
+function ideasAfter(item, reply) {
+  const items = app.thread.items, mine = items.indexOf(item);
+  const recent = items.slice(0, mine + 1).filter(i => i.type === 'you').slice(-4).map(i => i.text || '');
+  const previous = items.slice(0, mine).reverse().find(i => i.type === 'job' && i.suggestions?.length)?.suggestions || [];
+  return nextIdeas({ op: item.op, offered: reply?.suggestions || [], recent, previous, turn: items.filter(i => i.type === 'job').length });
 }
 export const cardFor = id => cards.get(id);

@@ -17,6 +17,23 @@ import { pinMark } from './cards.js';
 let open = null;
 
 /** @param {any} print @param {HTMLElement} fromEl @param {{ onSend: (t: any) => void, onUse: (id: string) => void }} o */
+/** The chain of pictures this one came from, oldest first (at most six). */
+function lineage(print) {
+  const chain = [print];
+  for (let p = print; chain.length < 6;) {
+    const up = p.parents?.map(printById).find(Boolean);
+    if (!up || chain.includes(up)) break;
+    chain.unshift(up); p = up;
+  }
+  return chain;
+}
+/** What was asked to make a picture, in a few words. */
+function stepWords(p) {
+  if (/pinned/i.test(p.provenance?.detail || '') || /^changes to/i.test(p.prompt || '')) return 'pinned';
+  const words = String(p.prompt || '').replace(/@[A-Z]{1,2}\b/g, '').replace(/\s+/g, ' ').trim();
+  return (words.length > 20 ? words.slice(0, 19).trim() + '…' : words || 'changed').replace(/^./, c => c.toLowerCase());
+}
+
 export function openFocus(print, fromEl, { onSend, onUse }) {
   if (open) return;
   const url = urlOf(print), parent = print.parents?.map(printById).find(Boolean);
@@ -31,7 +48,8 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
   const layer = h('div.focus__layer');
   const pic = h('div.focus__pic', null, img, before, layer);
   const stageEl = h('div.focus__stage', null, pic);
-  const hint = h('p.focus__hint', null, parent ? 'Hold the picture to see what it was made from' : '');
+  const chain = lineage(print);
+  const hint = chain.length > 1 ? lineageEl(chain) : h('p.focus__hint', null, '');
   const title = h('div.focus__title', null, h('b', null, print.handle), h('span.t-mono', null, print.provenance?.label || ''), print.provenance?.detail ? h('span.focus__detail', null, print.provenance.detail) : null);
   const close = h('button.icon-btn.focus__close', { 'aria-label': 'Close', html: icon('back'), onclick: () => shut() });
   const keepBtn = tool('heart', print.kept ? 'Kept' : 'Keep', () => keep());
@@ -50,6 +68,18 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
   stage().append(el);
   open = el;
 
+  /** The picture's ancestry, oldest first, each step labelled with what was asked. Tap one to go there. */
+  function lineageEl(list) {
+    const shown = list.slice(-4), cut = list.length > shown.length;
+    const strip = h('div.lineage', { role: 'list', 'aria-label': 'How this picture was made' }, cut ? h('span.lineage__more', null, '…') : null,
+      ...shown.flatMap((p, i) => [
+        i ? h('span.lineage__step', { title: p.prompt || '' }, stepWords(p)) : null,
+        h('button.lineage__node', { role: 'listitem', 'aria-current': p === print ? 'true' : null, 'aria-label': `Picture ${p.handle}`, style: { '--i': i },
+          onclick: () => { if (p === print) return; sound.play('tap'); shut(); setTimeout(() => openFocus(p, null, { onSend, onUse }), 380); } },
+          h('img', { src: urlOf(p), alt: '' }), h('b', null, p.handle)),
+      ]));
+    return h('div.focus__hint.focus__hint--lineage', null, strip, h('span.lineage__tip', null, 'Hold the picture to compare with ' + (parent?.handle || 'the one before')));
+  }
   function tool(ic, label, fn) { return h('button.tool', { onclick: () => { sound.play('tap'); fn(); } }, h('span', { html: icon(ic) }), h('span', null, label)); }
   function layout() {
     const r = stageEl.getBoundingClientRect(), padX = r.width * .04, padY = r.height * .03, ar = (print.w || 3) / (print.h || 4);

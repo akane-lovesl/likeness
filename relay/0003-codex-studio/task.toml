@@ -1,0 +1,38 @@
+# Packet 0003: the Codex studio. Run with   uv run likeness relay run 0003
+# The stages are the mechanical part (a baseline, the probe, two real turns). PROMPT.md is the rest of the job.
+id = "0003-codex-studio"
+title = "The Codex studio: wire it to this machine, prove it end to end, polish what real use reveals"
+
+[[stage]]
+id = "sync"           # the Python side: FastAPI, Pillow, pytest. Nothing heavy any more.
+run = ["uv", "sync"]
+timeout = 900
+
+[[stage]]
+id = "pytest"         # 35 tests; the Codex engine is tested against tests/fake_codex.py
+run = ["uv", "run", "pytest"]
+timeout = 900
+
+[[stage]]
+id = "probe"          # Codex CLI is on PATH, signed in, and has every flag the engine passes
+run = ["uv", "run", "likeness", "probe", "codex", "--out", "relay/0003-codex-studio/out/probe.json"]
+timeout = 300
+expect = ["relay/0003-codex-studio/out/probe.json"]
+
+[[stage]]
+id = "smoke"          # two real turns through the engine, exactly as the server runs them: a still life from words, then an edit of it
+run = ["uv", "run", "likeness", "probe", "codex", "--smoke", "--out", "relay/0003-codex-studio/out/smoke/probe.json"]
+timeout = 2400
+expect = ["relay/0003-codex-studio/out/smoke/smoke-create.png", "relay/0003-codex-studio/out/smoke/smoke-edit.png"]
+
+[[stage]]
+id = "npm"
+run = ["npm", "ci"]
+timeout = 900
+gate = false
+
+[[stage]]
+id = "browser"        # the app in Chrome against the showcase and the simulator (about a minute)
+run = ["npm", "test"]
+timeout = 1800
+gate = false

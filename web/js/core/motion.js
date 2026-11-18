@@ -1,4 +1,4 @@
-/** Weighted motion: a spring for anything a finger lets go of, and a pointer drag with velocity. */
+/** Weighted motion: springs for anything a finger lets go of, a pointer drag with velocity, and FLIP for things that move house. */
 
 export const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -45,4 +45,24 @@ export function drag(el, on) {
   el.addEventListener('pointerdown', down); el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   return () => { el.removeEventListener('pointerdown', down); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+}
+
+/**
+ * FLIP: call with an element's rect from before it moved; it glides from there to where it is now.
+ * @param {HTMLElement} el @param {DOMRect} first @param {{ duration?: number, easing?: string, scale?: boolean }} [o]
+ */
+export function flip(el, first, { duration = 520, easing = 'cubic-bezier(.2,.7,.1,1)', scale = true } = {}) {
+  if (reduced || !first) return null;
+  const last = el.getBoundingClientRect();
+  const dx = first.left - last.left, dy = first.top - last.top;
+  const sx = scale ? first.width / Math.max(1, last.width) : 1, sy = scale ? first.height / Math.max(1, last.height) : 1;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < .01) return null;
+  return el.animate([{ transformOrigin: '0 0', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` }, { transformOrigin: '0 0', transform: 'none' }], { duration, easing });
+}
+
+/** Runs DOM changes inside a view transition when the browser has them. */
+export function transition(fn) {
+  const d = /** @type {any} */ (document);
+  if (reduced || !d.startViewTransition) { fn(); return Promise.resolve(); }
+  return d.startViewTransition(fn).finished.catch(() => {});
 }

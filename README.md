@@ -1,37 +1,94 @@
 # Likeness
 
-Likeness is a local portrait studio with seven visual styles. It has a browser showcase, a local simulator, and a GPU renderer.
+**A personal image studio you talk to.**
 
-## Start the showcase
+Bring pictures and words and say what you want: *"Use @B as a reference and make @A look like it."* Pin the part of a picture you mean and say what it should become. Ask for a backdrop and choose from ideas made for that picture. Dress the whole app as a room (Little Princess, Noir, Riviera, or one you invent from a sentence) and let today's sky set the weather.
 
-Install the locked Node dependencies and open the address printed by the server.
+It is a phone-shaped web app and a small studio server. Codex CLI with GPT Image makes the pictures, on your own machine.
 
-    npm ci
-    npm run serve
+## Three editions, never confused
 
-The showcase uses a procedural renderer and bundled browser assets.
+| Edition | What makes the pictures | Label on every picture |
+|---|---|---|
+| **Showcase** | the device itself, as quick sketches (static files, no server) | Sketch |
+| **Live · Simulator** | `likeness serve --engine simulator`: Pillow stand-ins, also stamped on the picture | Simulated |
+| **Live · Workstation** | `likeness serve` with Codex CLI and GPT Image | Render |
 
-## Start the local studio
+The edition is in the header of every screen, and every picture says how it was made.
 
-Use uv with Python 3.12 or newer. The simulator runs without GPU models.
+## Run it
 
-    uv sync --locked
-    uv run likeness serve --engine mock --host localhost
+The showcase needs only Node:
 
-For GPU rendering, install the GPU dependency group and fetch the pinned models. Their licenses are listed in the model manifest.
+```
+npm run serve                            # http://127.0.0.1:4173
+```
 
-    uv sync --locked --group gpu
-    uv run likeness fetch qwen21_turbo faces
-    uv run likeness serve --engine qwen21_turbo --host localhost
+The live studio needs Python 3.12 and [uv](https://docs.astral.sh/uv/):
 
-Open the studio address printed by the server. The app labels the active edition and shows a processing trace for each portrait.
+```
+uv sync
+uv run likeness serve                    # Codex when the codex command answers here, otherwise the simulator
+uv run likeness serve --engine simulator
+uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speaking every flag the studio uses? --smoke makes two pictures
+```
 
-## Development
+`serve` prints a link for this machine and a pairing QR code for a phone on the same network. Scan it once and the phone stays paired; other devices get a polite refusal.
 
-    npm run check
-    npm test
-    uv run pytest
+## What it does
 
-The browser app is in web and the Python server is in likeness. The bundled test sittings are drawings. See the vendor notes for the browser assets and the relay guide for local setup and benchmark tasks.
+- **Conversation, not menus.**
+  - Pictures get handles (A, B, …). Type `@` to call a picture and `#` to call a look.
+  - While you type, the app reads what you mean (change, restyle, use as a reference, blend, pin, backdrop, variations) and shows it with a time estimate before you send.
+  - Every reply ends with three ideas for what to say next.
+- **Pins.** Tap part of a picture and an on-device segmenter (MediaPipe) selects it, or paint it with a finger. Each pin gets its own note, and only those parts change.
+- **Looks.** Styles as data: a prompt for the model, plus a recipe the device can sketch at once. Make your own from words or from a picture.
+- **Backdrops.** Not a hundred presets. The studio suggests places for *this* picture, and two dials move the ideas between near and far, and between real and dreamt.
+- **Rooms.** A room is the whole atmosphere:
+  - colours, typefaces, frames and ornaments;
+  - a set piece and a texture;
+  - weather, small sounds and motion;
+  - the voice the studio talks in, and the wipe that carries you in.
 
-Photos, rendered portraits, generated reports, logs, and GPU checkpoints belong in local storage. The project ignores these paths.
+  Seven are built in. Invent more from a sentence or a picture.
+- **Today's sky.** A mood sets the weather and light for the day, and it resets at dawn.
+- **Honest waiting.**
+  - A draft is sketched on the device at once.
+  - Stages are named in the room's voice, and the model's own notes appear as it thinks.
+  - Previews come in, and a fuse burns toward an estimate learned on your machine.
+  - Stop works mid-turn, and reloading the page picks a turn up again.
+- **Pace.** Quick, Fine and Deep. Each one is a model, a reasoning effort and an image quality, set in `studio.toml`.
+
+## How a turn travels
+
+```
+app ── POST /api/assets ──────────────▶ studio     each picture once (masks too)
+    ── POST /api/turns ───────────────▶            {text, handles, intent, pins, look, backdrop, room, pace, n} → {job, eta}
+    ◀── GET /api/jobs/{id}/events ────             stage · note · plan · partial · result · reply · done | failed
+    ── POST /api/jobs/{id}/cancel ────▶
+    ── POST /api/rooms | looks | backdrops ─▶      words from the model, checked before they reach the app
+```
+
+The Codex engine runs one `codex exec --json` per turn, sandboxed in a job folder of its own under `private/jobs/`:
+
+- **Inputs.** The pictures go in `in/`, named by their handles, with the masks beside them.
+- **Instructions.** The brief (`likeness/brief.py`) asks for a `PLAN` line, then the pictures in `out/`, then a `DONE` line.
+- **Progress.** Codex's event stream becomes the progress you see.
+- **Rooms, looks and backdrop ideas.** These are words only. They use `--output-schema` with strict schemas, and `likeness/rooms.py` normalises whatever comes back.
+
+## The repository
+
+```
+web/                 the app: index.html, css/, js/ (core, room, studio, ui), fonts/, vendor/ (MediaPipe)
+likeness/            the studio: server.py, engines/ (simulator, codex), brief.py, turns.py, rooms.py, jobs.py, store.py, estimates.py
+studio.toml          the studio's defaults; private/studio.toml holds this machine's own answers
+tests/               pytest (server, simulator, Codex engine against tests/fake_codex.py, rooms) and browser/ (Playwright)
+relay/               hand-off packets for the workstation
+tools/serve.mjs      the static server for the showcase
+```
+
+Checks: `npm run check` (types), `uv run pytest`, and `npm test` (Chrome at a 9:16 viewport, showcase and live simulator).
+
+## Privacy
+
+Your pictures, the studio's jobs, pairing keys and settings live in `private/`, which git ignores. The only faces in the repository are the drawn test sitters in `tests/fixtures/sitters/`.

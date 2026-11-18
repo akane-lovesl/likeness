@@ -1,23 +1,39 @@
-/* Likeness - tokens: type, colour, motion. Two grounds only: paper for the monograph, night for the instrument. */
-@font-face { font-family: 'Fraunces'; src: url('../fonts/fraunces.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: swap; }
+/* Likeness: tokens. A room (js/room/theme.js) sets every colour, face and tempo below; these are the Atelier's. */
+@font-face { font-family: 'Fraunces'; src: url('../fonts/fraunces.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: 'Fraunces'; src: url('../fonts/fraunces-italic.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
 @font-face { font-family: 'IBM Plex Mono'; src: url('../fonts/plex-mono-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'IBM Plex Mono'; src: url('../fonts/plex-mono-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Pinyon Script'; src: url('../fonts/pinyon-script.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Space Grotesk'; src: url('../fonts/space-grotesk.woff2') format('woff2'); font-weight: 300 700; font-display: swap; }
+@font-face { font-family: 'Courier Prime'; src: url('../fonts/courier-prime.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Courier Prime'; src: url('../fonts/courier-prime-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Cinzel'; src: url('../fonts/cinzel.woff2') format('woff2'); font-weight: 400 900; font-display: swap; }
+@font-face { font-family: 'Instrument Serif'; src: url('../fonts/instrument-serif.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Instrument Serif'; src: url('../fonts/instrument-serif-italic.woff2') format('woff2'); font-style: italic; font-display: swap; }
+@font-face { font-family: 'VT323'; src: url('../fonts/vt323.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Caveat'; src: url('../fonts/caveat.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
+
+/* Registered, so that a browser without view transitions still glides from one room to the next. */
+@property --ground { syntax: '<color>'; inherits: true; initial-value: #f3eee4; }
+@property --ground-2 { syntax: '<color>'; inherits: true; initial-value: #e7dccb; }
+@property --surface { syntax: '<color>'; inherits: true; initial-value: #fbf8f2; }
+@property --ink { syntax: '<color>'; inherits: true; initial-value: #1d1915; }
+@property --soft { syntax: '<color>'; inherits: true; initial-value: #786d61; }
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #d8432b; }
+@property --accent-2 { syntax: '<color>'; inherits: true; initial-value: #c4932f; }
+@property --on-accent { syntax: '<color>'; inherits: true; initial-value: #fff8ee; }
 
 :root {
-  --paper: #f3eee4; --paper-rise: #faf6ee; --paper-deep: #e7dfd0; --ink: #1a1714; --ink-soft: #6b6258;
-  --night: #121110; --night-rise: #1d1b18; --bone: #ede6da; --bone-soft: #91897d;
-  --vermilion: #d8432b; --amber: #dba03a; --verdigris: #4f9a86;
-  --serif: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
-  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --ease: cubic-bezier(.2, .7, .1, 1); --ease-in: cubic-bezier(.55, 0, .85, .35);
-  --slow: 760ms; --dur: 520ms; --quick: 200ms;
-  /* How much taller than 9:16 the stage is: nothing on a 9:16 stage, room for the plates to grow on a tall phone. */
-  --tall: clamp(0cqw, 100cqh - 177.78cqw, 48cqw);
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --rule: rgb(29 25 21 / .14); --veil: rgb(243 238 228 / .78); --shade: rgb(40 28 14 / .28); --accent-soft: #f3d9cf;
+  --font-display: 'Fraunces', Georgia, serif; --font-text: 'Fraunces', Georgia, serif; --font-mono: 'IBM Plex Mono', ui-monospace, monospace; --font-hand: 'Caveat', cursive;
+  --d-scale: 1; --d-weight: 340; --d-track: -.03em; --d-case: none; --d-style: normal; --t-weight: 380; --t-scale: 1; --m-scale: 1; --t-track: 0;
+  --radius: 1.4cqw; --radius-ui: 99cqw; --print-radius: .8cqw;
+  --tempo: 1; --ease: cubic-bezier(.2, .7, .1, 1); --ease-pop: cubic-bezier(.3, 1.4, .5, 1); --ease-in: cubic-bezier(.55, 0, .85, .35);
+  --t-quick: calc(var(--tempo) * 180ms); --t-mid: calc(var(--tempo) * 420ms); --t-slow: calc(var(--tempo) * 760ms);
+  --card-shadow: 0 .2cqw .4cqw rgb(40 28 14 / .08), 0 2.4cqw 5cqw -2cqw rgb(40 28 14 / .28);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --texture: var(--grain); --texture-a: .14; --texture-blend: multiply; --texture-size: 220px;
 }
+:root.no-vt { transition: --ground .7s, --ground-2 .7s, --surface .7s, --ink .7s, --soft .7s, --accent .7s, --accent-2 .7s, --on-accent .7s; }
 
-.paper { --bg: var(--paper); --bg-rise: var(--paper-rise); --bg-deep: var(--paper-deep); --fg: var(--ink); --fg-soft: var(--ink-soft); --rule: rgba(26, 23, 20, .16); --accent: var(--vermilion); --on-accent: #fff8ee; --grain-mix: multiply; --grain-a: .16; }
-.night { --bg: var(--night); --bg-rise: var(--night-rise); --bg-deep: #0a0908; --fg: var(--bone); --fg-soft: var(--bone-soft); --rule: rgba(237, 230, 218, .16); --accent: #ee5b3d; --on-accent: #1a0d08; --grain-mix: screen; --grain-a: .1; }
-
-@media (prefers-reduced-motion: reduce) { :root { --slow: 1ms; --dur: 1ms; --quick: 1ms; } }
+@media (prefers-reduced-motion: reduce) { :root { --tempo: .01 !important; } }

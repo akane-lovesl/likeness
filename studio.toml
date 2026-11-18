@@ -1,0 +1,46 @@
+# The studio's settings. These are the defaults; put this machine's own answers in private/studio.toml
+# (the same shape, only the keys you change). private/ is never committed.
+
+[studio]
+engine = "auto"          # auto: Codex when its command answers here, otherwise the simulator
+workers = 2              # turns that may run at the same time
+
+[codex]
+command = ["codex"]      # how to start Codex CLI: a name on PATH or a full path, plus any leading arguments
+sandbox = "workspace-write"   # each turn runs in its own folder under private/jobs and may only write there
+size = "1024x1536"       # what the brief asks for: portrait, close to the app's prints
+attach = true            # also attach the turn's pictures to the prompt (-i), so the model sees them while it plans
+args = []                # more arguments for every codex exec, e.g. ["--profile", "likeness"]
+
+# More  -c key=value  overrides for every run, written as TOML values. For example, if the image tool needs the network:
+# [codex.overrides]
+# "sandbox_workspace_write.network_access" = true
+
+# One table per pace in the app. model = "" leaves Codex on its own default model.
+[codex.pace.quick]
+model = ""
+effort = "low"           # model_reasoning_effort
+quality = "low"          # what the brief asks of the image tool
+timeout = 300            # seconds before the studio gives up
+
+[codex.pace.fine]
+model = ""
+effort = "medium"
+quality = "medium"
+timeout = 600
+
+[codex.pace.deep]
+model = ""
+effort = "high"
+quality = "high"
+timeout = 900
+
+# Rooms, looks and backdrop ideas: words only, so quick.
+[codex.text]
+model = ""
+effort = "low"
+timeout = 150
+
+[codex.images]
+# How the brief tells Codex to make pictures. Tune this to whatever image tool Codex has on the machine.
+hint = "Use your image generation tool (GPT Image). Where the work changes a picture, give the tool that picture from in/ as its input image, and the edit mask where regions are marked, rather than describing it from scratch."

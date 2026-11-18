@@ -1,4 +1,13 @@
-"""The studio's front door: the app's files, the sittings API, and a stream of events for each plate."""
+"""The studio's front door: the app's files, one turn API that every engine answers, and a stream of events per job.
+
+  GET  /studio.json                 which studio this is; the app labels its edition from it
+  POST /api/assets                  a picture or a mask, sent once (multipart: file, kind)
+  GET  /api/assets/{id}             a picture back
+  POST /api/turns                   a turn: answers {job, eta}
+  GET  /api/jobs/{id}/events        what happens, as it happens (server-sent events); GET /api/jobs/{id} for polling
+  POST /api/jobs/{id}/cancel        stop it
+  POST /api/rooms, /api/looks, /api/backdrops   words from the studio's model, checked before they reach the app
+"""
 
 from __future__ import annotations
 
@@ -6,62 +15,51 @@ import asyncio
 import json
 import os
 import secrets
-import threading
 import time
 from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
-from . import __version__, engines, faces, paths, recipes
-from .jobs import Jobs
-from .pipeline import Studio
-from .store import Store
+from . import __version__, engines, paths, settings
+from .engines import EngineError, Work
+from .estimates import Estimates
+from .jobs import Job, Jobs
+from .rooms import normalise_backdrops, normalise_look, normalise_room
+from .store import MAX_UPLOAD, Store
+from .turns import BackdropAsk, Inputs, LookAsk, RoomAsk, Turn
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
-MAX_PHOTO = 24 * 2**20
 NOT_PAIRED = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Likeness</title>
 <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#121110;color:#ede6da;font:17px/1.5 Georgia,serif">
-<p style="max-width:20em;padding:2em">This studio is paired with one phone.<br><br>Scan the code that  <code>likeness serve</code>  prints on the workstation to pair this one.</p>"""
-
-
-class Order(BaseModel):
-    world: str
-    recipe: Literal["locked", "naive"] = "locked"
-    seed: int | None = None
+<p style="max-width:20em;padding:2em">This studio only opens for devices it has paired with.<br><br>Scan the code that <code>likeness serve</code> prints to pair this one.</p>"""
 
 
 def pairing_key(home: Path) -> str:
     path = home / "pairing.key"
     if not path.exists():
+        home.mkdir(parents=True, exist_ok=True)
         path.write_text(secrets.token_urlsafe(9), encoding="utf-8")
     return path.read_text(encoding="utf-8").strip()
 
 
-def create_app(engine: engines.Engine | None = None, home: Path | None = None, open_door: bool | None = None) -> FastAPI:
+def create_app(engine: engines.Engine | None = None, home: Path | None = None, open_door: bool | None = None, config: dict | None = None) -> FastAPI:
     home = home or paths.home()
-    engine = engine or engines.create(os.environ.get("LIKENESS_ENGINE", "auto"))
-    studio, jobs, key = Studio(engine, Store(home), faces.load(home / "models" / "faces")), Jobs(), pairing_key(home)
+    home.mkdir(parents=True, exist_ok=True)
+    config = settings.load(home) if config is None else config
+    engine = engine or engines.create(os.environ.get("LIKENESS_ENGINE") or config["studio"].get("engine", "auto"), config, home)
+    store, jobs, key = Store(home), Jobs(int(config["studio"].get("workers", 2))), pairing_key(home)
+    estimates = Estimates(home / f"estimates-{engine.kind}.json", engine.kind)
     open_door = bool(os.environ.get("LIKENESS_OPEN")) if open_door is None else open_door
-    state = {"error": ""}
-
-    def warm() -> None:
-        try:
-            engine.load()
-        except Exception as error:
-            state["error"] = str(error)
-
-    threading.Thread(target=warm, daemon=True, name="likeness-load").start()
     app = FastAPI(title="Likeness", version=__version__, docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
-    app.state.studio, app.state.jobs, app.state.key = studio, jobs, key
+    app.state.engine, app.state.store, app.state.jobs, app.state.key = engine, store, jobs, key
 
     @app.middleware("http")
     async def paired(request: Request, call_next):
-        """Only this machine, or a phone that has scanned the pairing code, may come in."""
+        """Only this machine, or a device that has scanned the pairing code, may come in."""
         offered = request.query_params.get("pair")
         if offered and secrets.compare_digest(offered, key):
             response = RedirectResponse(str(request.url.remove_query_params("pair")))
@@ -71,55 +69,66 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
         if not (open_door or host in LOOPBACK or secrets.compare_digest(request.cookies.get("likeness_key", ""), key)):
             return HTMLResponse(NOT_PAIRED, status_code=401)
         response = await call_next(request)
-        if not request.url.path.startswith("/api/files/"):
+        if not request.url.path.startswith("/api/assets/"):
             response.headers["cache-control"] = "no-cache"
         return response
 
+    @app.exception_handler(EngineError)
+    async def engine_failed(request: Request, error: EngineError):
+        return JSONResponse({"detail": str(error), "hint": error.hint}, status_code=502)
+
     def describe() -> dict:
-        return {
-            "ok": True, "edition": "live", "version": __version__, "worlds": list(recipes.load_all()), "faces": studio.faces is not None,
-            "engine": {"id": engine.id, "kind": engine.kind, "device": engine.device, "ready": engine.ready, "error": state["error"]},
-        }
+        return {"ok": True, "edition": "live", "version": __version__, "engine": engine.describe(),
+                "eta": {pace: estimates.expect("edit", pace) for pace in ("quick", "fine", "deep")}}
 
     app.get("/studio.json")(describe)
     app.get("/api/health")(describe)
-    app.get("/api/recipes")(recipes.for_web)
-    app.get("/api/history")(lambda: studio.store.history())
 
-    @app.post("/api/sittings")
-    async def seat(photo: UploadFile = File(...), reading: str = Form("")):
-        data = await photo.read(MAX_PHOTO + 1)
-        if len(data) > MAX_PHOTO:
-            raise HTTPException(413, "That photograph is larger than the studio accepts (24 MB).")
+    @app.post("/api/assets")
+    async def upload(file: UploadFile = File(...), kind: Literal["image", "mask"] = Form("image")):
+        data = await file.read(MAX_UPLOAD + 1)
         try:
-            notes = json.loads(reading) if reading else None
-            return await run_in_threadpool(studio.seat, data, notes)
-        except json.JSONDecodeError:
-            raise HTTPException(422, "The reading sent with the photograph could not be understood.") from None
-        except OSError:
-            raise HTTPException(415, "That file could not be opened as a photograph.") from None
+            note = await run_in_threadpool(store.add_bytes, data, kind)
+        except ValueError as error:
+            raise HTTPException(413 if len(data) > MAX_UPLOAD else 415, str(error)) from None
+        return {"id": note["id"], "kind": note["kind"], "w": note["w"], "h": note["h"], "url": store.url(note["id"])}
 
-    @app.post("/api/sittings/{sitting_id}/portraits")
-    def order(sitting_id: str, body: Order):
-        if studio.store.sitting(sitting_id) is None:
-            raise HTTPException(404, "The studio has no such sitting.")
-        if body.world not in recipes.load_all():
-            raise HTTPException(404, f"The studio has no world called {body.world}.")
+    @app.get("/api/assets/{asset_id}")
+    def asset(asset_id: str):
+        path = store.path(asset_id)
+        if path is None or not path.exists():
+            raise HTTPException(404, "The studio has no such picture.")
+        return FileResponse(path, media_type="image/jpeg" if path.suffix == ".jpg" else "image/png", headers={"cache-control": "private, max-age=31536000, immutable"})
 
-        def work(emit):
-            waited = 0.0
-            while not engine.ready:
-                if state["error"]:
-                    raise RuntimeError(f"The engine could not start: {state['error']}")
-                if waited == 0:
-                    emit("log", text="the engine is still loading its weights")
-                time.sleep(0.25)
-                waited += 0.25
-            return studio.develop(sitting_id, body.world, body.recipe, body.seed, emit)
+    def inputs_for(turn: Turn) -> Inputs:
+        if any(store.get(a) is None for a in turn.asset_ids()):
+            raise HTTPException(409, "Some pictures need to be sent again.")
+        return Inputs(
+            pictures={h: store.path(a) for h, a in turn.handles.items()},
+            subject=turn.handle_of(turn.intent.subject) if turn.intent.subject else None,
+            refs=[(h, r.role) for r in turn.intent.refs if (h := turn.handle_of(r.asset))],
+            pins=[(p.n, p.note, store.path(p.mask) if p.mask else None) for p in turn.pins],
+            subject_mask=store.path(turn.subject_mask) if turn.subject_mask else None,
+        )
 
-        return {"job": jobs.submit(work).id}
+    @app.post("/api/turns")
+    def turn(body: Turn):
+        inputs = inputs_for(body)
+        eta = estimates.expect(body.intent.op, body.pace, body.n)
 
-    def find(job_id: str):
+        def work(job: Job) -> None:
+            started = time.monotonic()
+            progress = Work(job, store, engine.provenance(body))
+            engine.turn(body, inputs, progress)
+            if not progress.results:
+                raise EngineError("The studio finished without a picture.", "Try again, perhaps in fewer words.")
+            ms = int((time.monotonic() - started) * 1000)
+            estimates.record(body.intent.op, body.pace, body.n, ms)
+            job.emit("done", ms=ms)
+
+        return {"job": jobs.submit(work).id, "eta": eta}
+
+    def find(job_id: str) -> Job:
         job = jobs.jobs.get(job_id)
         if job is None:
             raise HTTPException(404, "The studio has no such job.")
@@ -128,7 +137,7 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
     @app.get("/api/jobs/{job_id}")
     def job_state(job_id: str):
         job = find(job_id)
-        return {"state": job.state, "events": job.events, "portrait": job.portrait}
+        return {"state": job.state, "events": job.events}
 
     @app.get("/api/jobs/{job_id}/events")
     async def job_events(job_id: str):
@@ -147,12 +156,33 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
 
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"cache-control": "no-store", "x-accel-buffering": "no"})
 
-    @app.get("/api/files/{kind}/{name}")
-    def picture(kind: Literal["portraits", "sittings"], name: str):
-        path = (home / kind / name).resolve()
-        if path.parent != (home / kind).resolve() or path.suffix != ".jpg" or not path.exists():
-            raise HTTPException(404, "The studio has no such picture.")
-        return FileResponse(path, media_type="image/jpeg", headers={"cache-control": "private, max-age=31536000, immutable"})
+    @app.post("/api/jobs/{job_id}/cancel")
+    def cancel(job_id: str):
+        find(job_id)
+        return {"ok": jobs.cancel(job_id)}
+
+    def picture(asset_id: str | None) -> Path | None:
+        if not asset_id:
+            return None
+        path = store.path(asset_id)
+        if path is None:
+            raise HTTPException(409, "The picture needs to be sent again.")
+        return path
+
+    @app.post("/api/rooms")
+    def room(ask: RoomAsk):
+        return normalise_room(engine.room(ask), ask.text)
+
+    @app.post("/api/looks")
+    def look(ask: LookAsk):
+        return normalise_look(engine.look(ask, picture(ask.asset)), ask.text)
+
+    @app.post("/api/backdrops")
+    def backdrops(ask: BackdropAsk):
+        ideas = normalise_backdrops(engine.backdrops(ask, picture(ask.asset)))
+        if not ideas:
+            raise EngineError("No ideas came back this time.", "Try again, or say where you would like to be.")
+        return {"backdrops": ideas}
 
     app.mount("/", StaticFiles(directory=paths.WEB, html=True), name="web")
     return app

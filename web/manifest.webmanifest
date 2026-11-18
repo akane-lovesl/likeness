@@ -1,11 +1,11 @@
 {
   "name": "Likeness",
   "short_name": "Likeness",
-  "description": "Seven studios. One face.",
+  "description": "A personal image studio you talk to.",
   "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#121110",
-  "theme_color": "#121110",
+  "background_color": "#f3eee4",
+  "theme_color": "#f3eee4",
   "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
 }

@@ -1,0 +1,106 @@
+/**
+ * The showcase studio: everything happens on the device. It reads the request, takes about as long as a pace
+ * suggests (so the in-between states can be seen), and answers with sketches from the painter, stamped as sketches.
+ * The same sketching gives a live studio's jobs their instant draft.
+ */
+import * as P from './painter.js';
+import { LOOKS, lookFromWords } from './looks.js';
+import { sleep, rng, pick } from '../core/dom.js';
+
+const PACE = { quick: 2200, fine: 4000, deep: 6800 };
+const cancelled = new Set();
+const seedOf = s => [...String(s)].reduce((a, c) => (Math.imul(a ^ c.charCodeAt(0), 16777619) >>> 0), 2166136261) % 100000;
+
+/** @param {any} spec @param {Record<string, any>} inputs */
+export async function sketch(spec, inputs, i = 0, size = P.MAX) {
+  const it = spec.intent, seed = seedOf(spec.id) + i * 97, rnd = rng(seed);
+  const canvasOf = async id => { const inp = inputs[id]; return (inp.canvas ||= await P.fromBlob(inp.blob, size)); };
+  const subject = it.subject && inputs[it.subject] ? await canvasOf(it.subject) : null;
+  const styleRef = it.refs.find(r => r.role === 'style' && inputs[r.id]);
+  const variant = l => (i === 0 ? l : { ...l, ramp: l.ramp?.map(c => c), keep: Math.min(1, (l.keep ?? .2) + i * .15), bloom: (l.bloom || 0) + i * .08 });
+  const words = spec.text || '';
+  let out, note = '';
+  switch (subject ? it.op : 'create') {
+    case 'reference': {
+      const ref = await canvasOf(styleRef.id), ramp = P.paletteOf(ref, 5);
+      out = P.grade(subject, variant({ ramp, keep: .3, grain: .03, bloom: .15, vignette: .15 }), .92, seed); note = 'palette taken from the reference';
+      break;
+    }
+    case 'blend': {
+      const other = it.refs.find(r => inputs[r.id]); out = other ? P.blend(subject, await canvasOf(other.id), seed) : P.grade(subject, LOOKS[0], .9, seed); note = 'double exposure, one palette';
+      break;
+    }
+    case 'region': {
+      out = subject;
+      for (const pin of it.pins) if (pin.mask) out = P.regionEdit(out, pin.mask, pin.note || words, seed + pin.n);
+      note = 'pinned regions changed'; break;
+    }
+    case 'remove': {
+      out = it.pins?.length ? it.pins.reduce((c, pin) => (pin.mask ? P.regionEdit(c, pin.mask, 'remove', seed) : c), subject) : P.grade(subject, LOOKS.find(l => l.id === 'pastel-dream'), .3, seed);
+      note = it.pins?.length ? 'cleared under the pins' : 'nothing pinned: pin what should go'; break;
+    }
+    case 'backdrop': {
+      const where = (spec.backdrop?.words || words.replace(/.*?(background|backdrop|behind \w+|setting|surroundings)\s*(to|of|with|into|in|as|:)?\s*/i, '')) || 'a garden at golden hour';
+      const bd = P.scene(P.sceneFrom(where, spec.backdrop?.ramp || null, seed), subject.width, subject.height);
+      out = P.composite(subject, spec.subjectMask || null, bd); note = spec.subjectMask ? 'subject kept by its mask' : 'subject guessed as the centre';
+      break;
+    }
+    case 'vary': {
+      const pool = LOOKS.filter(l => !l.halftone && !l.pixel), look = it.look || pick(pool, rnd());
+      out = P.grade(subject, variant(look), .55 + rnd() * .35, seed); note = look.name; break;
+    }
+    case 'create': {
+      const look = it.look || lookFromWords(words), desc = P.sceneFrom(words, look?.ramp || null, seed + i * 13);
+      out = P.scene(desc, 768, 1024); if (look) out = P.grade(out, look, .6, seed); note = look ? 'scenery, ' + look.name : 'scenery from the words';
+      break;
+    }
+    default: {
+      const look = it.look || lookFromWords(words) || pick(LOOKS.filter(l => !l.pixel), rnd());
+      out = P.grade(subject, variant(look), look.strength ?? .9, seed); note = look.name;
+    }
+  }
+  return { canvas: out, note };
+}
+
+const SAY = {
+  create: (s, h) => `A first sketch of “${s.text.slice(0, 60)}${s.text.length > 60 ? '…' : ''}”.`,
+  edit: (s, h) => `${h(s.intent.subject)}, changed as you asked.`, restyle: (s, h) => `${h(s.intent.subject)}, in ${s.intent.look?.name || 'a new look'}.`,
+  reference: (s, h) => `${h(s.intent.subject)} in ${h(s.intent.refs.find(r => r.role === 'style')?.id)}’s colours.`, blend: (s, h) => `${h(s.intent.subject)} and ${h(s.intent.refs[0]?.id)}, folded into one.`,
+  region: (s, h) => `Changed what you pinned on ${h(s.intent.subject)}.`, remove: (s, h) => `Cleared it from ${h(s.intent.subject)}.`,
+  backdrop: (s, h) => `${h(s.intent.subject)}, somewhere new.`, vary: (s, h) => `${s.n} takes on ${h(s.intent.subject)}.`,
+};
+const NEXT = {
+  create: ['Make it night', 'In watercolour', 'Two more like this'], edit: ['Warmer', 'Try a backdrop', 'Two more like this'], restyle: ['Softer', 'Stronger', 'Try a backdrop'],
+  reference: ['Less of the reference', 'Two more like this', 'In Film ’77'], blend: ['More of the first', 'Make it dreamier'], region: ['Brighter', 'Try a backdrop', 'Three variations'],
+  remove: ['Bring it back', 'Try a backdrop'], backdrop: ['Somewhere else', 'Golden hour light', 'Make it night'], vary: ['More like the first', 'In watercolour'],
+};
+
+export const local = {
+  kind: 'device',
+  /** @param {any} spec @param {Record<string, any>} inputs */
+  async *turn(spec, inputs) {
+    const t0 = performance.now(), n = spec.n || 1, total = PACE[spec.pace || 'fine'] * (1 + (n - 1) * .3);
+    const gate = async ms => { await sleep(ms); if (cancelled.has(spec.id)) throw Object.assign(new Error('Stopped.'), { cancelled: true }); };
+    yield { type: 'accepted', eta: total };
+    yield { type: 'stage', stage: 'read' }; await gate(total * .14);
+    yield { type: 'plan', plan: { op: spec.intent.op, note: 'read on this device' } };
+    yield { type: 'stage', stage: 'plan' }; await gate(total * .14);
+    yield { type: 'stage', stage: 'draw' };
+    const made = [];
+    for (let i = 0; i < n; i++) { const { canvas, note } = await sketch(spec, inputs, i); made.push({ canvas, note }); }
+    const steps = made.map(m => P.partials(m.canvas));
+    for (let k = 0; k < 3; k++) {
+      await gate(total * .17);
+      for (let i = 0; i < n; i++) yield { type: 'partial', index: i, canvas: steps[i][k] };
+    }
+    yield { type: 'stage', stage: 'finish' }; await gate(total * .08);
+    for (let i = 0; i < n; i++) {
+      const c = P.stamp(P.copy(made[i].canvas)), blob = await P.toBlob(c);
+      yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + made[i].note } };
+    }
+    const handle = id => inputs[id]?.handle || 'it';
+    yield { type: 'reply', text: (SAY[spec.intent.op] || SAY.edit)(spec, handle), suggestions: NEXT[spec.intent.op] || NEXT.edit };
+    yield { type: 'done', ms: performance.now() - t0 };
+  },
+  cancel(id) { cancelled.add(id); },
+};

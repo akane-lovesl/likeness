@@ -1,0 +1,48 @@
+/* The lightbox: a picture up close, lit by its own colours, with the retoucher's marks. */
+.focus { position: absolute; inset: 0; z-index: 50; display: flex; flex-direction: column; color: #fff; overflow: hidden; background: rgb(12 10 9 / 0); transition: background var(--t-mid) var(--ease); }
+.focus.is-in { background: rgb(12 10 9 / .96); }
+.focus__ambient { position: absolute; inset: -12%; background: center / cover; filter: blur(16cqw) saturate(1.4) brightness(.5); opacity: 0; transition: opacity var(--t-slow) var(--ease); }
+.focus__veil { position: absolute; inset: 0; background: radial-gradient(120% 80% at 50% 40%, rgb(8 6 5 / .15), rgb(8 6 5 / .6)); opacity: 0; transition: opacity var(--t-slow) var(--ease); }
+.focus.is-in .focus__ambient, .focus.is-in .focus__veil { opacity: 1; }
+.focus__bar { position: relative; z-index: 2; display: flex; align-items: center; gap: 2cqw; padding: calc(env(safe-area-inset-top) + 3cqw) 4cqw 1cqw 2.4cqw; opacity: 0; transform: translateY(-2cqw); transition: opacity var(--t-mid) var(--ease), transform var(--t-mid) var(--ease); }
+.focus.is-in .focus__bar, .focus.is-in .focus__dock, .focus.is-in .focus__hint, .focus.is-in .focus__pindock { opacity: 1; transform: none; transition-delay: 120ms; }
+.focus__close { color: #fff; }
+.focus__title { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4cqw 2.2cqw; min-width: 0; }
+.focus__title b { font-family: var(--font-display); font-weight: var(--d-weight); font-size: calc(8cqw * var(--d-scale)); line-height: 1; }
+.focus__title .t-mono { color: rgb(255 255 255 / .8); }
+.focus__detail { flex-basis: 100%; font-size: 3.2cqw; color: rgb(255 255 255 / .62); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.focus__stage { position: relative; z-index: 1; flex: 1; min-height: 0; display: grid; place-items: center; }
+.focus__pic { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
+.focus__img, .focus__before { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: var(--print-radius); }
+.focus__img { box-shadow: 0 6cqw 16cqw -4cqw rgb(0 0 0 / .75), 0 0 0 1px rgb(255 255 255 / .08); }
+.focus__before { opacity: 0; transition: opacity var(--t-mid) var(--ease); }
+.focus__before.is-in { opacity: 1; }
+.focus__layer { position: absolute; inset: 0; }
+.focus[data-mode='pin'] .focus__pic { cursor: crosshair; }
+.focus__hint { position: relative; z-index: 2; min-height: 8cqw; padding: 2cqw 6cqw 0; text-align: center; font-style: italic; font-size: 3.6cqw; color: rgb(255 255 255 / .72); opacity: 0; transition: opacity var(--t-mid) var(--ease); }
+.focus__dock { position: relative; z-index: 2; display: flex; justify-content: space-between; padding: 1.4cqw 3cqw calc(4cqw + env(safe-area-inset-bottom)); opacity: 0; transform: translateY(3cqw); transition: opacity var(--t-mid) var(--ease), transform var(--t-mid) var(--ease); }
+.tool { display: flex; flex-direction: column; align-items: center; gap: 1.2cqw; width: 13cqw; padding: 1.6cqw 0; border-radius: 3cqw; color: rgb(255 255 255 / .9); font: 500 calc(1.95cqw * var(--m-scale)) / 1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; transition: background var(--t-quick), transform var(--t-quick) var(--ease); }
+.tool:active { transform: scale(.92); background: rgb(255 255 255 / .1); }
+.tool svg { width: 6cqw; height: 6cqw; }
+.tool[aria-pressed='true'] { color: var(--accent); }
+.tool[aria-pressed='true'] svg { fill: currentColor; }
+.focus__pindock { position: relative; z-index: 2; display: flex; gap: 2.4cqw; padding: 1.4cqw 4cqw calc(4cqw + env(safe-area-inset-bottom)); opacity: 0; }
+.focus__pindock .btn { flex: 1; }
+.focus__cancel { color: #fff; border-color: rgb(255 255 255 / .3); background: rgb(255 255 255 / .06); flex: .6 !important; }
+.focus__send span { display: inline-grid; }
+.focus__send svg { width: 4.4cqw; height: 4.4cqw; }
+
+/* Pins and their marks. */
+.pin-shade { position: absolute; inset: 0; pointer-events: none; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 45%, transparent) 20%, rgb(255 255 255 / .7) 50%, color-mix(in srgb, var(--accent) 45%, transparent) 80%) 0 0 / 300% 100%; animation: sheen calc(var(--tempo) * 2.6s) linear infinite; mix-blend-mode: screen; }
+.pin { position: absolute; z-index: 3; width: 8.4cqw; height: 8.4cqw; margin: -4.2cqw 0 0 -4.2cqw; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 .8cqw rgb(255 255 255 / .9), 0 1.4cqw 3cqw rgb(0 0 0 / .45); font: 600 3.4cqw/1 var(--font-mono); animation: pop var(--t-mid) var(--ease-pop) both; }
+.pin__note { position: absolute; left: 50%; top: calc(100% + 1.8cqw); transform: translateX(-50%) rotate(-3deg); font-family: var(--font-hand); font-size: 5.6cqw; line-height: 1; color: #fff; white-space: nowrap; text-shadow: 0 .3cqw 1.6cqw rgb(0 0 0 / .8); pointer-events: none; }
+.pin-ring { position: absolute; z-index: 3; width: 16cqw; height: 16cqw; margin: -8cqw 0 0 -8cqw; border-radius: 50%; border: .6cqw solid #fff; display: grid; place-items: center; animation: ring calc(var(--tempo) * 1.1s) var(--ease) infinite; }
+.pin-ring span { position: absolute; top: calc(100% + 1.6cqw); white-space: nowrap; color: #fff; text-shadow: 0 .3cqw 1.4cqw rgb(0 0 0 / .8); }
+@keyframes ring { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.1); opacity: .2; } }
+.bubble { position: absolute; z-index: 6; width: 76cqw; transform: translate(-50%, calc(-100% - 7cqw)); display: flex; align-items: center; gap: 1cqw; padding: 1.4cqw 1.4cqw 1.4cqw 2.4cqw; border-radius: 99cqw; background: var(--surface); color: var(--ink); box-shadow: 0 3cqw 8cqw -2cqw rgb(0 0 0 / .6); animation: pop var(--t-mid) var(--ease-pop) both; }
+.bubble.is-below { transform: translate(-50%, 7cqw); }
+.bubble__n { flex: none; width: 6.4cqw; height: 6.4cqw; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); font: 600 3cqw/1 var(--font-mono); }
+.bubble input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 3.8cqw; padding: 1.6cqw .6cqw; color: var(--ink); }
+.bubble input::placeholder { color: var(--soft); font-style: italic; }
+.bubble .icon-btn { width: 8.4cqw; height: 8.4cqw; color: var(--soft); }
+.bubble .icon-btn svg { width: 4.4cqw; height: 4.4cqw; }

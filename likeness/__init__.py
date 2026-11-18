@@ -1,3 +1,3 @@
-"""Likeness: the studio. Carries a photograph through an identity-locked render and hands back a plate."""
+"""Likeness: a studio that talks back. The web app lives in web/; this package is the studio server it talks to."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

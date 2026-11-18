@@ -1,32 +1,31 @@
-/** The drawer: sittings and their portraits, kept on this device in IndexedDB. */
-
-/** @returns {Promise<IDBDatabase>} */
+/**
+ * What the device remembers: prints (with their pictures), threads, the looks and rooms you made, in IndexedDB;
+ * small settings in localStorage. Nothing here leaves the device unless a live studio is asked to paint.
+ */
 let opening = null;
+/** @returns {Promise<IDBDatabase>} */
 function db() {
   opening ||= new Promise((resolve, reject) => {
-    const req = indexedDB.open('likeness', 1);
-    req.onupgradeneeded = () => { req.result.createObjectStore('sittings', { keyPath: 'id' }); req.result.createObjectStore('portraits', { keyPath: 'id' }); };
+    const req = indexedDB.open('likeness-studio', 1);
+    req.onupgradeneeded = () => { for (const name of ['prints', 'threads', 'looks', 'rooms']) req.result.createObjectStore(name, { keyPath: 'id' }); };
     req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
   });
   return opening;
 }
-const run = async (store, mode, fn) => { const d = await db(); return new Promise((resolve, reject) => { const tx = d.transaction(store, mode), req = fn(tx.objectStore(store)); tx.oncomplete = () => resolve(req?.result); tx.onerror = () => reject(tx.error); }); };
+const run = async (store, mode, fn) => {
+  const d = await db();
+  return new Promise((resolve, reject) => { const tx = d.transaction(store, mode), req = fn(tx.objectStore(store)); tx.oncomplete = () => resolve(req?.result); tx.onerror = () => reject(tx.error); });
+};
+/** Object URLs belong to a session, so they are never stored. */
+const lean = v => { const { url, ...rest } = v; return rest; };
+export const put = (store, value) => run(store, 'readwrite', s => s.put(lean(value))).catch(e => console.warn('store', e));
+export const get = (store, id) => run(store, 'readonly', s => s.get(id)).catch(() => null);
+export const all = async store => (await run(store, 'readonly', s => s.getAll()).catch(() => [])) || [];
+export const remove = (store, id) => run(store, 'readwrite', s => s.delete(id)).catch(() => {});
+export const clear = store => run(store, 'readwrite', s => s.clear()).catch(() => {});
 
-/** Object URLs are per-session; only what can be re-made from the record is stored. */
-const lean = ({ url, before, ...rest }) => ({ ...rest, before: before ? { blob: before.blob || null } : undefined });
-
-export const saveSitting = sitting => run('sittings', 'readwrite', s => s.put(lean(sitting))).catch(() => {});
-export const savePortrait = portrait => run('portraits', 'readwrite', s => s.put(lean(portrait))).catch(() => {});
-export const getSitting = id => run('sittings', 'readonly', s => s.get(id));
-export const removePortrait = id => run('portraits', 'readwrite', s => s.delete(id));
-export const emptyDrawer = () => Promise.all([run('portraits', 'readwrite', s => s.clear()), run('sittings', 'readwrite', s => s.clear())]);
-/** Every portrait in the drawer, newest first. */
-export const listPortraits = async () => ((await run('portraits', 'readonly', s => s.getAll()).catch(() => [])) || []).sort((a, b) => b.createdAt - a.createdAt);
-
-/** Plates are numbered in the order they were made on this device. */
-export function nextEdition() {
-  const n = Number(localStorage.getItem('likeness.edition') || 0) + 1;
-  localStorage.setItem('likeness.edition', String(n));
-  return n;
-}
-export const editionNo = n => 'No. ' + String(n).padStart(4, '0');
+/** Settings: tiny, synchronous, JSON. */
+export const settings = {
+  get(key, fallback = null) { try { const v = localStorage.getItem('likeness.' + key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem('likeness.' + key, JSON.stringify(value)); } catch { /* full or private */ } return value; },
+};

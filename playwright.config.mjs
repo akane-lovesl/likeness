@@ -1,9 +1,7 @@
 /**
- * The app's flows, in Chrome, at a 9:16 phone viewport, with a fake camera.
- *
- * Two projects, each against its own freshly started server:
- *   showcase   the static edition (node tools/serve.mjs)
- *   live       the real studio with the simulator engine (uv run likeness serve --engine mock); skipped where uv is absent
+ * The app's flows in Chrome at a 9:16 phone viewport, against two freshly started servers:
+ *   showcase   the static edition (node tools/serve.mjs): pictures are sketched on the device
+ *   live       the real studio on the simulator engine (uv run likeness serve --engine simulator); skipped where uv is absent
  *
  * LIKENESS_BROWSER_CHANNEL chooses the browser: "chrome" by default (the installed Google Chrome);
  * set it to "chromium" after  npx playwright install chromium  to use Playwright's own build.
@@ -20,8 +18,8 @@ const hasUv = spawnSync('uv', ['--version'], { env }).status === 0;
 export default defineConfig({
   testDir: 'tests/browser',
   outputDir: 'test-results',
-  timeout: 120_000,
-  expect: { timeout: 12_000 },
+  timeout: 90_000,
+  expect: { timeout: 15_000 },
   workers: 1,
   fullyParallel: false,
   forbidOnly: true,
@@ -32,8 +30,6 @@ export default defineConfig({
     deviceScaleFactor: 2,
     isMobile: true,
     hasTouch: true,
-    permissions: ['camera'],
-    launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
     trace: 'retain-on-failure',
   },
   projects: [
@@ -41,10 +37,10 @@ export default defineConfig({
     ...(hasUv ? [{ name: 'live', testMatch: /live[\\/].*\.spec\.mjs$/, use: { baseURL: LIVE } }] : []),
   ],
   webServer: [
-    { command: 'node tools/serve.mjs 4183', url: SHOWCASE + '/studio.json', reuseExistingServer: false, timeout: 30_000 },
+    { command: 'node tools/serve.mjs 4183', url: SHOWCASE + '/index.html', reuseExistingServer: false, timeout: 30_000 },
     ...(hasUv ? [{
-      command: 'uv run likeness serve --engine mock --host 127.0.0.1 --port 8797', url: LIVE + '/api/health', reuseExistingServer: false, timeout: 120_000,
-      env: { ...env, LIKENESS_HOME: join(tmpdir(), 'likeness-test-studio') },   // the suite never touches private/
+      command: 'uv run likeness serve --engine simulator --host 127.0.0.1 --port 8797', url: LIVE + '/api/health', reuseExistingServer: false, timeout: 120_000,
+      env: { ...env, LIKENESS_HOME: join(tmpdir(), 'likeness-test-studio'), LIKENESS_SIM_SPEED: '0.6' },   // the suite never touches private/
     }] : []),
   ],
 });

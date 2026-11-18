@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import json
 import re
+import shutil
 import subprocess
 import time
 import tomllib
@@ -82,6 +83,7 @@ def run(packet: str, only: list[str] | None = None, root: Path | None = None, cw
             continue
         started, log = time.perf_counter(), out / f"{stage['id']}.log"
         command, where = [part.replace("{root}", cwd.as_posix()) for part in stage["run"]], cwd / stage["cwd"] if stage.get("cwd") else cwd
+        command[0] = shutil.which(command[0]) or command[0]   # npm, uv and codex are .cmd or .exe files on Windows
         print(f"[relay] {stage['id']}: {row['command']}", flush=True)
         try:
             with log.open("w", encoding="utf-8", errors="replace") as sink:

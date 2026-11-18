@@ -1,0 +1,512 @@
+"""The workstation's engine: Codex CLI does the work and makes the pictures with GPT Image.
+
+Each turn is one  codex exec  in a folder of its own under the studio's private home:
+
+  jobs/<id>/in/        the turn's pictures named by handle (A.png, B.png), and its masks (A.pin1.png, A.edit.png, A.subject.png)
+  jobs/<id>/out/       where Codex saves what it makes (1.png, 2.png, ...); each is picked up the moment it is complete
+  jobs/<id>/brief.md   what Codex was told (it is also sent on stdin)
+  jobs/<id>/events.jsonl, stderr.log   everything Codex said, for when something needs looking into
+
+Codex's JSON event stream is the app's progress: reasoning headings become notes on the job card, and the PLAN, DONE
+and FAILED lines the brief asks for become the plan, the reply and failures. Settings live in studio.toml under
+[codex]; the pace chosen in the app picks [codex.pace.quick|fine|deep] (model, reasoning effort, image quality, timeout).
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import json
+import os
+import re
+import secrets
+import shutil
+import signal
+import subprocess
+import threading
+import time
+from pathlib import Path
+
+from PIL import Image, ImageChops, ImageOps
+
+from .. import brief, paths
+from ..jobs import Cancelled
+from ..rooms import BACKDROPS_SCHEMA, LOOK_SCHEMA, ROOM_SCHEMA
+from ..turns import BackdropAsk, Inputs, LookAsk, RoomAsk, Turn
+from . import EngineError, Work
+
+PACES = {"quick": "Quick", "fine": "Fine", "deep": "Deep"}
+DEFAULT_PACE = {"quick": {"effort": "low", "quality": "low", "timeout": 300},
+                "fine": {"effort": "medium", "quality": "medium", "timeout": 600},
+                "deep": {"effort": "high", "quality": "high", "timeout": 900}}
+IMAGE_HINT = ("Use your image generation tool (GPT Image). Where the work changes a picture, give the tool that picture "
+              "from in/ as its input image, and the edit mask where regions are marked, rather than describing it from scratch.")
+MARK = re.compile(r"^[\s>*_\x60]*(PLAN|DONE|FAILED)\b[\s:*_\x60]*(\{.*\})[\s*_\x60]*$", re.M)
+NUMBERED = re.compile(r"^(\d+)\.(png|jpe?g|webp)$", re.I)
+PICTURES = {".png", ".jpg", ".jpeg", ".webp"}
+KEEP = 40
+
+
+def resolve(command: list[str]) -> list[str]:
+    """On Windows codex is often a .cmd shim, which a bare name will not start; which() finds it."""
+    return [shutil.which(command[0]) or command[0], *command[1:]]
+
+
+def version(command: list[str]) -> str | None:
+    """The CLI's version, or None when it does not answer."""
+    try:
+        done = subprocess.run([*resolve(command), "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return (done.stdout.strip() or done.stderr.strip() or "unknown") if done.returncode == 0 else None
+
+
+def kill(proc: subprocess.Popen) -> None:
+    """Stops Codex and everything it started."""
+    if proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=15)
+        else:
+            os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(8)
+    except (OSError, subprocess.TimeoutExpired):
+        proc.kill()
+
+
+def heading(text: str) -> str:
+    """A reasoning summary's title (Codex writes them as **Bold lines**), or its first sentence."""
+    text = (text or "").strip()
+    bold = re.match(r"^\*\*(.+?)\*\*", text)
+    line = bold.group(1) if bold else re.split(r"(?<=[.!?])\s|\n", text, maxsplit=1)[0]
+    return re.sub(r"[*_\x60#]", "", line).strip()[:90]
+
+
+def loads(text: str) -> dict:
+    """JSON from a model's answer, tolerating code fences and words around it."""
+    text = re.sub(r"^\x60{3}(?:json)?|\x60{3}$", "", (text or "").strip(), flags=re.M).strip()
+    for candidate in (text, text[text.find("{"): text.rfind("}") + 1] if "{" in text else ""):
+        try:
+            value = json.loads(candidate)
+            return value if isinstance(value, dict) else {}
+        except ValueError:
+            continue
+    return {}
+
+
+class Follow:
+    """Codex's JSON event stream, read as progress. Knows both the item events (thread.started, item.completed ...)
+    and the older {"msg": {...}} lines."""
+
+    def __init__(self, work: Work | None) -> None:
+        self.work = work
+        self.prompt = ""
+        self.planned = False
+        self.reply: dict | None = None
+        self.failed: tuple[str, str] | None = None
+        self.error = ""
+        self.messages: list[str] = []
+        self.loose: list[Path] = []   # pictures an image tool saved somewhere other than out/
+        self.spill: Path | None = None   # where pictures that arrive inside an event are written
+
+    def _stage(self, key: str) -> None:
+        if self.work:
+            self.work.stage(key)
+
+    def _note(self, text: str) -> None:
+        if self.work and text:
+            self.work.note(text)
+
+    def line(self, raw: str) -> None:
+        try:
+            event = json.loads(raw)
+        except ValueError:
+            return
+        if not isinstance(event, dict):
+            return
+        if isinstance(event.get("msg"), dict):
+            return self._legacy(event["msg"])
+        kind = event.get("type", "")
+        if kind.startswith("item."):
+            self._item(event.get("item") or {}, kind.split(".", 1)[1])
+        elif kind == "turn.failed":
+            self.error = str((event.get("error") or {}).get("message") or "Codex stopped.")
+        elif kind == "error":
+            self.error = str(event.get("message") or "Codex reported an error.")
+
+    def _item(self, item: dict, phase: str) -> None:
+        kind = str(item.get("type") or item.get("item_type") or "")
+        if kind == "reasoning":
+            if not self.planned:
+                self._stage("plan")
+            if phase == "completed":
+                self._note(heading(str(item.get("text") or "")))
+        elif kind in ("agent_message", "assistant_message") and phase == "completed":
+            self.message(str(item.get("text") or ""))
+        elif "image" in kind:
+            self._stage("draw")
+            if phase == "completed":
+                self._adopt(item)
+        elif kind in ("command_execution", "file_change", "mcp_tool_call", "web_search") and phase == "started" and self.planned:
+            self._stage("draw")
+        elif kind == "error":
+            self.error = str(item.get("message") or self.error)
+
+    def _legacy(self, msg: dict) -> None:
+        kind = msg.get("type", "")
+        if kind in ("agent_reasoning", "agent_reasoning_raw_content"):
+            if not self.planned:
+                self._stage("plan")
+            self._note(heading(str(msg.get("text") or "")))
+        elif kind == "agent_message":
+            self.message(str(msg.get("message") or ""))
+        elif kind == "task_complete" and msg.get("last_agent_message") and not self.messages:
+            self.message(str(msg["last_agent_message"]))
+        elif kind == "exec_command_begin" and self.planned:
+            self._stage("draw")
+        elif kind == "error":
+            self.error = str(msg.get("message") or "Codex reported an error.")
+
+    def _adopt(self, item: dict) -> None:
+        """An image tool's result, wherever it put it: a file path, or the picture itself as base64."""
+        for key, value in item.items():
+            if not isinstance(value, str):
+                continue
+            if Path(value).suffix.lower() in PICTURES and len(value) < 600 and Path(value).exists():
+                self.loose.append(Path(value))
+            elif len(value) > 64 and value.lstrip()[:12].startswith(("iVBOR", "/9j/", "UklGR", "data:image")):
+                try:
+                    data = base64.b64decode(value.split(",", 1)[1] if value.startswith("data:") else value)
+                except (ValueError, binascii.Error):
+                    continue
+                if self.spill is not None:
+                    self.spill.mkdir(exist_ok=True)
+                    target = self.spill / f"tool-{len(self.loose) + 1}.png"
+                    target.write_bytes(data)
+                    self.loose.append(target)
+
+    def message(self, text: str) -> None:
+        self.messages.append(text)
+        marks = MARK.findall(text)
+        for mark, body in marks:
+            data = loads(body)
+            if mark == "PLAN":
+                self.planned = True
+                self.prompt = str(data.get("prompt") or "")[:1600]
+                if self.work:
+                    self.work.plan(str(data.get("summary") or "Planning the picture"), self.prompt)
+                self._stage("draw")
+            elif mark == "DONE":
+                self.reply = data
+            else:
+                self.failed = (str(data.get("message") or "The studio could not do that."), str(data.get("hint") or ""))
+        if not marks and not self.planned:
+            self._note(heading(text))
+
+
+class Watcher:
+    """Pictures landing in out/, each taken once it has stopped growing and opens cleanly."""
+
+    def __init__(self, folder: Path, n: int) -> None:
+        self.folder, self.n = folder, n
+        self.sizes: dict[str, tuple[int, int]] = {}
+        self.taken: set[str] = set()
+        self.used: set[int] = set()
+
+    def _index(self, name: str) -> int:
+        numbered = NUMBERED.match(name)
+        if numbered and 0 < int(numbered.group(1)) <= max(self.n, 9) and int(numbered.group(1)) - 1 not in self.used:
+            index = int(numbered.group(1)) - 1
+        else:
+            index = next(i for i in range(64) if i not in self.used)
+        self.used.add(index)
+        return index
+
+    def ready(self, final: bool = False) -> list[tuple[int, Image.Image]]:
+        found = []
+        for path in sorted(self.folder.iterdir()) if self.folder.exists() else []:
+            if path.suffix.lower() not in PICTURES or path.name in self.taken:
+                continue
+            stat = path.stat()
+            mark = (stat.st_size, stat.st_mtime_ns)
+            if not final and self.sizes.get(path.name) != mark:
+                self.sizes[path.name] = mark
+                continue
+            try:
+                with Image.open(path) as image:
+                    image.load()
+                    picture = ImageOps.exif_transpose(image).convert("RGB")
+            except Exception:
+                if final:
+                    self.taken.add(path.name)
+                continue
+            self.taken.add(path.name)
+            found.append((self._index(path.name), picture))
+        return found
+
+
+class Codex:
+    id = "codex"
+    kind = "codex"
+
+    def __init__(self, config: dict | None = None, home: Path | None = None) -> None:
+        self.config = config or {}
+        self.home = home or paths.home()
+        self.command = list(self.config.get("command") or ["codex"])
+
+    # ---- what the app is told -------------------------------------------------------------------------------------
+    def pace(self, name: str) -> dict:
+        return {**DEFAULT_PACE.get(name, DEFAULT_PACE["fine"]), **((self.config.get("pace") or {}).get(name) or {})}
+
+    def describe(self) -> dict:
+        return {"id": self.id, "kind": self.kind, "label": "Codex · GPT Image", "ready": True,
+                "detail": "Codex CLI makes each picture with GPT Image on this machine.",
+                "paces": {name: {k: self.pace(name).get(k, "") for k in ("model", "effort", "quality")} for name in PACES}}
+
+    def provenance(self, turn: Turn) -> dict:
+        model = self.pace(turn.pace).get("model")
+        return {"kind": "render", "label": "Render", "detail": f"Codex · GPT Image · {PACES.get(turn.pace, turn.pace)}" + (f" · {model}" if model else "")}
+
+    # ---- the command line -----------------------------------------------------------------------------------------
+    def argv(self, workdir: Path, settings: dict, images: list[Path], *, sandbox: str | None = None,
+             schema: Path | None = None, answer: Path | None = None) -> list[str]:
+        argv = [*resolve(self.command), "exec", "--json", "--skip-git-repo-check", "-C", str(workdir),
+                "--sandbox", sandbox or str(self.config.get("sandbox") or "workspace-write")]
+        if settings.get("model"):
+            argv += ["-m", str(settings["model"])]
+        if settings.get("effort"):
+            argv += ["-c", f"model_reasoning_effort={settings['effort']}"]   # a bare word: no quotes to survive a .cmd shim on Windows
+        for key, value in (self.config.get("overrides") or {}).items():   # more -c key=value, written as TOML values
+            argv += ["-c", f"{key}={json.dumps(value)}"]
+        if schema:
+            argv += ["--output-schema", str(schema)]
+        if answer:
+            argv += ["-o", str(answer)]
+        argv += [str(a) for a in self.config.get("args") or []]
+        for image in images:
+            argv += ["-i", str(image)]
+        return argv + ["--", "-"]   # the brief arrives on stdin; -- keeps it from being read as one more image
+
+    def _folder(self, kind: str) -> Path:
+        root = self.home / kind
+        root.mkdir(parents=True, exist_ok=True)
+        for old in sorted(p for p in root.iterdir() if p.is_dir())[:-KEEP]:
+            shutil.rmtree(old, ignore_errors=True)
+        folder = root / f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
+        folder.mkdir()
+        return folder
+
+    def lay_out(self, folder: Path, inputs: Inputs) -> tuple[dict[str, str], list[Path]]:
+        """The turn's pictures and masks in in/, named so the brief can point at them."""
+        (folder / "in").mkdir()
+        (folder / "out").mkdir()
+        files, attach, sizes = {}, [], {}
+        for handle, path in inputs.pictures.items():
+            target = folder / "in" / f"{handle}.png"
+            with Image.open(path) as image:
+                picture = ImageOps.exif_transpose(image).convert("RGB")
+            picture.save(target)
+            files[handle], sizes[handle] = f"in/{handle}.png", picture.size
+            attach.append(target)
+        subject = inputs.subject or next(iter(inputs.pictures), None)
+        union = None
+        for n, _note, mask in inputs.pins:
+            if mask is None or subject is None:
+                continue
+            with Image.open(mask) as m:
+                region = m.convert("L").resize(sizes[subject])
+            region.save(folder / "in" / f"{subject}.pin{n}.png")
+            files[f"pin{n}"] = f"in/{subject}.pin{n}.png"
+            union = region if union is None else ImageChops.lighter(union, region)
+        if union is not None and subject is not None:   # the same regions as one mask in the image-edit convention: transparent = change
+            with Image.open(folder / "in" / f"{subject}.png") as image:
+                edit = image.convert("RGBA")
+            edit.putalpha(ImageOps.invert(union.point(lambda v: 255 if v > 96 else 0)))
+            edit.save(folder / "in" / f"{subject}.edit.png")
+            files["edit"] = f"in/{subject}.edit.png"
+        if inputs.subject_mask is not None and subject is not None:
+            with Image.open(inputs.subject_mask) as m:
+                m.convert("L").resize(sizes[subject]).save(folder / "in" / f"{subject}.subject.png")
+            files["subject"] = f"in/{subject}.subject.png"
+        return files, attach
+
+    # ---- a turn ---------------------------------------------------------------------------------------------------
+    def turn(self, turn: Turn, inputs: Inputs, work: Work) -> None:
+        folder = self._folder("jobs")
+        files, attach = self.lay_out(folder, inputs)
+        pace = self.pace(turn.pace)
+        text = brief.turn_brief(turn, inputs, files, size=str(self.config.get("size") or "1024x1536"), quality=str(pace.get("quality") or "medium"),
+                                image_hint=str((self.config.get("images") or {}).get("hint") or IMAGE_HINT))
+        (folder / "brief.md").write_text(text, encoding="utf-8")
+        work.stage("read")
+        follow = Follow(work)
+        follow.spill = folder / "tool"
+        argv = self.argv(folder, pace, attach if self.config.get("attach", True) else [])
+        code = self._run(argv, text, folder, follow, work, turn.n, float(pace.get("timeout") or 600))
+        if follow.failed:
+            raise EngineError(*follow.failed)
+        if not work.results:
+            stderr = (folder / "stderr.log").read_text(encoding="utf-8", errors="replace")[-2000:]
+            if re.search(r"log ?in|auth|unauthori[sz]ed|401", stderr + follow.error, re.I):
+                raise EngineError("Codex is not signed in on the workstation.", "Run  codex login  there, then try again.")
+            if follow.error or code:
+                reason = follow.error or (stderr.strip().splitlines() or ["no reason given"])[-1]
+                raise EngineError(f"Codex stopped without a picture: {reason[:200]}", "Try again; if it keeps happening, the job's folder in private/jobs has the whole story.")
+            raise EngineError("The studio finished without a picture.", "Try again, perhaps in fewer words.")
+        if len(work.results) < turn.n:
+            work.note(f"{len(work.results)} of {turn.n} came back")
+        reply = follow.reply or {}
+        work.reply(str(reply.get("reply") or ""), [str(s) for s in reply.get("suggestions") or []])
+
+    def _run(self, argv: list[str], text: str, folder: Path, follow: Follow, work: Work, n: int, timeout: float) -> int:
+        events = (folder / "events.jsonl").open("w", encoding="utf-8")
+        errors = (folder / "stderr.log").open("w", encoding="utf-8")
+        try:
+            proc = subprocess.Popen(argv, cwd=folder, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors, text=True, encoding="utf-8",
+                                    errors="replace", start_new_session=os.name != "nt")
+        except OSError as error:
+            events.close()
+            errors.close()
+            raise EngineError("Codex could not be started on the workstation.", f"Check [codex] command in studio.toml ({error}).") from None
+
+        def feed() -> None:
+            try:
+                proc.stdin.write(text)
+                proc.stdin.close()
+            except OSError:
+                pass
+
+        def read() -> None:
+            for raw in proc.stdout:
+                events.write(raw)
+                events.flush()
+                follow.line(raw)
+
+        threads = [threading.Thread(target=feed, daemon=True), threading.Thread(target=read, daemon=True)]
+        for thread in threads:
+            thread.start()
+        watcher, deadline = Watcher(folder / "out", n), time.monotonic() + timeout
+        try:
+            while proc.poll() is None:
+                if work.job.stop.is_set():
+                    kill(proc)
+                    raise Cancelled()
+                if time.monotonic() > deadline:
+                    kill(proc)
+                    raise EngineError("The studio took too long and was stopped.", "Try the Quick pace, or fewer pictures at once.")
+                for index, picture in watcher.ready():
+                    work.result(index, picture, follow.prompt)
+                time.sleep(0.3)
+            threads[1].join(10)
+            if len(watcher.taken) < n:   # an image tool that saved elsewhere: bring its pictures in
+                for i, loose in enumerate(follow.loose[: n - len(watcher.taken)]):
+                    shutil.copy(loose, folder / "out" / f"loose-{i}{loose.suffix.lower()}")
+            for index, picture in watcher.ready(final=True):
+                work.result(index, picture, follow.prompt)
+            return proc.returncode or 0
+        finally:
+            kill(proc)
+            events.close()
+            errors.close()
+
+    # ---- words only: rooms, looks, backdrop ideas -----------------------------------------------------------------
+    def ask(self, text: str, schema: dict, picture: Path | None = None) -> dict:
+        folder = self._folder("asks")
+        settings = {"effort": "low", "timeout": 150, **(self.config.get("text") or {})}
+        (folder / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
+        (folder / "brief.md").write_text(text, encoding="utf-8")
+        images = []
+        if picture is not None:
+            images.append(folder / f"picture{picture.suffix.lower()}")
+            shutil.copy(picture, images[0])
+        argv = self.argv(folder, settings, images, sandbox="read-only", schema=folder / "schema.json", answer=folder / "answer.json")
+        try:
+            done = subprocess.run(argv, input=text, cwd=folder, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=float(settings["timeout"]))
+        except subprocess.TimeoutExpired:
+            raise EngineError("The studio took too long to answer.", "Try again in a moment.") from None
+        except OSError as error:
+            raise EngineError("Codex could not be started on the workstation.", str(error)) from None
+        (folder / "events.jsonl").write_text(done.stdout, encoding="utf-8")
+        (folder / "stderr.log").write_text(done.stderr, encoding="utf-8")
+        answer = folder / "answer.json"
+        follow = Follow(None)
+        for raw in done.stdout.splitlines():
+            follow.line(raw)
+        data = loads(answer.read_text(encoding="utf-8")) if answer.exists() else {}
+        if not data and follow.messages:
+            data = loads(follow.messages[-1])
+        if not data:
+            raise EngineError("The studio's answer could not be read.", "Try again, perhaps in other words.")
+        return data
+
+    def room(self, ask: RoomAsk) -> dict:
+        return self.ask(brief.room_brief(ask.text, ask.palette), ROOM_SCHEMA)
+
+    def look(self, ask: LookAsk, picture: Path | None) -> dict:
+        return self.ask(brief.look_brief(ask.text, picture is not None), LOOK_SCHEMA, picture)
+
+    def backdrops(self, ask: BackdropAsk, picture: Path | None) -> list[dict]:
+        return self.ask(brief.backdrops_brief(ask.text, ask.near, ask.dream, ask.room, picture is not None), BACKDROPS_SCHEMA, picture).get("backdrops") or []
+
+
+# ---- probe: is Codex here, and does it speak what the studio needs? ------------------------------------------------
+FLAGS = ("--json", "--skip-git-repo-check", "--cd", "--sandbox", "--model", "--config", "--image", "--output-schema", "--output-last-message")
+SMOKE = [   # nothing personal: a still life, then an edit of it
+    {"id": "smoke-create", "text": "A still life: three pears on a blue cloth, morning light from the left", "pace": "quick", "intent": {"op": "create"}},
+    {"id": "smoke-edit", "text": "Make the cloth deep red; keep everything else", "pace": "quick", "intent": {"op": "edit", "subject": "{made}"}, "handles": {"A": "{made}"}},
+]
+
+
+def probe(config: dict, smoke: bool = False, out: Path | None = None, home: Path | None = None) -> dict:
+    command = list(config.get("command") or ["codex"])
+    report: dict = {"command": command, "found": bool(shutil.which(command[0])), "version": version(command)}
+    if report["version"]:
+        try:
+            helped = subprocess.run([*resolve(command), "exec", "--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+            report["flags"] = {flag: flag in helped.stdout for flag in FLAGS}
+        except (OSError, subprocess.TimeoutExpired):
+            report["flags"] = {}
+        try:
+            status = subprocess.run([*resolve(command), "login", "status"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+            report["signed_in"] = status.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            report["signed_in"] = None
+    report["ok"] = bool(report["version"]) and bool(report.get("flags")) and all(report["flags"].values()) and report.get("signed_in") is not False
+    if smoke and report["ok"]:
+        report["smoke"] = smoke_test(config, out, home)
+        report["ok"] = report["smoke"]["ok"]
+    return report
+
+
+def smoke_test(config: dict, out: Path | None = None, home: Path | None = None) -> dict:
+    """Real turns through the engine, exactly as the server runs them, timed, with the pictures kept beside the report."""
+    from ..jobs import Job
+    from ..store import Store
+
+    home = home or paths.home()
+    engine, store, rows, made = Codex(config, home), Store(home), [], None
+    for spec in SMOKE:
+        if "{made}" in json.dumps(spec) and made is None:
+            continue
+        turn = Turn.model_validate(json.loads(json.dumps(spec).replace("{made}", made or "")))
+        inputs = Inputs(pictures={h: store.path(a) for h, a in turn.handles.items()}, subject=turn.handle_of(turn.intent.subject))
+        job = Job()
+        work = Work(job, store, engine.provenance(turn))
+        started, error = time.monotonic(), ""
+        try:
+            engine.turn(turn, inputs, work)
+        except Exception as failure:
+            error = f"{failure} {getattr(failure, 'hint', '')}".strip()
+        row = {"turn": turn.id, "pace": turn.pace, "ok": bool(work.results) and not error, "ms": int((time.monotonic() - started) * 1000), "error": error,
+               "events": [e["type"] for e in job.events], "notes": [e["text"] for e in job.events if e["type"] == "note"][:12],
+               "plan": next((e["plan"] for e in job.events if e["type"] == "plan"), None), "reply": next((e for e in job.events if e["type"] == "reply"), None)}
+        if work.results:
+            first = work.results[min(work.results)]
+            made = first["id"]
+            row["size"] = [first["w"], first["h"]]
+            if out:
+                out.mkdir(parents=True, exist_ok=True)
+                shutil.copy(store.path(made), out / f"{turn.id}.png")
+        rows.append(row)
+    return {"ok": bool(rows) and all(r["ok"] for r in rows), "rows": rows}

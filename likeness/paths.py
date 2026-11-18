@@ -7,13 +7,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
-WORLDS = Path(__file__).resolve().parent / "worlds"
-MANIFEST = ROOT / "models" / "manifest.toml"
 RELAY = ROOT / "relay"
+CONFIG = ROOT / "studio.toml"
 
 
 def home() -> Path:
-    """The private folder: photographs, renders, pairing key, face models. Never committed."""
+    """The private folder: your pictures, the studio's renders, job folders, the pairing key. Never committed."""
     path = Path(os.environ.get("LIKENESS_HOME") or ROOT / "private")
     path.mkdir(parents=True, exist_ok=True)
     return path

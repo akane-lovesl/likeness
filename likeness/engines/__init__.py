@@ -1,57 +1,106 @@
-"""Engines: the one seam between the studio and whatever paints.
+"""Engines make the pictures. The studio hands each turn to its engine with the pictures on disk and a Work to report
+through. The engine says what it is doing as it goes (stages, notes, a plan), hands back each picture the moment it
+is ready, and ends with a short reply. Two engines answer the same protocol:
 
-An engine takes a request (an instruction, an optional reference photograph, a size, a seed) and returns
-a picture, reporting each step as it goes. The simulator and the GPU engines are interchangeable behind it.
+  simulator  paints stand-ins with Pillow, anywhere: for building and testing the whole path, honestly labelled
+  codex      Codex CLI makes the pictures with GPT Image, on the workstation
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable, Protocol
+from pathlib import Path
+from typing import Protocol
 
 from PIL import Image
 
-StepCallback = Callable[[int, int], None]
+from ..jobs import Job
+from ..store import Store
+from ..turns import BackdropAsk, Inputs, LookAsk, RoomAsk, Turn
 
 
-@dataclass
-class RenderRequest:
-    world: str
-    variant: str               # locked | naive
-    prompt: str
-    width: int
-    height: int
-    steps: int = 8
-    guidance: float = 1.0
-    seed: int = 0
-    photo: Image.Image | None = None   # the sitting; None for a words-only render
-    lora: str = ""
-    extra: dict = field(default_factory=dict)
+class EngineError(RuntimeError):
+    """A failure the person reads: the message says what happened, the hint what they might change."""
+
+    def __init__(self, message: str, hint: str = "") -> None:
+        super().__init__(message)
+        self.hint = hint
+
+
+def _tidy(text, limit: int) -> str:
+    return " ".join(str(text or "").split())[:limit]
+
+
+class Work:
+    """One turn in progress, as the app sees it: every call here becomes an event on the job's stream."""
+
+    def __init__(self, job: Job, store: Store, provenance: dict) -> None:
+        self.job, self.store, self.provenance = job, store, provenance
+        self.results: dict[int, dict] = {}
+        self._stage = ""
+
+    def check(self) -> None:
+        self.job.check()
+
+    def stage(self, key: str) -> None:
+        if key != self._stage:
+            self._stage = key
+            self.job.emit("stage", stage=key)
+
+    def note(self, text: str) -> None:
+        if text := _tidy(text, 160):
+            self.job.emit("note", text=text)
+
+    def plan(self, summary: str, prompt: str = "") -> None:
+        self.job.emit("plan", plan={"summary": _tidy(summary, 240), "prompt": str(prompt or "")[:1600]})
+
+    def progress(self, value: float) -> None:
+        self.job.emit("progress", value=round(max(0.0, min(1.0, value)), 3))
+
+    def partial(self, index: int, image: Image.Image) -> None:
+        if index not in self.results:
+            asset = self.store.add_image(image, "partial")
+            self.job.emit("partial", index=index, url=self.store.url(asset["id"]))
+
+    def result(self, index: int, image: Image.Image, prompt: str = "") -> None:
+        if index in self.results:
+            return
+        asset = self.store.add_image(image, "made", prompt=str(prompt or "")[:1600], provenance=self.provenance)
+        self.results[index] = asset
+        self.job.emit("result", index=index, url=self.store.url(asset["id"]), w=asset["w"], h=asset["h"], provenance=self.provenance, prompt=str(prompt or "")[:1600])
+
+    def reply(self, text: str, suggestions: list[str] | None = None) -> None:
+        ideas = [_tidy(s, 48) for s in suggestions or [] if _tidy(s, 48)]
+        self.job.emit("reply", text=_tidy(text, 320), suggestions=ideas[:3])
 
 
 class Engine(Protocol):
     id: str
-    kind: str      # "simulator" | "gpu"
-    device: str
-    ready: bool
+    kind: str   # "simulator" or "codex": decides the edition the app labels itself with
 
-    def load(self) -> None: ...
-    def render(self, request: RenderRequest, on_step: StepCallback) -> Image.Image: ...
+    def describe(self) -> dict: ...
+    def provenance(self, turn: Turn) -> dict: ...
+    def turn(self, turn: Turn, inputs: Inputs, work: Work) -> None: ...
+    def room(self, ask: RoomAsk) -> dict: ...
+    def look(self, ask: LookAsk, picture: Path | None) -> dict: ...
+    def backdrops(self, ask: BackdropAsk, picture: Path | None) -> list[dict]: ...
 
 
-def create(name: str = "auto") -> Engine:
-    """Builds an engine by name. `auto` picks a GPU engine when PyTorch can see one, else the simulator."""
+def create(name: str = "auto", config: dict | None = None, home: Path | None = None) -> Engine:
+    """auto: Codex when its command answers on this machine, otherwise the simulator."""
+    from .. import settings
+
+    config = settings.load(home) if config is None else config
+    name = (name or config.get("studio", {}).get("engine") or "auto").lower()
     if name == "auto":
-        try:
-            import torch
+        from .codex import version
 
-            name = "qwen21_turbo" if torch.cuda.is_available() else "mock"
-        except Exception:
-            name = "mock"
-    if name == "mock":
-        from .mock import MockEngine
+        name = "codex" if version(list(config.get("codex", {}).get("command") or ["codex"])) else "simulator"
+    if name in ("simulator", "mock"):
+        from .simulator import Simulator
 
-        return MockEngine()
-    from .diffusers_engine import DiffusersEngine
+        return Simulator()
+    if name == "codex":
+        from .codex import Codex
 
-    return DiffusersEngine(name)
+        return Codex(config.get("codex", {}), home)
+    raise SystemExit(f"There is no engine called {name}: choose auto, simulator or codex.")

@@ -1,15 +1,13 @@
 {
   "name": "likeness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Likeness \u2014 a portrait instrument. Seven studios, one face.",
+  "description": "Likeness — a personal image studio you talk to. Rooms, weather, and pictures made by conversation.",
   "scripts": {
     "serve": "node tools/serve.mjs",
     "check": "tsc -p web/jsconfig.json",
-    "test": "playwright test",
-    "sheet": "node tools/sheet.mjs",
-    "fixtures": "node tools/sheet.mjs --plates tests/fixtures/sitters"
+    "test": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",

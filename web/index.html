@@ -2,25 +2,39 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#121110">
-<meta name="color-scheme" content="light dark">
-<title>Likeness &#x2014; seven studios, one face</title>
-<meta name="description" content="A portrait atelier in your pocket: sit once, be painted in seven worlds.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#f3eee4">
+<title>Likeness</title>
+<meta name="description" content="A studio that talks back. Bring pictures and words, say what you want, and watch it paint.">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preload" href="fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="fonts/plex-mono-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/base.css">
-<link rel="stylesheet" href="css/screens.css">
+<link rel="stylesheet" href="css/desk.css">
+<link rel="stylesheet" href="css/focus.css">
+<link rel="stylesheet" href="css/sheets.css">
+<script>
+  /* Paint the last room before anything else loads, so a reload never flashes the default one. */
+  try {
+    const last = JSON.parse(localStorage.getItem('likeness.paint') || 'null');
+    if (last) { for (const [k, v] of Object.entries(last.vars)) document.documentElement.style.setProperty(k, v); Object.assign(document.documentElement.dataset, last.data); }
+  } catch { /* first visit */ }
+</script>
 </head>
 <body>
-<div class="room">
-  <main class="stage" id="stage" aria-live="polite"></main>
-  <aside class="room__note" aria-hidden="true">Likeness is made for a phone held upright. This is its 9:16 stage.</aside>
+<div class="surround">
+  <main class="stage" id="stage">
+    <div class="ground" aria-hidden="true"></div>
+    <div class="set" aria-hidden="true"></div>
+    <canvas class="sky sky--back" aria-hidden="true"></canvas>
+    <div class="light" aria-hidden="true"></div>
+    <div class="screens" id="screens"></div>
+    <canvas class="sky sky--front" aria-hidden="true"></canvas>
+  </main>
+  <aside class="surround__note" aria-hidden="true">Likeness is made for a phone held upright. This is its 9:16 stage.</aside>
 </div>
-<noscript><p style="padding:2rem;font-family:Georgia,serif">Likeness draws its portraits with JavaScript; please enable it.</p></noscript>
+<noscript><p style="padding:2rem;font-family:Georgia,serif">Likeness needs JavaScript.</p></noscript>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

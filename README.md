@@ -43,7 +43,7 @@ uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speakin
   - Every reply ends with three ideas for what to say next.
   - A sketch the device made can be talked to: *make it night*, *add a rabbit in a crown* or *two more like this* paints the same scene again, with just that changed.
 - **The look camera.** Point the camera and see the world in any look, sketched live on the device. Take the picture, and the studio paints it in that look.
-- **Pins.** Tap part of a picture and an on-device segmenter (MediaPipe) selects it, or paint it with a finger. Each pin gets its own note, and only those parts change.
+- **Pins.** Tap part of a picture and an on-device segmenter (MediaPipe) selects it, or paint it with a finger. Each pin gets its own note, and only those parts change. On the device, a note that names scenery (*a starry night with the northern lights*, *a stormy sea*) is painted into the pin.
 - **Looks.** Styles as data: a prompt for the model, plus a recipe the device can sketch at once. Make your own from words or from a picture.
 - **Backdrops.** Not a hundred presets. The studio suggests places for *this* picture, and two dials move the ideas between near and far, and between real and dreamt.
 - **Rooms.** A room is the whole atmosphere:

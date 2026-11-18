@@ -132,7 +132,7 @@ export function sceneFrom(text, ramp = null, seed = 1) {
   const t = (text || '').toLowerCase(), vibe = vibeOf(text || '');
   // the light: said outright, or the time of day the words carry, or after dark when the words are
   let light = has(t, /night|midnight|moon|star|neon|dark/) ? 'night' : has(t, /sunset|dusk|evening|twilight|golden hour/) ? 'dusk' : has(t, /dawn|sunrise|morning/) ? 'dawn' : 'day';
-  if (has(t, /\bmars\b|martian|\bspace\b|planet|lunar|moon ?base|alien|galaxy|nebula|cosmos|cosmic|asteroid|starship|spaceship|rocket|\borbit/)) light = 'night';
+  if (has(t, /\bmars\b|martian|\bspace\b|planet|lunar|moon ?base|alien|galaxy|nebula|cosmos|cosmic|asteroid|starship|spaceship|rocket|\borbit|northern lights|aurora/)) light = 'night';
   else if (light === 'day' && vibe) light = vibe.light === 'golden' || vibe.light === 'dusk' ? 'dusk' : vibe.light === 'dawn' ? 'dawn' : vibe.light === 'night' || (vibe.dark && vibe.light !== 'day') ? 'night' : 'day';
   const land = has(t, /underwater|under the sea|beneath the (?:waves|sea)|deep sea|ocean floor|seabed|aquarium|coral reef|submarine|abyss/) ? 'under'
     : has(t, /\bmars\b|martian|\bspace\b|planet|lunar|moon ?base|alien|galaxy|nebula|cosmos|cosmic|asteroid|starship|spaceship|rocket|\borbit/) ? 'space'
@@ -175,7 +175,7 @@ export function sceneFrom(text, ramp = null, seed = 1) {
   if (!inside && (land === 'sea' || land === 'desert') && has(t, /\bpalms?\b|tropic|island|lagoon|hawaii|caribbean|maldives|tiki|bali|oasis/)) things.push('palm');
   const colour = Object.entries(COLOUR_WORDS).find(([w]) => new RegExp('\\b' + w + '\\b').test(t))?.[1];
   // colour words alone make a ramp; words the room maker knows bring a whole palette instead (pal)
-  return { words: text || '', light, land, inside, weather, things, ramp: ramp || (!vibe && colour ? rampAround(colour) : null), arch: has(t, /arch|castle|palace|chapel/), seed, pal: vibe?.colors || null, marks: vibe?.marks || [], props, shelf, sign: sign.toUpperCase(), who, wears, hair,
+  return { words: text || '', light, land, inside, weather, things, ramp: ramp || (!vibe && colour ? rampAround(colour) : null), arch: has(t, /arch|castle|palace|chapel/), seed, pal: vibe?.colors || null, marks: vibe?.marks || [], props, shelf, sign: sign.toUpperCase(), who, wears, hair, aurora: has(t, /northern lights|aurora/),
     fruit: Object.entries(FRUIT).find(([k]) => t.includes(k))?.[1] || null, frozen: has(t, /frozen|\bicy\b|\bice\b|glacier|arctic|polar/), skyline: land === 'sea' && (props.includes('neon') || has(t, CITY)) };
 }
 export const COLOUR_WORDS = { red: '#c8322d', crimson: '#a5122a', scarlet: '#e0301e', pink: '#ec7fa0', rose: '#d9667f', blush: '#f2b8c6', orange: '#ec7a2c', peach: '#f6b08a', coral: '#f07560', gold: '#d6a540', golden: '#d6a540', yellow: '#f0c93a', lemon: '#f3e05a', green: '#3f8f4f', emerald: '#1f8a5c', mint: '#93d8b8', sage: '#8fa883', olive: '#7d7a32', teal: '#1f8a8a', turquoise: '#33c3c0', cyan: '#35d2e8', blue: '#2f6fdc', navy: '#1a2e6b', cobalt: '#2148b8', sky: '#7dbbf0', lavender: '#b39ddb', lilac: '#c8a2d8', purple: '#7a3ea8', violet: '#6a3fd0', plum: '#6b2a5a', magenta: '#d5248f', brown: '#7a4a2a', chocolate: '#5a3218', silver: '#b8c0cc', white: '#f4f2ee', black: '#141414', grey: '#8a8a8a', gray: '#8a8a8a', cream: '#f4ead2', ivory: '#f6f0dc', burgundy: '#6e1a2c', amber: '#e09a2a', copper: '#b8673a' };
@@ -325,6 +325,19 @@ export function scene(desc, w = 768, h = 1024) {
     const g = x.createLinearGradient(0, oy, 0, hz); g.addColorStop(0, sky[0]); g.addColorStop(.6, sky[1]); g.addColorStop(1, sky[2]); x.fillStyle = g; x.fillRect(ox, oy, ow, oh);
     if (L === 'night') for (let i = 0; i < 160 * ow / w; i++) { x.globalAlpha = .3 + rnd() * .7; x.fillStyle = '#fff'; x.fillRect(ox + rnd() * ow, oy + rnd() * (hz - oy), rnd() < .1 ? 2 : 1, rnd() < .1 ? 2 : 1); }
     x.globalAlpha = 1;
+    if (desc.aurora) {
+      // curtains of light, green rising into violet, rippling across the sky
+      const c1 = pal ? pal.accent : '#3dffa8', c2 = pal ? pal.accent2 : '#b45cff', span = hz - oy;
+      x.save(); x.globalCompositeOperation = 'lighter';
+      for (let k = 0; k < 3; k++) {
+        const base = oy + span * (.38 + k * .13), amp = span * .07, tall = span * (.22 + rnd() * .12), ph = rnd() * 6;
+        for (let px = 0; px < ow; px += 3) {
+          const y0 = base + Math.sin(px / ow * 5 + ph) * amp + Math.sin(px / ow * 13 + ph * 2) * amp * .3, g = x.createLinearGradient(0, y0 - tall, 0, y0);
+          g.addColorStop(0, alpha(c2, 0)); g.addColorStop(.6, alpha(c2, .07)); g.addColorStop(1, alpha(c1, .26)); x.fillStyle = g; x.fillRect(ox + px, y0 - tall, 3, tall);
+        }
+      }
+      x.restore();
+    }
     const sx = ox + ow * (.62 + rnd() * .2), sy = oy + (hz - oy) * (L === 'day' ? .32 : .72), sr = ow * (L === 'night' ? .07 : .1);
     if (desc.weather !== 'rain') {
     const glow = x.createRadialGradient(sx, sy, sr * .4, sx, sy, sr * 4); glow.addColorStop(0, L === 'night' ? 'rgb(255 250 230 / .4)' : 'rgb(255 236 190 / .7)'); glow.addColorStop(1, 'rgb(255 236 190 / 0)');
@@ -334,6 +347,7 @@ export function scene(desc, w = 768, h = 1024) {
     }
     if (L !== 'night') for (let i = 0; i < 4; i++) { const cx = ox + rnd() * ow, cy = oy + (hz - oy) * (.15 + rnd() * .45), cw = ow * (.18 + rnd() * .2); x.fillStyle = desc.weather === 'rain' ? 'rgb(120 128 142 / .55)' : 'rgb(255 255 255 / .55)'; for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(cx + (k - 2) * cw * .22, cy + Math.sin(k) * 6, cw * .22, cw * .12, 0, 0, Math.PI * 2); x.fill(); } }
     if (!desc.inside) mark(notes.sky);
+    if (desc.skyOnly) return oy + oh;
     const far = mix(sky[1], sky[2], .3), mid = mix(sky[0], '#203040', L === 'night' ? .3 : .45), near = mix(sky[0], '#101820', L === 'night' ? .55 : .7);
     if (desc.land === 'mountains') for (const [col, base, amp] of [[far, hz, .2], [mid, hz + oh * .03, .14]]) { x.fillStyle = col; x.beginPath(); x.moveTo(ox, base); let px = ox; while (px < ox + ow) { px += ow * (.06 + rnd() * .1); x.lineTo(px, base - oh * amp * (.3 + rnd() * .7)); px += ow * (.05 + rnd() * .08); x.lineTo(px, base - oh * amp * rnd() * .3); } x.lineTo(ox + ow, base); x.lineTo(ox + ow, oy + oh); x.lineTo(ox, oy + oh); x.fill(); }
     if (desc.land === 'city') {
@@ -726,11 +740,32 @@ function drawThing(x, thing, w, h, ground, rnd, desc) {
 }
 
 /** A pinned region, changed as the words say: recoloured, cleared, brightened, or given small additions. */
+/** Whether a pin's note is scenery (a place, a setting, weather, or a sky at some hour), to be painted into the pin. */
+export function isScenery(note) {
+  const t = String(note || '').toLowerCase(), kinds = new Set(readVibe(note || '').map(x => x.cue.kind)), skyward = /\bsk(?:y|ies)\b/.test(t);
+  return !/remove|erase|delete|get rid|clean|without/.test(t) && (kinds.has('place') || kinds.has('venue') || kinds.has('weather') || (skyward && kinds.has('time')));
+}
+
+/** Where a mask is, in a picture of w × h: its bounding box (the whole picture when the mask is empty). */
+function maskBox(mask, w, h) {
+  const md = ctx2d(mask).getImageData(0, 0, mask.width, mask.height).data, sx = w / mask.width, sy = h / mask.height;
+  let x0 = mask.width, y0 = mask.height, x1 = -1, y1 = -1;
+  for (let py = 0; py < mask.height; py += 2) for (let px = 0; px < mask.width; px += 2) if (md[(py * mask.width + px) * 4 + 3] > 100) { x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py); }
+  return x1 < 0 ? { x: 0, y: 0, w, h } : { x: Math.floor(x0 * sx), y: Math.floor(y0 * sy), w: Math.max(8, Math.ceil((x1 - x0 + 2) * sx)), h: Math.max(8, Math.ceil((y1 - y0 + 2) * sy)) };
+}
+
 export function regionEdit(src, mask, note, seed = 1) {
   const w = src.width, h = src.height, t = (note || '').toLowerCase(), rnd = rng(seed), edit = make(w, h), e = edit.getContext('2d');
   const colour = Object.entries(COLOUR_WORDS).find(([word]) => new RegExp('\\b' + word + '\\b').test(t))?.[1];
-  const motif = /** @type {[string, RegExp][]} */ ([['heart', /heart|love/], ['bow', /bow|ribbon/], ['star', /star/], ['flower', /flower|blossom|daisy/], ['rose', /rose/], ['sparkle', /sparkl|glitter|shin|magic/], ['note', /music|note/], ['crown', /crown|tiara/], ['leaf', /leaf|leaves|ivy/], ['moon', /moon/]]).find(([, re]) => re.test(t))?.[0];
+  // a note that names a place, a setting or weather is scenery: it is painted into the pin, the sky alone when no place was named
+  const kinds = new Set(readVibe(note || '').map(x => x.cue.kind)), skyward = /\bsk(?:y|ies)\b/.test(t), placed = kinds.has('place') || kinds.has('venue'), scenic = isScenery(note);
+  const motif = scenic ? null : /** @type {[string, RegExp][]} */ ([['heart', /heart|love/], ['bow', /bow|ribbon/], ['star', /star/], ['flower', /flower|blossom|daisy/], ['rose', /rose/], ['sparkle', /sparkl|glitter|shin|magic/], ['note', /music|note/], ['crown', /crown|tiara/], ['leaf', /leaf|leaves|ivy/], ['moon', /moon/]]).find(([, re]) => re.test(t))?.[0];
   if (/remove|erase|delete|get rid|clean|without/.test(t)) { e.filter = 'blur(22px) saturate(.9)'; e.drawImage(src, 0, 0); e.filter = 'none'; }
+  else if (scenic) {
+    const box = maskBox(mask, w, h), desc = sceneFrom(note, null, seed);
+    if (skyward || !placed) desc.skyOnly = true;
+    e.drawImage(src, 0, 0); e.drawImage(scene(desc, box.w, box.h), box.x, box.y);
+  }
   else {
     e.drawImage(src, 0, 0);
     if (/bright|light(er)?\b|glow|sun/.test(t)) { e.globalCompositeOperation = 'screen'; e.fillStyle = 'rgb(255 236 200 / .45)'; e.fillRect(0, 0, w, h); }

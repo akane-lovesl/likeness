@@ -24,7 +24,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
   const styleRef = it.refs.find(r => r.role === 'style' && inputs[r.id]);
   const variant = l => (i === 0 ? l : { ...l, ramp: l.ramp?.map(c => c), keep: Math.min(1, (l.keep ?? .2) + i * .15), bloom: (l.bloom || 0) + i * .08 });
   const words = spec.text || '';
-  let out, note = '', kept = null, shows = [], scene = null, changes = /** @type {string[]} */ ([]);
+  let out, note = '', kept = null, shows = [], scene = null, changes = /** @type {string[]} */ ([]), painted = /** @type {string[]} */ ([]);
   // a sketch made here knows its scene: an edit it understands, or another take, paints that scene again
   const was = it.subject && inputs[it.subject]?.scene, again = (/** @type {any} */ desc, /** @type {any} */ next) => {
     if (layers) desc.layers = kept = [];
@@ -43,7 +43,8 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
     case 'region': {
       out = subject;
       for (const pin of it.pins) if (pin.mask) out = P.regionEdit(out, pin.mask, pin.note || words, seed + pin.n);
-      note = 'pinned regions changed'; break;
+      painted = it.pins.filter(pin => pin.mask && P.isScenery(pin.note || words)).map(pin => pin.note || words);
+      note = painted.length ? 'scenery painted into the pins' : 'pinned regions changed'; break;
     }
     case 'remove': {
       out = it.pins?.length ? it.pins.reduce((c, pin) => (pin.mask ? P.regionEdit(c, pin.mask, 'remove', seed) : c), subject) : P.grade(subject, LOOKS.find(l => l.id === 'pastel-dream'), .3, seed);
@@ -87,7 +88,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
       out = P.grade(subject, variant(look), look.strength ?? .9, seed); note = look.name;
     }
   }
-  return { canvas: out, note, layers: kept, shows, scene, changes };
+  return { canvas: out, note, layers: kept, shows, scene, changes, painted };
 }
 
 /** The words the device knew, as a line for the card: Heard “rainy” · “Tokyo” · “jazz bar”. */
@@ -152,7 +153,9 @@ export const local = {
       yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + made[i].note, ...(made[i].scene ? { scene: made[i].scene } : {}) } };
     }
     const handle = id => inputs[id]?.handle || 'it';
-    const said = made[0]?.changes?.length ? `${handle(spec.intent.subject)}, painted again: ${made[0].changes.join(', ')}.` : (SAY[spec.intent.op] || SAY.edit)(spec, handle, made[0]?.shows || []);
+    const said = made[0]?.changes?.length ? `${handle(spec.intent.subject)}, painted again: ${made[0].changes.join(', ')}.`
+      : made[0]?.painted?.length ? `Painted ${made[0].painted.map(p => '“' + p + '”').join(' and ')} into what you pinned on ${handle(spec.intent.subject)}.`
+      : (SAY[spec.intent.op] || SAY.edit)(spec, handle, made[0]?.shows || []);
     yield { type: 'reply', text: said, suggestions: NEXT[spec.intent.op] || NEXT.edit };
     yield { type: 'done', ms: performance.now() - t0 };
   },

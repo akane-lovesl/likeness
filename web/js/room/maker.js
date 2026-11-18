@@ -560,6 +560,16 @@ function compose({ said, hits, name, head = name, place = '', take = 0, anchors 
 }
 
 /**
+ * The place some words paint (a city, a setting: anywhere a room could be), as words to make a room from; null when
+ * they paint no place (a cat, a bowl of lemons, a portrait).
+ * @param {string} text
+ */
+export function placeIn(text) {
+  const words = String(text || '').replace(/^\s*(?:please\s+)?(?:(?:paint|draw|sketch|make|create|imagine|render|generate|picture|show)(?: me| us)?|give me|i(?:'d| would) like|i want)\s+/i, '').replace(/[.!?]+$/, '').trim();
+  return words && readVibe(words).some(x => x.cue.kind === 'place' || x.cue.kind === 'venue') ? words.slice(0, 120) : null;
+}
+
+/**
  * The colours and feel of some words, for anything that wants to paint them (the sketcher on the device, for one):
  * the palette a room would have, whether it is after dark, the light and weather said, and its strongest ornaments.
  * Null when nothing in the words is known.

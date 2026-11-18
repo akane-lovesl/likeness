@@ -91,6 +91,19 @@ test('“take me to …” in the composer moves the whole place there, and it c
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.room)).toBe(before);
 });
 
+test('a painted place can be walked into: “Take me there” makes it the room', async ({ page }) => {
+  await open(page);
+  const before = await page.evaluate(() => document.documentElement.dataset.room);
+  await say(page, 'Paint a rainy Tokyo jazz bar at midnight');
+  await expect(made(page, 'Sketch')).toHaveCount(1, { timeout: 30_000 });
+  const there = page.locator('button.idea--room');
+  await expect(there).toHaveText('Take me there');
+  await there.click();
+  await expect(page.locator('.toast')).toContainText('Moved to Tokyo Jazz Bar at Midnight');
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.room)).not.toBe(before);
+  await expect(page.locator('button.idea--room')).toHaveCount(0);
+});
+
 test('the look camera shows the world in a look, and the shutter sends it to be painted', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

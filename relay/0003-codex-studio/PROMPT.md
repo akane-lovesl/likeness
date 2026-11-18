@@ -10,7 +10,7 @@ A personal image studio you talk to. It is a phone-shaped web app (`web/`: plain
 
 Around that sits the atmosphere:
 
-- **Rooms.** Whole themes: colours, type, frame, ornaments, scenery, weather, little sounds, motion, the wipe used to enter, and the voice the studio talks in. There are seven built in, and people invent their own from words or a picture. On the device a maker (`web/js/room/maker.js`) reads the sentence cue by cue and composes the room; on the workstation the studio's model invents it instead. Typing *"take me to a rainy Tokyo jazz bar at midnight"* in the composer moves the whole app there.
+- **Rooms.** Whole themes: colours, type, frame, ornaments, scenery, weather, little sounds, motion, the wipe used to enter, and the voice the studio talks in. There are seven built in, and people invent their own from words or a picture. On the device a maker (`web/js/room/maker.js`) reads the sentence cue by cue and composes the room; on the workstation the studio's model invents it instead. Typing *"take me to a rainy Tokyo jazz bar at midnight"* in the composer moves the whole app there, and after a picture of a place the first idea is *Take me there*, which does the same with its words.
 - **Today's sky.** Mood, weather and light. It resets each morning.
 - **Looks.** Image styles as data.
 - **Backdrops.** Ideas the studio suggests for a picture, not a preset list.
@@ -34,7 +34,7 @@ There are three editions, each always labelled honestly. Never let one pass for 
 - The briefs Codex is given (`likeness/brief.py`).
 - Settings (`studio.toml`).
 - `likeness probe codex`.
-- 35 pytest tests and a 13-test browser suite.
+- 35 pytest tests and a 14-test browser suite.
 
 **Not proven anywhere yet.** All of these are yours to settle:
 
@@ -160,7 +160,7 @@ Walk through every flow and watch the job card each time: stage words, notes str
    - use *"three variations"*.
 3. **Pins.** Open a picture, choose Pin, tap two different parts, give each its own note, and send. Only those parts may change.
 4. **Backdrops.** Open a picture, then Backdrop. The ideas come from the studio (`POST /api/backdrops`). Choose one; the subject must stay as it is.
-5. **Invent a room from words**, from the Rooms sheet and again by typing *"take me to …"* in the composer, and a look from words, from the Looks sheet. All of them come from `codex exec` with an output schema. They must come back valid and pleasant, and the room's voice must sound like a person. Compare a few studio rooms with what the device maker makes from the same words (the showcase at `npm run serve`): the studio's should be at least as good, or the room brief in `likeness/brief.py` needs work.
+5. **Invent a room from words**, from the Rooms sheet and again by typing *"take me to …"* in the composer, and a look from words, from the Looks sheet. All of them come from `codex exec` with an output schema. They must come back valid and pleasant, and the room's voice must sound like a person. Paint a place and use *Take me there* too. Compare a few studio rooms with what the device maker makes from the same words (the showcase at `npm run serve`): the studio's should be at least as good, or the room brief in `likeness/brief.py` needs work.
 6. **Paces.** Run the same turn at Quick and at Deep, and confirm the job folders show different models or efforts.
 7. **Stop** mid-turn. No `codex` or `node` process may be left behind (check Task Manager). Stop also works before the pictures have finished uploading.
 8. **Failure.** Sign out of Codex or break `command` briefly. The card must say what happened and what to do, not hang.

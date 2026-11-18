@@ -51,7 +51,7 @@ uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speakin
   - weather, small sounds and motion;
   - the voice the studio talks in, and the wipe that carries you in.
 
-  Seven are built in. Invent more from a sentence or a picture: the device reads the sentence cue by cue (places, settings, styles, things, people, seasons, weather, times of day, moods and colours), shows what it heard, and composes the room, name, voice and sparks included. *"Another take"* settles its close calls another way. Or say it in the composer: *"take me to my grandmother's kitchen in Lisbon"*.
+  Seven are built in. Invent more from a sentence or a picture: the device reads the sentence cue by cue (places, settings, styles, things, people, seasons, weather, times of day, moods and colours), shows what it heard, and composes the room, name, voice and sparks included. *"Another take"* settles its close calls another way. Or say it in the composer: *"take me to my grandmother's kitchen in Lisbon"*. After you paint a place, the first idea is *Take me there*.
 - **Today's sky.**
   - A mood sets the weather and light for the day, and it resets at dawn.
   - If you switch it on, the weather outside comes in: your rounded position goes to open-meteo.com, and nothing else leaves the device.

@@ -135,6 +135,9 @@
 .ideas::-webkit-scrollbar { display: none; }
 .idea { animation: rise var(--t-mid) var(--ease) both; animation-delay: calc(var(--i, 0) * 50ms); }
 .idea .orn { width: 3.4cqw; height: 3.4cqw; color: var(--accent); }
+.idea--room { gap: .9cqw; color: var(--rp-ink); background: var(--rp-ground); border-color: color-mix(in srgb, var(--rp-a) 60%, transparent); }
+.idea--room i { flex: none; width: 2.4cqw; height: 2.4cqw; border-radius: 50%; background: var(--rp-a); }
+.idea--room i + i { margin-left: -1.5cqw; background: var(--rp-b); box-shadow: 0 0 0 1px var(--rp-ground); }
 .box { position: relative; border-radius: 6.4cqw; background: var(--surface); box-shadow: var(--card-shadow), 0 0 0 1px var(--rule); padding: 1.4cqw; transition: box-shadow var(--t-mid) var(--ease); }
 .box:focus-within { box-shadow: var(--card-shadow), 0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent); }
 .tray { display: flex; gap: 1.6cqw; padding: .8cqw .8cqw 1.4cqw; overflow-x: auto; scrollbar-width: none; }

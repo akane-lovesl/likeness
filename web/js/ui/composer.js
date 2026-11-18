@@ -116,7 +116,12 @@ export function composer({ onSend, onAttach }) {
     /** Ideas above the composer; each sends at once with the pictures given. */
     setIdeas(list, onPick) {
       ideaList = list;
-      ideas.replaceChildren(...list.map((idea, i) => h('button.chip.idea', { role: 'listitem', style: { '--i': i }, onclick: () => onPick(idea) }, h('span', { html: glyph(atmosphere.room.ornament) }), idea.text || idea)));
+      ideas.replaceChildren(...list.map((idea, i) => {
+        // an idea that goes somewhere wears that place's colours (the studio invents its own rooms, so not there)
+        const to = idea.room && studio.mode !== 'workstation' ? roomFromWords(idea.room).colors : null;
+        const style = to ? { '--i': i, '--rp-ground': to.ground, '--rp-ink': to.ink, '--rp-a': to.accent, '--rp-b': to.accent2 } : { '--i': i };
+        return h(to ? 'button.chip.idea.idea--room' : 'button.chip.idea', { role: 'listitem', style, onclick: e => onPick(idea, e.currentTarget) }, to ? [h('i'), h('i')] : h('span', { html: glyph(atmosphere.room.ornament) }), idea.text || idea);
+      }));
       ideas.hidden = !list.length || !!textarea.value.trim();
     },
     refresh() { paintSend(); read(); },

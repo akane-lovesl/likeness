@@ -63,7 +63,7 @@ export function deskScreen() {
     let room = known;
     if (!room && studio.mode === 'workstation') {
       toast('Imagining ' + vibe + '…', 60000);
-      try { room = { ...(await studio.engine.room(vibe)), mine: true, made: 'studio' }; } catch { toast('The studio could not; made it here instead'); }
+      try { room = { ...(await studio.engine.room(vibe)), mine: true, made: 'studio', said: vibe }; } catch { toast('The studio could not; made it here instead'); }
     }
     if (!room) room = roomFromWords(vibe);
     if (!known) await saveRoom(room);
@@ -129,7 +129,7 @@ export function deskScreen() {
     const lastPrints = [...items].reverse().find(i => i.prints?.length);
     if (!items.length) comp.setIdeas(sparksFor(atmosphere.room), t => { comp.setText(t); });
     else if (lastPrints && lastPrints.type === 'prints') comp.setIdeas(['Make it a watercolour', 'Give it a new backdrop', 'Three variations', 'Golden hour light'], t => sendIdea(t, lastPrints.prints));
-    else if (last?.suggestions?.length) comp.setIdeas(last.suggestions, t => sendIdea(t, last.prints));
+    else if (last?.suggestions?.length) comp.setIdeas(last.suggestions.filter(s => !(s.room && atmosphere.room.said === s.room)), (t, el) => (t.room ? moveTo(t.room, el?.getBoundingClientRect() || null) : sendIdea(t.text || t, last.prints)));
     else comp.setIdeas([], () => {});
   }
 

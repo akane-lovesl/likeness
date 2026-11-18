@@ -4,7 +4,7 @@
  * stamped as one. It also drafts the first impression of a render while the studio paints the real thing.
  */
 import { rgb, hex, mix, luminance, hsl, fromHsl, alpha } from '../core/color.js';
-import { vibeOf } from '../room/maker.js';
+import { vibeOf, readVibe } from '../room/maker.js';
 import { rng } from '../core/dom.js';
 import { path2d } from '../room/ornaments.js';
 import { rampAround } from './looks.js';
@@ -175,7 +175,7 @@ export function sceneFrom(text, ramp = null, seed = 1) {
   if (!inside && (land === 'sea' || land === 'desert') && has(t, /\bpalms?\b|tropic|island|lagoon|hawaii|caribbean|maldives|tiki|bali|oasis/)) things.push('palm');
   const colour = Object.entries(COLOUR_WORDS).find(([w]) => new RegExp('\\b' + w + '\\b').test(t))?.[1];
   // colour words alone make a ramp; words the room maker knows bring a whole palette instead (pal)
-  return { light, land, inside, weather, things, ramp: ramp || (!vibe && colour ? rampAround(colour) : null), arch: has(t, /arch|castle|palace|chapel/), seed, pal: vibe?.colors || null, marks: vibe?.marks || [], props, shelf, sign: sign.toUpperCase(), who, wears, hair,
+  return { words: text || '', light, land, inside, weather, things, ramp: ramp || (!vibe && colour ? rampAround(colour) : null), arch: has(t, /arch|castle|palace|chapel/), seed, pal: vibe?.colors || null, marks: vibe?.marks || [], props, shelf, sign: sign.toUpperCase(), who, wears, hair,
     fruit: Object.entries(FRUIT).find(([k]) => t.includes(k))?.[1] || null, frozen: has(t, /frozen|\bicy\b|\bice\b|glacier|arctic|polar/), skyline: land === 'sea' && (props.includes('neon') || has(t, CITY)) };
 }
 export const COLOUR_WORDS = { red: '#c8322d', crimson: '#a5122a', scarlet: '#e0301e', pink: '#ec7fa0', rose: '#d9667f', blush: '#f2b8c6', orange: '#ec7a2c', peach: '#f6b08a', coral: '#f07560', gold: '#d6a540', golden: '#d6a540', yellow: '#f0c93a', lemon: '#f3e05a', green: '#3f8f4f', emerald: '#1f8a5c', mint: '#93d8b8', sage: '#8fa883', olive: '#7d7a32', teal: '#1f8a8a', turquoise: '#33c3c0', cyan: '#35d2e8', blue: '#2f6fdc', navy: '#1a2e6b', cobalt: '#2148b8', sky: '#7dbbf0', lavender: '#b39ddb', lilac: '#c8a2d8', purple: '#7a3ea8', violet: '#6a3fd0', plum: '#6b2a5a', magenta: '#d5248f', brown: '#7a4a2a', chocolate: '#5a3218', silver: '#b8c0cc', white: '#f4f2ee', black: '#141414', grey: '#8a8a8a', gray: '#8a8a8a', cream: '#f4ead2', ivory: '#f6f0dc', burgundy: '#6e1a2c', amber: '#e09a2a', copper: '#b8673a' };
@@ -198,6 +198,49 @@ function notesFor(d) {
     light: p.includes('mirrorball') ? 'A mirror ball, and the light it throws' : p.includes('chandelier') ? 'A chandelier, five candles' : p.includes('lamp') ? 'A low lamp' + (night ? ', and its pool of light' : '') : '',
     weather: ({ rain: d.inside ? 'Rain on the glass' : 'Rain', snow: d.inside ? 'Snow, outside' : 'Snow falling', petals: 'Petals in the air' })[d.weather] || '',
   };
+}
+
+/**
+ * What an edit asks of a sketch's scene, applied to it: the light, the weather, who sits for it and what they wear,
+ * things added, colours named, closer or further. Returns the changes in words; none when nothing was understood.
+ * @param {any} desc @param {string} text
+ */
+export function changeScene(desc, text) {
+  const t = String(text || '').toLowerCase(), said = /** @type {string[]} */ ([]);
+  const set = (/** @type {string} */ k, /** @type {any} */ v, /** @type {string} */ words) => { if (desc[k] !== v) { desc[k] = v; said.push(words); } };
+  if (/\b(night|midnight|after dark|dark(?:er)?)\b/.test(t)) set('light', 'night', 'now at night');
+  else if (/\b(dawn|sunrise|morning|first light)\b/.test(t)) set('light', 'dawn', 'at first light');
+  else if (/golden|sunset|dusk|evening/.test(t)) set('light', 'dusk', 'in the golden hour');
+  else if (/\b(day|daytime|noon|daylight|sunny|sunshine|brighter)\b/.test(t)) set('light', 'day', 'in daylight');
+  if (/\b(?:no|stop|without|less)\b[^.]*\b(?:rain|snow)|\bdry\b|clear (?:sky|skies|up)/.test(t)) set('weather', '', 'the weather cleared');
+  else if (/rain|drizzle|storm|shower/.test(t)) set('weather', 'rain', 'rain');
+  else if (/snow|blizzard|winter/.test(t)) set('weather', 'snow', 'snow falling');
+  else if (/petal|blossom|sakura/.test(t)) set('weather', 'petals', 'petals in the air');
+  const who = /\bcats?\b|kitten/.test(t) ? 'cat' : /\bdogs?\b|pupp/.test(t) ? 'dog' : /\bbirds?\b|\bowl\b|robin/.test(t) ? 'bird' : /rabbit|bunny/.test(t) ? 'rabbit' : /\b(?:person|someone|woman|man|girl|boy|figure)\b/.test(t) ? 'person' : '';
+  const wears = /\bhat\b/.test(t) ? 'hat' : /crown|tiara/.test(t) ? 'crown' : /\bbow\b|ribbon/.test(t) ? 'bow' : '';
+  if (/\b(?:no|without|remove|lose|get rid of)\b[^.]*\b(?:cat|dog|bird|rabbit|person|someone|figure|animal)/.test(t)) set('who', '', 'no one sitting');
+  else if ((who && desc.who !== who) || (wears && (who || desc.who) && desc.wears !== wears)) {
+    // who sits, and what they wear, said as one: "a rabbit in a crown"
+    if (who) desc.who = who; if (wears) desc.wears = wears; said.push(sitter(desc));
+  }
+  for (const k of ['lighthouse', 'boat', 'tree', 'house', 'balloon', 'castle', 'heart', 'palm', 'flower']) {
+    const thing = k === 'flower' ? 'flowers' : k;
+    if (new RegExp('\\b' + k).test(t) && !desc.things.includes(thing)) { desc.things.push(thing); said.push(THING[thing] || thing); }
+  }
+  if (readVibe(text).some(x => x.cue.kind === 'colour')) { const v = vibeOf(text + ', ' + (desc.words || '')); if (v) { desc.pal = v.colors; desc.ramp = null; said.push('new colours'); } }
+  if (/closer|zoom(?:ed)? in|tighter|crop/.test(t)) { desc.zoom = Math.min(2.4, (desc.zoom || 1) * 1.35); said.push('closer in'); }
+  else if (/further|farther|zoom(?:ed)? out|wider/.test(t) && (desc.zoom || 1) > 1) { desc.zoom = Math.max(1, desc.zoom / 1.35); said.push('further back'); }
+  return said;
+}
+/**
+ * A device sketch's scene, read again: its words, painted from its seed (or another, for a new take), with every
+ * change asked of it since, in order.
+ * @param {{ words: string, seed: number, edits?: string[] }} kept
+ */
+export function sceneAgain(kept, seed = kept.seed) {
+  const desc = sceneFrom(kept.words, null, seed);
+  for (const e of kept.edits || []) changeScene(desc, e);
+  return desc;
 }
 
 /** The sitter, in words: "a cat in a hat", "someone in a crown". */
@@ -571,6 +614,7 @@ export function scene(desc, w = 768, h = 1024) {
   x.restore();
   mark(notes.weather);
   if (desc.arch) { const m = make(w, h), mc = m.getContext('2d'); mc.fillStyle = desc.ramp ? desc.ramp[4] : desc.pal ? desc.pal.ground : '#f6efe2'; mc.fillRect(0, 0, w, h); mc.globalCompositeOperation = 'destination-out'; mc.beginPath(); mc.moveTo(w * .1, h); mc.lineTo(w * .1, h * .4); mc.arc(w / 2, h * .4, w * .4, Math.PI, 0); mc.lineTo(w * .9, h); mc.fill(); x.drawImage(m, 0, 0); }
+  if (desc.zoom > 1) { const z = desc.zoom, was = copy(c); x.drawImage(was, w * (1 - 1 / z) / 2, h * (1 - 1 / z) / 2, w / z, h / z, 0, 0, w, h); }
   const grainy = x.getImageData(0, 0, w, h), gd = grainy.data;
   for (let i = 0; i < gd.length; i += 4) { const n = (rnd() - .5) * 14; gd[i] += n; gd[i + 1] += n; gd[i + 2] += n; }
   x.putImageData(grainy, 0, 0);

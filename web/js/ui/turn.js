@@ -130,7 +130,7 @@ export async function runTurn(t) {
   const room = atmosphere.room, n = t.n || t.intent.n || 1, id = uid('j-');
   const inputs = {};
   for (const pid of [t.intent.subject, ...t.intent.refs.map(r => r.id), ...(t.intent.pins || []).map(p => p.print)].filter(Boolean)) {
-    const p = printById(pid); if (p) inputs[pid] = { blob: p.blob, handle: p.handle, w: p.w, h: p.h };
+    const p = printById(pid); if (p) inputs[pid] = { blob: p.blob, handle: p.handle, w: p.w, h: p.h, scene: p.provenance?.scene || null };
   }
   const subject = t.intent.subject && printById(t.intent.subject);
   const ar = subject?.w ? `${subject.w} / ${subject.h}` : '3 / 4';

@@ -167,7 +167,7 @@ export function deskScreen() {
   async function samples() {
     const scenes = [['lighthouse by the sea at dusk with a boat', 'Sample · lighthouse'], ['tea room interior with a teacup by the window, golden', 'Sample · tea room']];
     const ids = [];
-    for (const [words, label] of scenes) { const c = P.scene(P.sceneFrom(words, null, 11), 768, 1024), blob = await P.toBlob(c); ids.push((await addPrint({ blob, w: c.width, h: c.height, origin: 'sample', provenance: { kind: 'sample', label: 'Sample' }, prompt: label })).id); }
+    for (const [words, label] of scenes) { const c = P.scene(P.sceneFrom(words, null, 11), 768, 1024), blob = await P.toBlob(c); ids.push((await addPrint({ blob, w: c.width, h: c.height, origin: 'sample', provenance: { kind: 'sample', label: 'Sample', scene: { words, seed: 11, edits: [] } }, prompt: label })).id); }
     await addItem({ type: 'prints', prints: ids, mine: true });
     comp.addToTray([ids[0]]);
   }

@@ -47,6 +47,13 @@ test('the composer reads what you mean before you send it', async ({ page }) => 
   await expect(page.locator('.reading')).toContainText('A');
 });
 
+test('one picture as the reference for another: “use @B as a reference and make @A like it”', async ({ page }) => {
+  await open(page);
+  await samples(page);
+  await say(page, 'Use @B as a reference and make @A like it');
+  await expect(page.getByText('A in B’s colours.')).toBeVisible({ timeout: 30_000 });
+});
+
 test('a pinned part of a picture is what changes', async ({ page }) => {
   await open(page);
   await samples(page);

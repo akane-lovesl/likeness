@@ -8,6 +8,15 @@ import { lookFromWords } from './looks.js';
 const ORD = { first: 0, '1st': 0, second: 1, '2nd': 1, third: 2, '3rd': 2, fourth: 3, '4th': 3, fifth: 4, '5th': 4 };
 const COUNT = { two: 2, three: 3, four: 4, 'a couple of': 2, 'a few': 3, '2': 2, '3': 3, '4': 4 };
 const PIC = '(?:image|picture|pic|photo|photograph|print|one|shot|selfie)';
+/**
+ * A picture's part in a request comes from the words right beside it: "like @B", "in the style of @B", "@B as a
+ * reference", "@B's colours" make it the style; "into @B", "@B as the background" make it the setting. Words further
+ * off are about something else ("make @A like it", "two more like this").
+ */
+const STYLE_BEFORE = /(?:\blike|\bas|in the style of|styled (?:like|after)|inspired by|(?:colou?rs?|palette|style|look|vibe|mood|light(?:ing)?|tones?) (?:of|from|in)|\bmatch(?:ing)?)\s*(?:the\s+)?$/;
+const STYLE_AFTER = /^\s*(?:as (?:a |an |the |my |our )?(?:reference|style|inspiration|guide|model|example|moodboard)|['’]s (?:style|colou?rs?|palette|look|vibe|mood|light(?:ing)?|tones?|feel)|for (?:the |its )?(?:style|colou?rs?|palette|look|vibe|mood))/;
+const SET_BEFORE = /(?:\binto|in front of|on top of|\bonto|(?:background|backdrop|scene|setting|place) (?:of|from))\s*(?:the\s+)?$/;
+const SET_AFTER = /^\s*as (?:the |a )?(?:background|backdrop|setting|scene)/;
 /** "Take me to a rainy Tokyo jazz bar", "let's go somewhere cosy", "change the room to noir": the whole place, not a picture. */
 const ROOM = /^\s*(?:please\s+)?(?:(?:take|bring) (?:me|us) (?:to|into|(?=somewhere))|move (?:me |us )?(?:to|into)|let['’]?s go (?:to|into|(?=somewhere))|change the room to|switch the room to|make (?:this|the|my) (?:room|place|desk|app) (?:feel )?(?:like|into)|turn (?:this|the) (?:room|place|desk) into|redecorate (?:as|like)|room:)\s*(.+)$/i;
 
@@ -19,13 +28,13 @@ export function readIntent(text, ctx) {
   const t = text || '', low = t.toLowerCase(), prints = ctx.prints || [], tray = ctx.tray || [], pins = ctx.pins || [];
   const byHandle = h => prints.find(p => p.handle === h)?.id;
   const order = [];
-  const mention = (id, at) => { if (id && !order.some(m => m.id === id)) order.push({ id, at }); };
-  for (const m of t.matchAll(/@([A-Z]{1,2})\b/g)) mention(byHandle(m[1]), m.index);
-  for (const m of t.matchAll(new RegExp('\\b' + PIC + '\\s+([A-Z])\\b', 'g'))) mention(byHandle(m[1]), m.index);
+  const mention = (id, at, end) => { if (id && !order.some(m => m.id === id)) order.push({ id, at, end }); };
+  for (const m of t.matchAll(/@([A-Z]{1,2})\b/g)) mention(byHandle(m[1]), m.index, m.index + m[0].length);
+  for (const m of t.matchAll(new RegExp('\\b' + PIC + '\\s+([A-Z])\\b', 'g'))) mention(byHandle(m[1]), m.index, m.index + m[0].length);
   const pool = tray.length >= 2 ? tray : (ctx.batch?.length >= 2 ? ctx.batch : prints.map(p => p.id));
   for (const m of low.matchAll(new RegExp('\\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|last|previous|latest)\\s+' + PIC + '\\b', 'g'))) {
     const w = m[1], id = /last|previous|latest/.test(w) ? pool[pool.length - 1] : pool[ORD[w]];
-    mention(id, m.index);
+    mention(id, m.index, m.index + m[0].length);
   }
   const room = !order.length && !tray.length && !pins.length && t.match(ROOM);
   if (room && room[1].trim().length > 1) return { op: 'room', subject: null, refs: [], look: null, n: 1, pace: null, pins: [], vibe: room[1].trim().replace(/[.!?]+$/, '') };
@@ -38,16 +47,13 @@ export function readIntent(text, ctx) {
 
   /** Roles: whatever is named as a reference, a style or a backdrop; the first other picture is the subject. */
   const refs = [];
-  for (const id of ids) {
-    const h = prints.find(p => p.id === id)?.handle; if (!h) continue;
-    const near = new RegExp('(?:@' + h + '|' + PIC + ' ' + h + ')', 'i');
-    const idx = t.search(near), around = idx >= 0 ? low.slice(Math.max(0, idx - 40), idx + 50) : '';
-    const ord = Object.entries(ORD).find(([w, i]) => pool[i] === id && new RegExp('\\b' + w + '\\s+' + PIC).test(low));
-    const ctxText = around || (ord ? low.slice(Math.max(0, low.indexOf(ord[0]) - 40), low.indexOf(ord[0]) + 60) : '');
-    if (/as (a |the )?(reference|style|inspiration|guide|model)|in the style of|styled like|inspired by|(colou?rs?|palette|style|look|vibe|mood|lighting|light) (of|from)|'s (style|colou?rs?|palette|look|vibe|mood|lighting)|\blike\b/.test(ctxText)) refs.push({ id, role: 'style' });
-    else if (/(background|backdrop|scene|setting|place) (of|from)|into|in front of|on top of/.test(ctxText) && ids.length > 1) refs.push({ id, role: 'backdrop' });
-  }
-  const subject = ids.find(id => !refs.some(r => r.id === id)) || null;
+  order.forEach((m, k) => {
+    const before = low.slice(Math.max(k ? order[k - 1].end : 0, m.at - 40), m.at), after = low.slice(m.end, Math.min(order[k + 1]?.at ?? low.length, m.end + 48));
+    if (STYLE_BEFORE.test(before) || STYLE_AFTER.test(after)) refs.push({ id: m.id, role: 'style' });
+    else if (ids.length > 1 && (SET_BEFORE.test(before) || SET_AFTER.test(after))) refs.push({ id: m.id, role: 'backdrop' });
+  });
+  // "use the second picture as a reference and change this one": the subject is the newest picture that is not the reference
+  const subject = ids.find(id => !refs.some(r => r.id === id)) || (refs.length && /\b(this|it|that)\b/.test(low) ? [...prints].reverse().find(p => !refs.some(r => r.id === p.id))?.id : null) || null;
   const others = ids.filter(id => id !== subject && !refs.some(r => r.id === id)).map(id => ({ id, role: 'with' }));
   const look = ctx.look || lookFromWords(low, ctx.looks, { moods: !!subject }) || null; // with nothing to restyle, a mood is part of what to paint
 

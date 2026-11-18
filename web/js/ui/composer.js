@@ -12,6 +12,8 @@ import { estimate } from '../core/estimate.js';
 import { studio } from '../studio/studio.js';
 import { PACES } from './turn.js';
 import { sound } from '../core/sound.js';
+import { roomFromWords } from '../room/maker.js';
+import { roomCalled } from '../room/atmosphere.js';
 
 const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 const ORDER = ['quick', 'fine', 'deep'];
@@ -45,9 +47,17 @@ export function composer({ onSend, onAttach }) {
     ideas.hidden = !!text.trim() || !ideaList.length;
     if (!has) { readingEl.replaceChildren(); reading = null; return; }
     reading = readIntent(text, { prints: threadPrints().map(p => ({ id: p.id, handle: p.handle })), tray, batch: lastBatch(), looks: [...LOOKS, ...app.looks], look });
+    if (reading.op === 'room') { readingEl.replaceChildren(...roomReading(reading.vibe)); return; }
     const pills = describeIntent(reading, handleOf), est = estimate(studio.mode, reading.op, reading.pace || pace, reading.n);
     if (settings.get('taste', '').trim()) pills.push({ k: 'taste', text: 'your taste' });
     readingEl.replaceChildren(...pills.map((s, i) => h('span.plan-pill', { data: { k: s.k }, style: { '--i': i } }, s.text)), h('span.reading__eta', null, '≈ ' + eta(est.ms).replace('about ', '')));
+  }
+  /** "Take me to …": the room you would step into, previewed in its own colours as you describe it. */
+  function roomReading(vibe) {
+    const known = roomCalled(vibe), room = known || roomFromWords(vibe), c = room.colors;
+    return [h('span.plan-pill', { data: { k: 'op' } }, 'Move to'),
+      h('span.plan-pill.room-pill', { style: { '--rp-ground': c.ground, '--rp-ink': c.ink, '--rp-a': c.accent, '--rp-b': c.accent2, '--i': 1 } }, h('i'), h('i'), room.name),
+      h('span.reading__eta', null, known ? 'a room you know' : studio.mode === 'workstation' ? 'the studio invents it' : 'invented here')];
   }
   function paintTray() {
     trayEl.hidden = !tray.length;

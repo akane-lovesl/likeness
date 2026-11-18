@@ -91,6 +91,8 @@ img, canvas { display: block; -webkit-user-drag: none; }
 
 .toast { position: absolute; left: 50%; top: 16cqw; z-index: 90; transform: translate(-50%, -4cqw); opacity: 0; padding: 2.4cqw 4.2cqw; border-radius: 99cqw; background: var(--ink); color: var(--ground); font: 500 calc(2.4cqw * var(--m-scale)) / 1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; transition: transform var(--t-mid) var(--ease-pop), opacity var(--t-mid) var(--ease); pointer-events: none; box-shadow: var(--card-shadow); }
 .toast.is-in { transform: translate(-50%, 0); opacity: 1; }
+.toast--act.is-in { pointer-events: auto; }
+.toast__act { margin-left: 3cqw; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-decoration: underline; text-underline-offset: .25em; }
 
 /* Ornaments are drawn in the room's accent unless a rule says otherwise. */
 .orn { width: 1em; height: 1em; display: inline-block; vertical-align: -.12em; fill: currentColor; stroke: currentColor; }

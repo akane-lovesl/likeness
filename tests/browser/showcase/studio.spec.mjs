@@ -65,6 +65,32 @@ test('changing the room changes the whole place', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ground'))).not.toBe(before);
 });
 
+test('a sentence becomes a room: the maker reads it, names it, and the room talks like it', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').nth(2).click();
+  await page.locator('.maker__input').fill("my grandmother's sunny kitchen in Lisbon");
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.maker__cue')).toHaveCount(4);
+  await expect(page.locator('.maker__out .postcard__name')).toHaveText('Grandmother’s Kitchen, Lisbon');
+  await page.getByRole('button', { name: 'Another take' }).click();
+  await expect(page.locator('.maker__by')).toContainText('take 2');
+  await page.getByRole('button', { name: 'Move in' }).click();
+  await expect(page.locator('textarea').first()).toHaveAttribute('placeholder', /love/);
+});
+
+test('“take me to …” in the composer moves the whole place there, and it can go back', async ({ page }) => {
+  await open(page);
+  const before = await page.evaluate(() => document.documentElement.dataset.room);
+  await page.locator('textarea').fill('take me to a rainy Tokyo jazz bar at midnight');
+  await expect(page.locator('.room-pill')).toHaveText('Tokyo Jazz Bar at Midnight');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.toast')).toContainText('Moved to Tokyo Jazz Bar at Midnight');
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.room)).not.toBe(before);
+  await expect(page.locator('textarea')).toHaveAttribute('placeholder', /Hum me something/);
+  await page.locator('.toast__act').click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.room)).toBe(before);
+});
+
 test('the look camera shows the world in a look, and the shutter sends it to be painted', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

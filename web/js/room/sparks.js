@@ -1,6 +1,7 @@
 /**
  * Today's sparks: three ideas to start from, different every day and in the spirit of the room you are in, so an
- * empty desk always has somewhere to begin. Rooms made by you borrow the sparks of the built-in room they most resemble.
+ * empty desk always has somewhere to begin. A room invented on the device brings its own, the things the maker pictured
+ * as it read your words; any other room borrows the sparks of the built-in room it most resembles.
  */
 const SPARKS = {
   atelier: ['A lighthouse inside a teacup, at dusk', 'The view from my window, as a watercolour', 'A still life of lemons and a blue jug, morning light', 'An old bicycle against a sunlit wall', 'A map of an imaginary island, inked by hand', 'Paper boats on a rainy pavement'],
@@ -15,7 +16,7 @@ const BY_TYPE = { editorial: 'atelier', romance: 'princess', pixel: 'arcade', ty
 
 /** Three sparks for this room, today. */
 export function sparksFor(room, date = new Date()) {
-  const pool = SPARKS[room?.id] || SPARKS[BY_TYPE[room?.type]] || SPARKS.atelier;
+  const pool = room?.sparks?.length >= 3 ? room.sparks : SPARKS[room?.id] || SPARKS[BY_TYPE[room?.type]] || SPARKS.atelier;
   const day = Math.floor((date.getTime() - date.getTimezoneOffset() * 60000) / 86400000);
   return [0, 1, 2].map(i => pool[(day * 2 + i) % pool.length]);
 }

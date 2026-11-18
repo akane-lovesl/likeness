@@ -5,9 +5,10 @@
 import { h, icon, toast, sheet } from '../core/dom.js';
 import { glyph } from '../room/ornaments.js';
 import { on } from '../core/bus.js';
-import { app, addItem, addPrint, threadPrints, printById, newThread, settings } from '../state.js';
+import { app, addItem, addPrint, threadPrints, printById, newThread, settings, saveRoom } from '../state.js';
 import { atmosphere } from '../room/theme.js';
-import { skyFor, skySettings } from '../room/atmosphere.js';
+import { skyFor, skySettings, changeRoom, roomCalled } from '../room/atmosphere.js';
+import { roomFromWords } from '../room/maker.js';
 import { outsideWeather } from '../room/outside.js';
 import { sparksFor } from '../room/sparks.js';
 import { WEATHERS, LIGHTS, partOfDay, clockLight } from '../room/rooms.js';
@@ -47,10 +48,28 @@ export function deskScreen() {
   let flight = null;
   async function send(t) {
     if (!t.text && !t.intent?.pins?.length) return;
+    if (t.intent?.op === 'room') { await moveTo(t.intent.vibe, t.flight); return; }
     nearEnd = true; flight = t.flight || null;
     const item = await runTurn(t);
     if (item.state === 'done' && item.prints.length) comp.dropFromTray(item.parents || []);   // "it" now means what was just made
     ideas();
+  }
+  /**
+   * "Take me to …": the whole place changes, from where you typed it. To a room you know, or to one invented from
+   * the words (by the studio's model on a workstation, by the maker here otherwise), which is kept with your rooms.
+   */
+  async function moveTo(vibe, flight) {
+    const from = atmosphere.room, known = roomCalled(vibe);
+    let room = known;
+    if (!room && studio.mode === 'workstation') {
+      toast('Imagining ' + vibe + '…', 60000);
+      try { room = { ...(await studio.engine.room(vibe)), mine: true, made: 'studio' }; } catch { toast('The studio could not; made it here instead'); }
+    }
+    if (!room) room = roomFromWords(vibe);
+    if (!known) await saveRoom(room);
+    const at = flight ? { x: flight.left + flight.width / 2, y: flight.top + flight.height / 2 } : null;
+    await changeRoom(room, at);
+    if (room.id !== from.id) toast('Moved to ' + room.name, 4200, { label: 'Go back', run: () => changeRoom(from, at) });
   }
   /** The words you sent rise from the composer into the thread. */
   function fly(node) {

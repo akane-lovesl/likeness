@@ -13,6 +13,12 @@ import { outsideWeather } from './outside.js';
 export const today = () => new Date().toISOString().slice(0, 10);
 export const allRooms = () => [...ROOMS, ...app.rooms];
 export const roomById = id => allRooms().find(r => r.id === id) || ROOMS[0];
+/** A room you already know, by its name or id: "noir", "the Observatory", "little princess". */
+export function roomCalled(words) {
+  const plain = (/** @type {string} */ s) => s.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').replace(/\s+/g, ' ').trim();
+  const k = plain(String(words || '').replace(/^\s*(?:the|a|an|my)\s+/i, '').replace(/\s+room\s*$/i, ''));
+  return k ? allRooms().find(r => r.id === k || plain(r.name) === k) || null : null;
+}
 /** Today's sky settings; yesterday's are forgotten. */
 export function skySettings() { const s = settings.get('sky', {}); return s.day === today() ? s : { day: today() }; }
 export function setSky(patch) { settings.set('sky', { ...skySettings(), ...patch, day: today() }); applySky(); }

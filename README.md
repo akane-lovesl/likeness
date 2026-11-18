@@ -2,7 +2,7 @@
 
 **A personal image studio you talk to.**
 
-Bring pictures and words and say what you want: *"Use @B as a reference and make @A look like it."* Pin the part of a picture you mean and say what it should become. Ask for a backdrop and choose from ideas made for that picture. Dress the whole app as a room (Little Princess, Noir, Riviera, or one you invent from a sentence) and let today's sky set the weather.
+Bring pictures and words and say what you want: *"Use @B as a reference and make @A look like it."* Pin the part of a picture you mean and say what it should become. Ask for a backdrop and choose from ideas made for that picture. Dress the whole app as a room (Little Princess, Noir, Riviera, or one you invent from a sentence: *"take me to a rainy Tokyo jazz bar at midnight"*) and let today's sky set the weather.
 
 It is a phone-shaped web app and a small studio server. Codex CLI with GPT Image makes the pictures, on your own machine.
 
@@ -51,7 +51,7 @@ uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speakin
   - weather, small sounds and motion;
   - the voice the studio talks in, and the wipe that carries you in.
 
-  Seven are built in. Invent more from a sentence or a picture.
+  Seven are built in. Invent more from a sentence or a picture: the device reads the sentence cue by cue (places, settings, styles, things, people, seasons, weather, times of day, moods and colours), shows what it heard, and composes the room, name, voice and sparks included. *"Another take"* settles its close calls another way. Or say it in the composer: *"take me to my grandmother's kitchen in Lisbon"*.
 - **Today's sky.**
   - A mood sets the weather and light for the day, and it resets at dawn.
   - If you switch it on, the weather outside comes in: your rounded position goes to open-meteo.com, and nothing else leaves the device.

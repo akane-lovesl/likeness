@@ -8,6 +8,8 @@ import { lookFromWords } from './looks.js';
 const ORD = { first: 0, '1st': 0, second: 1, '2nd': 1, third: 2, '3rd': 2, fourth: 3, '4th': 3, fifth: 4, '5th': 4 };
 const COUNT = { two: 2, three: 3, four: 4, 'a couple of': 2, 'a few': 3, '2': 2, '3': 3, '4': 4 };
 const PIC = '(?:image|picture|pic|photo|photograph|print|one|shot|selfie)';
+/** "Take me to a rainy Tokyo jazz bar", "let's go somewhere cosy", "change the room to noir": the whole place, not a picture. */
+const ROOM = /^\s*(?:please\s+)?(?:(?:take|bring) (?:me|us) (?:to|into|(?=somewhere))|move (?:me |us )?(?:to|into)|let['’]?s go (?:to|into|(?=somewhere))|change the room to|switch the room to|make (?:this|the|my) (?:room|place|desk|app) (?:feel )?(?:like|into)|turn (?:this|the) (?:room|place|desk) into|redecorate (?:as|like)|room:)\s*(.+)$/i;
 
 /**
  * @param {string} text
@@ -25,6 +27,8 @@ export function readIntent(text, ctx) {
     const w = m[1], id = /last|previous|latest/.test(w) ? pool[pool.length - 1] : pool[ORD[w]];
     mention(id, m.index);
   }
+  const room = !order.length && !tray.length && !pins.length && t.match(ROOM);
+  if (room && room[1].trim().length > 1) return { op: 'room', subject: null, refs: [], look: null, n: 1, pace: null, pins: [], vibe: room[1].trim().replace(/[.!?]+$/, '') };
   order.sort((a, b) => a.at - b.at);
   let ids = order.map(m => m.id);
   for (const id of tray) if (!ids.includes(id)) ids.push(id);
@@ -63,7 +67,7 @@ export function readIntent(text, ctx) {
   return { op, subject, refs: [...refs, ...others], look, n: Math.min(4, n), pace, pins };
 }
 
-const LABEL = { create: 'Paint something new', edit: 'Change', restyle: 'Restyle', reference: 'Change', blend: 'Blend', region: 'Change part of', backdrop: 'New backdrop for', remove: 'Remove from', vary: 'Variations of' };
+const LABEL = { room: 'Move to', create: 'Paint something new', edit: 'Change', restyle: 'Restyle', reference: 'Change', blend: 'Blend', region: 'Change part of', backdrop: 'New backdrop for', remove: 'Remove from', vary: 'Variations of' };
 /** The reading as short phrases for the strip above the composer. */
 export function describeIntent(it, handleOf) {
   const h = id => handleOf(id) || '?', out = [];

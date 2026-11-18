@@ -180,4 +180,7 @@
 /* The words the studio will paint from, typed out when the plan arrives */
 .job__prompt { margin: 0; padding-left: 10.2cqw; font: italic 400 calc(2.9cqw * var(--t-scale)) / 1.45 var(--font-text); color: color-mix(in srgb, var(--soft) 85%, var(--ink)); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .job__prompt::before { content: 'painting  '; font: 500 calc(2.1cqw * var(--m-scale)) / 1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; font-style: normal; color: var(--accent); }
+.room-pill { gap: .9cqw; color: var(--rp-ink); background: var(--rp-ground); border-color: color-mix(in srgb, var(--rp-a) 55%, transparent); letter-spacing: .02em; text-transform: none; font-family: var(--font-text); font-size: calc(2.6cqw * var(--t-scale, 1)); transition: background var(--t-mid) var(--ease), color var(--t-mid) var(--ease); }
+.room-pill i { width: 1.9cqw; height: 1.9cqw; border-radius: 50%; background: var(--rp-a); }
+.room-pill i + i { margin-left: -1.1cqw; background: var(--rp-b); box-shadow: 0 0 0 1px var(--rp-ground); }
 .plan-pill[data-k='taste'] { color: var(--accent2); border-style: dashed; border-color: color-mix(in srgb, var(--accent2) 45%, transparent); }

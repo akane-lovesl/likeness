@@ -42,6 +42,23 @@
 .maker__actions .btn { flex: 1; }
 .maker__dreaming { display: flex; align-items: center; justify-content: center; gap: 2.4cqw; aspect-ratio: 4 / 3; border-radius: 4cqw; background: linear-gradient(110deg, var(--ground-2) 30%, var(--accent-soft) 50%, var(--ground-2) 70%) 0 0 / 300% 100%; animation: sheen 1.6s linear infinite; font-style: italic; color: var(--soft); }
 .maker__dreaming .orn { color: var(--accent); width: 5cqw; height: 5cqw; animation: think 1.4s var(--ease) infinite; }
+/* The maker reading a sentence: each word it knows lights up in its own colour and drops its paint; then the paint pours into the room */
+.maker__reading { display: grid; gap: 1.6cqw; padding: 4.4cqw 4.6cqw 3.4cqw; border-radius: 4cqw; background: var(--surface); box-shadow: 0 0 0 1px var(--rule); }
+.maker__said { font-family: var(--font-display); font-weight: var(--d-weight); font-size: calc(5.6cqw * var(--d-scale)); line-height: 1.95; letter-spacing: var(--d-track); color: color-mix(in srgb, var(--soft) 80%, transparent); text-wrap: balance; }
+.maker__cue { position: relative; color: var(--soft); background: linear-gradient(var(--c), var(--c)) 0 90% / 0% .09em no-repeat; animation: cue-lit calc(var(--tempo) * 520ms) var(--ease) calc(var(--tempo) * (380ms + var(--i) * 170ms)) forwards; }
+.maker__drops { position: absolute; left: 50%; top: 88%; display: flex; gap: .8cqw; transform: translateX(-50%); pointer-events: none; }
+.maker__drops i { width: 1.9cqw; height: 1.9cqw; border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 14%, transparent); opacity: 0; transform: translateY(-2.4cqw) scale(.2); animation: paint-drop calc(var(--tempo) * 460ms) var(--ease-pop) calc(var(--tempo) * (500ms + var(--i) * 170ms + var(--j) * 70ms)) forwards; }
+.maker__reading.is-poured .maker__drops i { animation: paint-pour calc(var(--tempo) * 560ms) var(--ease-in) calc(var(--tempo) * var(--j) * 60ms) both; }
+.maker__caption { font-size: calc(2.3cqw * var(--m-scale)); letter-spacing: .04em; line-height: 1.35; }
+.maker__by { text-align: center; margin-top: -1cqw; }
+@keyframes cue-lit { to { color: var(--ink); background-size: 100% .09em; } }
+@keyframes paint-drop { to { opacity: 1; transform: none; } }
+@keyframes paint-pour { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(10cqw) scale(.4); } }
+.maker__out .postcard.is-arriving { animation: card-develop calc(var(--tempo) * 820ms) var(--ease) both; }
+.maker__out .postcard.is-shuffled { animation: card-shuffle calc(var(--tempo) * 520ms) var(--ease-pop) both; }
+.maker__out .postcard.is-leaving { transition: transform calc(var(--tempo) * 240ms) var(--ease-in), opacity calc(var(--tempo) * 240ms); transform: rotate(-2.5deg) scale(.94); opacity: .35; }
+@keyframes card-develop { from { opacity: 0; transform: translateY(-4cqw) scale(.94); filter: blur(12px) saturate(0); } 55% { opacity: 1; filter: blur(2px) saturate(.6); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes card-shuffle { from { opacity: 0; transform: rotate(3deg) translate(3cqw, 2cqw) scale(.96); } to { opacity: 1; transform: none; } }
 
 /* Sky */
 .sheet--sky .sheet__body { padding-bottom: 2cqw; }

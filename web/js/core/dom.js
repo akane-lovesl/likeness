@@ -80,10 +80,12 @@ export const seconds = ms => (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + ' s';
 
 let toastTimer = 0;
 /** A short line of confirmation near the top of the stage. */
-export function toast(text, ms = 2200) {
+/** A short note at the top of the stage; with an action, a button to act on it (e.g. undo) while it shows. @param {string} text @param {number} [ms] @param {{ label: string, run: () => void } | null} [action] */
+export function toast(text, ms = 2200, action = null) {
   let el = stage().querySelector('.toast');
   if (!el) stage().append(el = h('div.toast', { role: 'status' }));
-  el.textContent = text;
+  el.replaceChildren(text, ...(action ? [h('button.toast__act', { onclick: () => { el.classList.remove('is-in'); action.run(); } }, action.label)] : []));
+  el.classList.toggle('toast--act', !!action);
   requestAnimationFrame(() => el.classList.add('is-in'));
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('is-in'), ms);

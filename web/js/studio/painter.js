@@ -175,9 +175,30 @@ export function sceneFrom(text, ramp = null, seed = 1) {
 }
 export const COLOUR_WORDS = { red: '#c8322d', crimson: '#a5122a', scarlet: '#e0301e', pink: '#ec7fa0', rose: '#d9667f', blush: '#f2b8c6', orange: '#ec7a2c', peach: '#f6b08a', coral: '#f07560', gold: '#d6a540', golden: '#d6a540', yellow: '#f0c93a', lemon: '#f3e05a', green: '#3f8f4f', emerald: '#1f8a5c', mint: '#93d8b8', sage: '#8fa883', olive: '#7d7a32', teal: '#1f8a8a', turquoise: '#33c3c0', cyan: '#35d2e8', blue: '#2f6fdc', navy: '#1a2e6b', cobalt: '#2148b8', sky: '#7dbbf0', lavender: '#b39ddb', lilac: '#c8a2d8', purple: '#7a3ea8', violet: '#6a3fd0', plum: '#6b2a5a', magenta: '#d5248f', brown: '#7a4a2a', chocolate: '#5a3218', silver: '#b8c0cc', white: '#f4f2ee', black: '#141414', grey: '#8a8a8a', gray: '#8a8a8a', cream: '#f4ead2', ivory: '#f6f0dc', burgundy: '#6e1a2c', amber: '#e09a2a', copper: '#b8673a' };
 
-/** A flat, poster-like scene from words. Not a render: a sketch for the idea's shape and colour. */
+const MANY = { leaf: 'leaves', notes: 'notes', note: 'notes', confetti: 'confetti', ink: 'ink', sparkle: 'sparkles', asterisk: 'asterisks' };
+const THING = { teacup: 'a teacup', glass: 'a cocktail', lighthouse: 'a lighthouse', boat: 'a boat', tree: 'a tree', house: 'a house', flowers: 'flowers', heart: 'a heart', castle: 'a castle', balloon: 'balloons', palm: 'a palm', koi: 'koi', grove: 'trees, and their fruit', treehouse: 'a treehouse' };
+const cap = (/** @type {string} */ s) => s ? s[0].toUpperCase() + s.slice(1) : s;
+/** What the painter says as it lays each layer down: the reading, in plain words. */
+function notesFor(d) {
+  const p = d.props || [], night = d.light === 'night' || d.light === 'dusk';
+  const land = ({ sea: d.frozen ? 'ice, where the water was' : 'the sea', city: night ? 'the town, lit' : 'the town', hills: 'hills', fields: 'rows running to the horizon', forest: 'the woods', mountains: 'mountains', desert: 'mesas, sand, a saguaro', under: 'under the surface, light coming down', space: 'space: a ringed planet, and the ground of somewhere else' })[d.land] + (d.skyline ? ', a town across the water' : '');
+  const outside = cap(land) + (p.includes('neon') && d.land === 'city' ? '. Neon up the buildings' : '') + (p.includes('neon') && d.sign && d.land !== 'city' ? '. The sign: ' + d.sign : '');
+  const mark = d.marks?.[0];
+  return {
+    sky: 'The sky: ' + (d.weather === 'rain' && !night ? 'grey, rain coming' : ({ day: 'a clear day', dawn: 'first light', dusk: 'the sun going down', night: 'night' })[d.light]),
+    land: outside,
+    walls: p.includes('wood') ? 'Wood on the walls' : p.includes('deco') ? 'Gold fans along the walls' : p.includes('tiles') ? 'Tiles on the wall, a pattern in each' : mark && d.pal ? 'Wallpaper: ' + (MANY[mark] || mark + 's') : 'The walls',
+    furnish: p.includes('shelves') ? ({ books: 'Shelves of books', jars: 'Shelves of jars and bottles', sweets: 'Jars of sweets', bread: 'Loaves on the shelves' })[d.shelf] || 'Shelves' : p.includes('neon') ? (d.sign ? 'The sign: ' + d.sign : 'Neon on the walls') : '',
+    view: 'Out of the window: ' + land + (p.includes('train') ? ', going by' : '') + (p.includes('curtains') ? '. Curtains' : '') + (p.includes('webs') ? '. Cobwebs' : ''),
+    light: p.includes('mirrorball') ? 'A mirror ball, and the light it throws' : p.includes('chandelier') ? 'A chandelier, five candles' : p.includes('lamp') ? 'A low lamp' + (night ? ', and its pool of light' : '') : '',
+    weather: ({ rain: d.inside ? 'Rain on the glass' : 'Rain', snow: d.inside ? 'Snow, outside' : 'Snow falling', petals: 'Petals in the air' })[d.weather] || '',
+  };
+}
+
+/** A flat, poster-like scene from words. Not a render: a sketch for the idea's shape and colour. Pass desc.layers (an array) to keep each layer as it is laid down, with its note. */
 export function scene(desc, w = 768, h = 1024) {
   const c = make(w, h), x = c.getContext('2d'), rnd = rng(desc.seed || 7), L = desc.light, horizon = h * (desc.inside ? .62 : .6);
+  const notes = notesFor(desc), mark = (/** @type {string} */ label) => { if (desc.layers && label) desc.layers.push({ label, canvas: copy(c, Math.round(w / 2), Math.round(h / 2)) }); };
   const skies = { day: ['#9ccaf0', '#d8ecf7', '#fff4e2'], dawn: ['#7e9ed8', '#f2b8b0', '#ffe2bd'], dusk: ['#2a1d52', '#a8467a', '#f39a5a'], night: ['#04061a', '#15204a', '#2b3a72'] };
   let sky = skies[L];
   if (desc.ramp) sky = L === 'night' ? [desc.ramp[0], desc.ramp[1], desc.ramp[2]] : [desc.ramp[2], desc.ramp[3], desc.ramp[4]];
@@ -238,6 +259,7 @@ export function scene(desc, w = 768, h = 1024) {
     if (L === 'night') { x.fillStyle = sky[1]; x.beginPath(); x.arc(sx + sr * .45, sy - sr * .2, sr * .9, 0, Math.PI * 2); x.fill(); }
     }
     if (L !== 'night') for (let i = 0; i < 4; i++) { const cx = ox + rnd() * ow, cy = oy + (hz - oy) * (.15 + rnd() * .45), cw = ow * (.18 + rnd() * .2); x.fillStyle = desc.weather === 'rain' ? 'rgb(120 128 142 / .55)' : 'rgb(255 255 255 / .55)'; for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(cx + (k - 2) * cw * .22, cy + Math.sin(k) * 6, cw * .22, cw * .12, 0, 0, Math.PI * 2); x.fill(); } }
+    if (!desc.inside) mark(notes.sky);
     const far = mix(sky[1], sky[2], .3), mid = mix(sky[0], '#203040', L === 'night' ? .3 : .45), near = mix(sky[0], '#101820', L === 'night' ? .55 : .7);
     if (desc.land === 'mountains') for (const [col, base, amp] of [[far, hz, .2], [mid, hz + oh * .03, .14]]) { x.fillStyle = col; x.beginPath(); x.moveTo(ox, base); let px = ox; while (px < ox + ow) { px += ow * (.06 + rnd() * .1); x.lineTo(px, base - oh * amp * (.3 + rnd() * .7)); px += ow * (.05 + rnd() * .08); x.lineTo(px, base - oh * amp * rnd() * .3); } x.lineTo(ox + ow, base); x.lineTo(ox + ow, oy + oh); x.lineTo(ox, oy + oh); x.fill(); }
     if (desc.land === 'city') {
@@ -362,6 +384,7 @@ export function scene(desc, w = 768, h = 1024) {
       }
       x.fillStyle = glaze; for (let ty = y0; ty < horizon; ty += ts) for (let tx = 0; tx < w; tx += ts) { x.beginPath(); x.arc(tx + ts / 2, ty + ts / 2, ts * .1, 0, Math.PI * 2); x.fill(); }
     }
+    mark(notes.walls);
     if (props.includes('shelves')) {
       // shelves either side of the window, and on them what the words keep: books, jars, sweets
       const kept = pal ? [pal.accent, pal.accent2, mix(pal.accent, '#000000', .35), mix(pal.accent2, '#ffffff', .3), pal.ground2, mix(pal.ink, pal.accent, .3)] : ['#8a2b2b', '#2b4a6b', '#c9a24a', '#3f6b45', '#6b3f5a', '#e8dcc0'];
@@ -409,6 +432,7 @@ export function scene(desc, w = 768, h = 1024) {
       } else neon(c1, () => sticker(x, desc.marks?.[1] || 'notes', w * .1, h * .26, w * .1, -.2), w * .04);
       neon(c2, () => sticker(x, desc.marks?.[0] || 'star', w * .9, h * .26, w * .1, .2), w * .04);
     }
+    mark(notes.furnish);
     const wx = w * .2, wy = h * .12, ww = w * .6, wh = h * .42; win = [wx, wy, ww, wh]; hz = drawOutdoor(wx, wy, ww, wh);
     x.strokeStyle = mix(wall, '#000', .35); x.lineWidth = w * .022; x.strokeRect(wx, wy, ww, wh); x.lineWidth = w * .012; x.beginPath(); x.moveTo(wx + ww / 2, wy); x.lineTo(wx + ww / 2, wy + wh); x.moveTo(wx, wy + wh / 2); x.lineTo(wx + ww, wy + wh / 2); x.stroke();
     if (props.includes('curtains')) {
@@ -440,6 +464,7 @@ export function scene(desc, w = 768, h = 1024) {
     }
     const fg = x.createLinearGradient(0, horizon, 0, h); fg.addColorStop(0, floor); fg.addColorStop(1, mix(floor, '#000', .35)); x.fillStyle = fg; x.fillRect(0, horizon, w, h - horizon);
     x.fillStyle = mix(floor, '#000', .25); x.fillRect(w * .12, horizon + h * .06, w * .76, h * .025);
+    mark(notes.view);
     if (!desc.things.some(k => k === 'teacup' || k === 'glass')) desc.things.push('teacup');
     if (props.includes('mirrorball')) {
       // a mirror ball, and the light it throws all over the room
@@ -474,6 +499,7 @@ export function scene(desc, w = 768, h = 1024) {
       x.fillStyle = shade; x.beginPath(); x.moveTo(lx - w * .055, ly); x.lineTo(lx + w * .055, ly); x.lineTo(lx + w * .028, ly - h * .032); x.lineTo(lx - w * .028, ly - h * .032); x.fill();
       x.fillStyle = warm; x.beginPath(); x.ellipse(lx, ly, w * .04, h * .006, 0, 0, Math.PI * 2); x.fill();
     }
+    mark(notes.light);
     if (props.includes('plants')) {
       // ivy trailing from the top corners, and two big pots in front
       const leaf = pal && [pal.accent, pal.accent2].find(c => { const [hh, ss] = hsl(c); return hh > 70 && hh < 170 && ss > .2; }) || (L === 'night' ? '#2c5a3c' : '#3f7a4a');
@@ -485,10 +511,13 @@ export function scene(desc, w = 768, h = 1024) {
         for (let k = 0; k < 9; k++) { const a = -Math.PI / 2 + (k - 4) * .32, len = h * (.14 + rnd() * .1); x.strokeStyle = mix(leaf, k % 2 ? '#000000' : '#ffffff', .1); x.lineWidth = w * .03; x.lineCap = 'round'; x.beginPath(); x.moveTo(px, py - h * .08); x.quadraticCurveTo(px + Math.cos(a) * len * .5, py - h * .08 + Math.sin(a) * len * .8, px + Math.cos(a) * len, py - h * .08 + Math.sin(a) * len * .7); x.stroke(); }
         x.lineCap = 'butt'; x.fillStyle = pal ? mix(pal.accent2, '#b5543c', .4) : '#b5543c'; x.beginPath(); x.moveTo(px - pw / 2, py - h * .09); x.lineTo(px + pw / 2, py - h * .09); x.lineTo(px + pw * .38, py); x.lineTo(px - pw * .38, py); x.fill();
       }
+      mark('Plants, and ivy coming down');
     }
-  } else hz = drawOutdoor(0, 0, w, h);
+  } else { hz = drawOutdoor(0, 0, w, h); mark(notes.land); }
 
   for (const thing of desc.things) drawThing(x, thing, w, h, desc.inside ? horizon + h * .06 : hz, rnd, desc);
+  const listed = desc.things.map((/** @type {string} */ k) => THING[k]).filter(Boolean);
+  if (listed.length) mark(cap(listed.join(', ')) + (desc.inside ? (desc.things.includes('glass') ? ' on the bar' : ' on the table') : ''));
   x.save();
   if (win) { x.beginPath(); x.rect(win[0], win[1], win[2], win[3]); x.clip(); } // indoors, the weather stays outside the window
   if (desc.weather === 'rain') { x.strokeStyle = L === 'night' ? 'rgb(220 230 255 / .45)' : 'rgb(60 70 95 / .35)'; x.lineWidth = 1.2; for (let i = 0; i < 220; i++) { const rx = rnd() * w, ry = rnd() * h, rl = 14 + rnd() * 20; x.beginPath(); x.moveTo(rx, ry); x.lineTo(rx - 4, ry + rl); x.stroke(); } }
@@ -496,6 +525,7 @@ export function scene(desc, w = 768, h = 1024) {
   if (desc.weather === 'petals') { for (let i = 0; i < 46; i++) { x.fillStyle = rnd() < .5 ? '#f6b6c8' : '#fbd7e1'; sticker(x, 'petal', rnd() * w, rnd() * h, 10 + rnd() * 10, rnd() * 6); } }
   if (win && desc.weather === 'rain') for (let i = 0; i < 26; i++) { const dx = win[0] + rnd() * win[2], dy = win[1] + rnd() * win[3], dr = 1.5 + rnd() * w * .006; x.fillStyle = 'rgb(255 255 255 / .25)'; x.beginPath(); x.arc(dx, dy, dr, 0, Math.PI * 2); x.fill(); x.fillStyle = 'rgb(255 255 255 / .6)'; x.beginPath(); x.arc(dx - dr * .3, dy - dr * .3, dr * .3, 0, Math.PI * 2); x.fill(); }
   x.restore();
+  mark(notes.weather);
   if (desc.arch) { const m = make(w, h), mc = m.getContext('2d'); mc.fillStyle = desc.ramp ? desc.ramp[4] : desc.pal ? desc.pal.ground : '#f6efe2'; mc.fillRect(0, 0, w, h); mc.globalCompositeOperation = 'destination-out'; mc.beginPath(); mc.moveTo(w * .1, h); mc.lineTo(w * .1, h * .4); mc.arc(w / 2, h * .4, w * .4, Math.PI, 0); mc.lineTo(w * .9, h); mc.fill(); x.drawImage(m, 0, 0); }
   const grainy = x.getImageData(0, 0, w, h), gd = grainy.data;
   for (let i = 0; i < gd.length; i += 4) { const n = (rnd() - .5) * 14; gd[i] += n; gd[i + 1] += n; gd[i + 2] += n; }

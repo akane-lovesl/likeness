@@ -60,7 +60,7 @@ uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speakin
   - Every picture remembers how it was made. Open it to see the chain of asks that led there, and hold it to compare with the one before.
   - A standing note of your taste travels with every request.
 - **Honest waiting.**
-  - A draft is sketched on the device at once, from the same reading of your words that invents rooms: a jazz bar gets its neon sign, a Lisbon kitchen its tiles, lavender its rows.
+  - A draft is sketched on the device at once, from the same reading of your words that invents rooms: a jazz bar gets its neon sign, a Lisbon kitchen its tiles, lavender its rows. In the showcase you watch a new one painted layer by layer, each named as it goes down.
   - Stages are named in the room's voice, and the model's own notes appear as it thinks.
   - Previews come in, and a fuse burns toward an estimate learned on your machine.
   - Stop works mid-turn, and reloading the page picks a turn up again.

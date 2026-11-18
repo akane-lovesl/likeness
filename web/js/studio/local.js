@@ -6,20 +6,25 @@
 import * as P from './painter.js';
 import { LOOKS, lookFromWords } from './looks.js';
 import { sleep, rng, pick } from '../core/dom.js';
+import { heardSpans } from '../room/maker.js';
 
 const PACE = { quick: 2200, fine: 4000, deep: 6800 };
 const cancelled = new Set();
 const seedOf = s => [...String(s)].reduce((a, c) => (Math.imul(a ^ c.charCodeAt(0), 16777619) >>> 0), 2166136261) % 100000;
 
-/** @param {any} spec @param {Record<string, any>} inputs */
-export async function sketch(spec, inputs, i = 0, size = P.MAX) {
+/**
+ * @param {any} spec @param {Record<string, any>} inputs
+ * @param {{ layers?: boolean }} [opts] layers: keep each layer of a new picture as it is painted, with its note
+ */
+export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
+  const layers = !!opts.layers;
   const it = spec.intent, seed = seedOf(spec.id) + i * 97, rnd = rng(seed);
   const canvasOf = async id => { const inp = inputs[id]; return (inp.canvas ||= await P.fromBlob(inp.blob, size)); };
   const subject = it.subject && inputs[it.subject] ? await canvasOf(it.subject) : null;
   const styleRef = it.refs.find(r => r.role === 'style' && inputs[r.id]);
   const variant = l => (i === 0 ? l : { ...l, ramp: l.ramp?.map(c => c), keep: Math.min(1, (l.keep ?? .2) + i * .15), bloom: (l.bloom || 0) + i * .08 });
   const words = spec.text || '';
-  let out, note = '';
+  let out, note = '', kept = null;
   switch (subject ? it.op : 'create') {
     case 'reference': {
       const ref = await canvasOf(styleRef.id), ramp = P.paletteOf(ref, 5);
@@ -51,7 +56,9 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX) {
     }
     case 'create': {
       const look = it.look || lookFromWords(words, LOOKS, { moods: false }), desc = P.sceneFrom(words, look?.ramp || null, seed + i * 13);
-      out = P.scene(desc, 768, 1024); if (look) out = P.grade(out, look, .6, seed); note = look ? 'scenery, ' + look.name : 'scenery from the words';
+      if (layers) desc.layers = kept = [];
+      out = P.scene(desc, 768, 1024); if (look) { out = P.grade(out, look, .6, seed); kept?.push({ label: 'All of it in ' + look.name, canvas: P.copy(out, out.width / 2, out.height / 2) }); }
+      note = look ? 'scenery, ' + look.name : 'scenery from the words';
       break;
     }
     default: {
@@ -59,7 +66,13 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX) {
       out = P.grade(subject, variant(look), look.strength ?? .9, seed); note = look.name;
     }
   }
-  return { canvas: out, note };
+  return { canvas: out, note, layers: kept };
+}
+
+/** The words the device knew, as a line for the card: Heard “rainy” · “Tokyo” · “jazz bar”. */
+function heard(text) {
+  const words = heardSpans(text).map(s => text.slice(s.at, s.end)).slice(0, 6);
+  return words.length ? 'Heard ' + words.map(w => '“' + w + '”').join(' · ') : '';
 }
 
 const SAY = {
@@ -81,19 +94,32 @@ export const local = {
   async *turn(spec, inputs) {
     const t0 = performance.now(), n = spec.n || 1, total = PACE[spec.pace || 'fine'] * (1 + (n - 1) * .3);
     const gate = async ms => { await sleep(ms); if (cancelled.has(spec.id)) throw Object.assign(new Error('Stopped.'), { cancelled: true }); };
+    // something new is painted in layers you can watch, each with its note; a picture you have develops as before
+    const paints = !(spec.intent.subject && inputs[spec.intent.subject]) || spec.intent.op === 'create';
     yield { type: 'accepted', eta: total };
-    yield { type: 'stage', stage: 'read' }; await gate(total * .14);
+    yield { type: 'stage', stage: 'read' };
+    const words = paints ? heard(spec.text || '') : ''; if (words) yield { type: 'note', text: words };
+    await gate(total * (paints ? .1 : .14));
     yield { type: 'plan', plan: { op: spec.intent.op, note: 'read on this device' } };
-    yield { type: 'stage', stage: 'plan' }; await gate(total * .14);
+    yield { type: 'stage', stage: 'plan' }; await gate(total * (paints ? .04 : .14));
     yield { type: 'stage', stage: 'draw' };
     const made = [];
-    for (let i = 0; i < n; i++) { const { canvas, note } = await sketch(spec, inputs, i); made.push({ canvas, note }); }
-    const steps = made.map(m => P.partials(m.canvas));
-    for (let k = 0; k < 3; k++) {
-      await gate(total * .17);
-      for (let i = 0; i < n; i++) yield { type: 'partial', index: i, canvas: steps[i][k] };
+    for (let i = 0; i < n; i++) made.push(await sketch(spec, inputs, i, P.MAX, { layers: paints }));
+    const layers = made.map(m => m.layers || []), most = Math.max(0, ...layers.map(l => l.length));
+    if (most) {
+      for (let k = 0; k < most; k++) {
+        if (layers[0][k]) yield { type: 'note', text: layers[0][k].label, quick: true };
+        for (let i = 0; i < n; i++) { const l = layers[i][Math.min(k, layers[i].length - 1)]; if (l) yield { type: 'partial', index: i, canvas: l.canvas, layer: true }; }
+        await gate(total * .7 / most);
+      }
+    } else {
+      const steps = made.map(m => P.partials(m.canvas));
+      for (let k = 0; k < 3; k++) {
+        await gate(total * .17);
+        for (let i = 0; i < n; i++) yield { type: 'partial', index: i, canvas: steps[i][k] };
+      }
     }
-    yield { type: 'stage', stage: 'finish' }; await gate(total * .08);
+    yield { type: 'stage', stage: 'finish' }; await gate(total * (most ? .04 : .08));
     for (let i = 0; i < n; i++) {
       const c = P.stamp(P.copy(made[i].canvas)), blob = await P.toBlob(c);
       yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + made[i].note } };

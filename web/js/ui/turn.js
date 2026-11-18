@@ -105,8 +105,16 @@ function arrived() {
   const was = document.title; document.title = '● ' + was.replace(/^● /, '');
   document.addEventListener('visibilitychange', () => { document.title = was.replace(/^● /, ''); }, { once: true });
 }
-function note(card, text) {
-  card?.notes?.replaceChildren(h('span', null, text));
+function note(card, text, quick = false) {
+  card?.notes?.replaceChildren(h(quick ? 'span.is-quick' : 'span', null, text));
+}
+/** A layer of a sketch being painted: it sweeps in over the one before, which then goes. */
+async function layOn(f, canvas) {
+  const img = h('img.print__layer', { alt: '' }); await showOn(img, canvas);
+  f.label.before(img); f.label.textContent = studio.live ? 'Painting' : 'Sketching';
+  const older = [...f.frame.querySelectorAll('.print__layer')].filter(el => el !== img);
+  img.addEventListener('animationend', () => older.forEach(el => el.remove()), { once: true });
+  if (reduced) older.forEach(el => el.remove());
 }
 async function showOn(img, src) {
   const url = src instanceof Blob ? URL.createObjectURL(src) : src.toDataURL('image/jpeg', .7);
@@ -169,10 +177,11 @@ async function develop(item, events, { learn }) {
       switch (ev.type) {
         case 'accepted': await patchItem(item, { job: ev.job || item.job || null, eta: ev.eta || item.eta }); break;
         case 'stage': setStage(card, ev.stage); break;
-        case 'note': note(card, ev.text); break;
+        case 'note': note(card, ev.text, ev.quick); break;
         case 'plan': if (ev.plan?.summary) note(card, ev.plan.summary); if (ev.plan?.prompt && ev.plan.prompt !== item.text) typeOut(card.prompt, ev.plan.prompt); break;
         case 'partial': {
           const f = card.frames[ev.index]; if (!f || f.done) break;
+          if (ev.layer) { await layOn(f, ev.canvas); break; }
           await showOn(f.partial, ev.canvas || ev.blob); f.partial.classList.add('is-in'); f.label.textContent = 'Preview'; break;
         }
         case 'result': {

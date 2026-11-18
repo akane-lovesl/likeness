@@ -105,6 +105,8 @@
 .job__stop { height: 7cqw; padding: 0 2.8cqw; border-radius: 99cqw; border: 1px solid var(--rule); font: 500 calc(2.3cqw * var(--m-scale)) / 1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--soft); }
 .job__notes { padding-left: 10.2cqw; font: 400 calc(2.3cqw * var(--m-scale)) / 1.5 var(--font-mono); color: var(--soft); min-height: 3.4cqw; }
 .job__notes span { display: block; animation: rise var(--t-mid) var(--ease) both; }
+.job__notes span.is-quick { animation: note-in calc(var(--tempo) * .14s) var(--ease) both; }
+@keyframes note-in { from { opacity: .2; transform: translateX(-1cqw); } }
 .job--failed .job__stage { color: var(--accent); font-style: normal; }
 .job__retry { display: flex; gap: 2cqw; padding-left: 10.2cqw; }
 
@@ -117,6 +119,9 @@
 .print__draft { opacity: .55; filter: blur(2.4cqw) saturate(.8); }
 .print__partial { opacity: 0; filter: blur(1cqw); }
 .print__partial.is-in { opacity: 1; }
+/* a layer of a sketch being painted: swept in over the last, left to right, with a soft edge */
+.print__layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; -webkit-mask-image: linear-gradient(100deg, #000 40%, transparent 60%); mask-image: linear-gradient(100deg, #000 40%, transparent 60%); -webkit-mask-size: 300% 100%; mask-size: 300% 100%; animation: layer-sweep calc(var(--tempo) * .75s) var(--ease) both; }
+@keyframes layer-sweep { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
 .print__label { position: absolute; left: 50%; bottom: 2cqw; z-index: 3; transform: translateX(-50%); padding: .9cqw 1.8cqw; border-radius: 99cqw; background: rgb(10 8 6 / .42); color: #fff; font: 500 calc(1.8cqw * var(--m-scale)) / 1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
 .fuse { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; overflow: visible; }
 .fuse rect { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; transition: stroke-dashoffset .6s linear; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 3px var(--accent)); }

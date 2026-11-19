@@ -11,8 +11,13 @@ import { on } from '../core/bus.js';
 import { progressAt } from '../core/estimate.js';
 import { studio } from '../studio/studio.js';
 import * as P from '../studio/painter.js';
-import { faceOf, reframed, knowHair, contoursOf, shapesOf, maskOf, partAt, hairOf } from '../studio/face.js';
+import { faceOf, reframed, knowHair, contoursOf, shapesOf, maskOf, partAt, hairOf, yawOf } from '../studio/face.js';
 /** @typedef {import('../studio/face.js').Face} Face */
+/**
+ * The frame turning through a ring of angles: each picture with its face where it is known; two turners (m) where
+ * neighbours both have one, so the head turns between them rather than one picture fading into the next.
+ * @typedef {{ ring: { src: string, face?: Face | null }[], p: number, at: number, a: HTMLImageElement, b: HTMLImageElement, imgs: (HTMLImageElement | null)[], m: null | { cs: HTMLCanvasElement[], ts: any[], on: number[] } }} Turning
+ */
 import { addPrint, addItem, setKept, printById, urlOf, settings } from '../state.js';
 import { runTurn } from '../ui/turn.js';
 import { PARTS, partById, styleOf, wordsFor, titleOf, plateSVG, partsIn, tintOf } from './vocab.js';
@@ -24,6 +29,8 @@ import { coat } from './tint.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const INK = '#fff4e0';
+/** How far a turner turns (radians) for a head to turn from one yaw (see yawOf) to another: a turn of .32 takes the nose about half-way to the edge of the face. */
+const TURN_PER_YAW = .65;
 /** What else could be said about each part, shown in the empty line. */
 const HINTS = /** @type {Record<string, string>} */ ({ bangs: 'a little longer, parted off-centre', brows: 'a touch fuller at the front', colour: 'with soft lowlights', cut: 'keep the length at the back', lashes: 'subtle, for daytime', lips: 'a little sheer', beard: 'neat along the cheeks' });
 
@@ -75,7 +82,7 @@ async function washOf(pic, f, picks) {
 
 /**
  * Opens the mirror on a photo (a print) or on one of the studio's example people.
- * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null, hair?: string | null, turns?: string[] }} o
+ * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null, hair?: string | null, turns?: import('./live.js').Side[] }} o
  */
 export function openMirror(o) {
   current?.close(true);
@@ -121,11 +128,18 @@ export function openMirror(o) {
   const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => { paintGo(); listen(); }, onfocus: () => hint(), onblur: () => hint() }));
   const goBtn = h('button.mr-ask__go', { type: 'submit' }, h('span', { html: icon('sparkle') }), h('span.mr-ask__label', null, 'Try on'));
   const ask = h('form.mr-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); tryOn(); } }, h('div.mr-ask__field', null, tokens, input), goBtn);
-  const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => close() });
-  const mine = person ? h('button.mr-bar__mine', { type: 'button', onclick: () => onMe() }, h('span', { html: icon('camera') }), 'On me') : h('span');
+  const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => (showingNow ? showing(false) : close()) });
+  // on a drawn face, the look is tried on you next; on you, it is shown to someone (the one who will cut it)
+  const mine = person ? h('button.mr-bar__mine', { type: 'button', onclick: () => onMe() }, h('span', { html: icon('camera') }), 'On me')
+    : h('button.mr-bar__mine.mr-bar__show', { type: 'button', hidden: true, 'aria-label': 'Show it: the look, large, to show someone', onclick: () => showing(true) }, h('span', { html: icon('expand') }), 'Show');
+  const showWords = h('ol.mr-show__words');
+  const showEl = h('div.mr-show', { hidden: true }, showWords,
+    h('div.mr-show__row', null,
+      h('button.mr-show__save', { type: 'button', onclick: () => saveCard() }, h('span', { html: icon('page') }), 'Save the card'),
+      h('button.mr-show__done', { type: 'button', onclick: () => showing(false) }, 'Done')));
   const bar = h('header.mr-bar', null, back, h('span.mr-bar__edition', { 'data-mode': studio.mode }, studio.label), mine);
   const stageEl = h('div.mr-stage', null, frame, takesRow);
-  const el = h('section.mr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mirror', 'data-mode': studio.mode }, glow, bar, stageEl, h('div.mr-dock', null, partsRow, stylesRow, ask));
+  const el = h('section.mr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mirror', 'data-mode': studio.mode }, glow, bar, stageEl, h('div.mr-dock', null, partsRow, stylesRow, ask), showEl);
   stage().append(el);
   const from = o.from?.getBoundingClientRect() || null;
 
@@ -287,6 +301,7 @@ export function openMirror(o) {
     stylesRow.querySelectorAll('.mr-style').forEach(b => b.setAttribute('aria-selected', String(picks.some(q => q.part === part && q.style.id === /** @type {HTMLElement} */ (b).dataset.style))));
     chips.forEach(c => c.classList.toggle('is-picked', picks.some(q => q.part === c.dataset.part)));
     paintGo(); if (sketch) drawSketch(); paintWash(); paintHandles();
+    if (!person) mine.hidden = !face || !picks.length;
   }
   function paintGo() { goBtn.toggleAttribute('disabled', !picks.length && !input.value.trim()); }
 
@@ -513,7 +528,7 @@ export function openMirror(o) {
 
   // on the frame: a drag turns the face (through its angles when the studio has made them, on the device when not),
   // a tap picks the part under it, and holding shows the face as it was
-  let hold = 0, comparing = false, turning = /** @type {null | { ring: string[], p: number, a: HTMLImageElement, b: HTMLImageElement, at: number }} */ (null), p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
+  let hold = 0, comparing = false, turning = /** @type {null | Turning} */ (null), showingNow = false, sway = 0, p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
   let leaning = false, ready = false, pitchNow = 0, stampWas = /** @type {[string, string] | null} */ (null);
   drag(frame, {
     start: e => {
@@ -706,45 +721,156 @@ export function openMirror(o) {
   }
   /**
    * The frame turning through a ring of angles, from the one at `at` (the picture on show): it leans one way to show it
-   * can, and comes back; or, on a tour, it goes all the way round and back, and lets go. @param {string[]} ring
+   * can, and comes back; or, on a tour, it goes all the way round and back, and lets go; or, shown, it goes round and
+   * back again, slowly, pausing at each, for as long as it is shown.
+   * @param {(string | import('./live.js').Side)[]} ring
    */
-  function startTurning(ring, at = 2, tour = false) {
+  function startTurning(ring, at = 2, /** @type {boolean | 'loop'} */ tour = false) {
     const a = h('img.mr-angle', { alt: '', draggable: false }), b = h('img.mr-angle', { alt: '', draggable: false });
-    frame.append(a, b); turning = { ring, p: at, a, b, at };
+    frame.append(a, b); turning = { ring: ring.map(r => (typeof r === 'string' ? { src: r } : { ...r })), p: at, a, b, at, imgs: [], m: null };
+    meet(turning);
     el.classList.add('is-turning'); dial.hidden = false; turnBtn.setAttribute('aria-pressed', 'true');
     turnTo(at);
     if (reduced) return;
-    const go = (/** @type {number[]} */ stops, /** @type {() => void} */ then) => { const [to, ...rest] = stops; if (to == null) { then(); return; } anim = spring({ from: turning?.p ?? at, to, stiffness: 46, damping: 11, onUpdate: v => turnTo(v), onRest: () => go(rest, then) }); };
-    if (tour) go([0, ring.length - 1, at], () => stopTurning());
-    else go([at - 1, at], () => {});
+    const s = turning, n = ring.length - 1;
+    /**
+     * Through the stops on the clock, not frame by frame: each leg eased in and out over its time, then held a moment.
+     * On a device that draws slowly, frames are dropped and the turn still takes as long as it should.
+     * @param {[number, number, number][]} legs [to, ms, held ms] @param {() => void} then
+     */
+    const glide = (legs, then) => {
+      let k = 0, from = s.p, t0 = performance.now(), raf = 0;
+      const step = (/** @type {number} */ now) => {
+        if (turning !== s) return;
+        const [to, ms, held] = legs[k], u = Math.min(1, (now - t0) / ms), e = u * u * u * (u * (u * 6 - 15) + 10);
+        turnTo(from + (to - from) * e);
+        if (now - t0 >= ms + held) { k++; if (k >= legs.length) { then(); return; } from = to; t0 = now; }
+        raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+      anim = { stop: () => cancelAnimationFrame(raf) };
+    };
+    const round = () => glide([[0, 2300, 900], [at, 2300, 900], [n, 2300, 900], [at, 2300, 900]], round);
+    if (tour === 'loop') round();
+    else if (tour) glide([[0, 1300, 260], [n, 2100, 260], [at, 1300, 0]], () => stopTurning());
+    else anim = spring({ from: at, to: at - 1, stiffness: 46, damping: 11, onUpdate: v => turnTo(v), onRest: () => { anim = spring({ from: s.p, to: at, stiffness: 46, damping: 11, onUpdate: v => turnTo(v) }); } });
   }
   function stopTurning() {
     anim?.stop(); if (!turning) return;
-    turning.a.remove(); turning.b.remove(); turning = null; frame.style.transform = '';
+    turning.a.remove(); turning.b.remove();
+    for (const c of turning.m?.cs || []) { c.remove(); /** @type {WebGLRenderingContext | null} */ (c.getContext('webgl'))?.getExtension('WEBGL_lose_context')?.loseContext(); }
+    turning = null; frame.style.transform = '';
     el.classList.remove('is-turning'); dial.hidden = true; turnBtn.setAttribute('aria-pressed', 'false');
   }
-  /** The frame at a point between the angles: the two nearest cross-fade, and the frame leans as it turns. @param {number} v */
+  /**
+   * Between two angles that both have a face, one head turning: each is turned on the device towards the other, by
+   * the share of the way it has come, so half-way they stand the same way and one gives way to the other with nothing
+   * doubled. Their faces are read here where they did not come with them (a profile seldom is: there, a dissolve).
+   * @param {Turning} s
+   */
+  async function meet(s) {
+    const imgs = await Promise.all(s.ring.map(r => new Promise(done => { const i = new Image(); i.onload = () => done(i); i.onerror = () => done(null); i.src = r.src; })));
+    if (turning !== s) return;
+    s.imgs = /** @type {(HTMLImageElement | null)[]} */ (imgs);
+    for (const [k, r] of s.ring.entries()) {
+      const img = s.imgs[k];
+      if (r.face !== undefined || !img) continue;
+      const c = P.make(img.naturalWidth, img.naturalHeight); ctx(c).drawImage(img, 0, 0);
+      r.face = await faceOf(c).catch(() => null); if (turning !== s) return;
+    }
+    const first = s.ring.find(r => r.face)?.face; if (!first || reduced) return;
+    const cs = [0, 1].map(() => /** @type {HTMLCanvasElement} */ (h('canvas.mr-angle.mr-meet', { 'aria-hidden': 'true' })));
+    const ts = cs.map(c => { try { return turner(c, first); } catch { return null; } });
+    if (ts.some(t => !t)) return;
+    frame.append(...cs);
+    s.m = { cs, ts: /** @type {any[]} */ (ts), on: [-1, -1] };
+    turnTo(s.p);
+  }
+  /** The frame at a point between the angles: one head turning where it can, else the two nearest cross-fade and the frame leans. @param {number} v */
   function turnTo(v) {
     if (!turning) return;
     // past either end (a spring overshoots), the end picture stays
-    turning.p = v; const n = turning.ring.length - 1, w = Math.max(0, Math.min(n, v)), i = Math.min(n, Math.floor(w)), u = w - i, A = turning.ring[i], B = turning.ring[Math.min(n, i + 1)];
-    if (turning.a.getAttribute('src') !== A) turning.a.src = A; if (turning.b.getAttribute('src') !== B) turning.b.src = B;
-    const d = Math.max(0, Math.min(1, (u - .3) / .4));
-    turning.b.style.opacity = (d * d * (3 - 2 * d)).toFixed(3);
-    const lean = Math.sin(u * Math.PI) * (v < turning.at ? 7 : -7);
-    frame.style.transform = 'perspective(160cqw) rotateY(' + lean.toFixed(2) + 'deg)';
+    turning.p = v; const s = turning, n = s.ring.length - 1, w = Math.max(0, Math.min(n, v)), i = Math.max(0, Math.min(n - 1, Math.floor(w))), u = Math.min(1, w - i), A = s.ring[i], B = s.ring[Math.min(n, i + 1)];
+    if (s.a.getAttribute('src') !== A.src) s.a.src = A.src; if (s.b.getAttribute('src') !== B.src) s.b.src = B.src;
+    const ia = s.imgs[i], ib = s.imgs[i + 1], m = s.m;
+    if (m && A.face && B.face && ia && ib) {
+      // ring[k] is always on canvas k % 2, so going on to the next pair only one of them takes a new picture
+      for (const [k, r, img] of /** @type {[number, any, HTMLImageElement][]} */ ([[i, A, ia], [i + 1, B, ib]])) {
+        const j = k % 2; if (m.on[j] === k) continue;
+        // drawn at the size it is seen (it covers the frame as a picture would), not the picture's own: far less to draw
+        const c = m.cs[j], z = Math.min(1, Math.max(frame.clientWidth / r.face.w, frame.clientHeight / r.face.h) * dpr()), cw = Math.round(r.face.w * z), ch = Math.round(r.face.h * z);
+        if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+        m.ts[j].load(r.face); m.ts[j].picture(img); m.on[j] = k;
+      }
+      const gap = (yawOf(B.face) - yawOf(A.face)) * TURN_PER_YAW, ca = m.cs[i % 2], cb = m.cs[(i + 1) % 2];
+      // a turner's yaw takes the nose the other way across the picture from its own yaw: hence the minus
+      m.ts[i % 2].turn(-gap * u); m.ts[(i + 1) % 2].turn(gap * (1 - u));
+      const e = Math.max(0, Math.min(1, (u - .2) / .6));
+      ca.style.zIndex = '1'; cb.style.zIndex = '2'; ca.style.opacity = '1'; cb.style.opacity = (e * e * (3 - 2 * e)).toFixed(3);
+      s.a.style.opacity = s.b.style.opacity = '0'; frame.style.transform = '';
+    } else {
+      if (m) for (const c of m.cs) c.style.opacity = '0';
+      const d = Math.max(0, Math.min(1, (u - .3) / .4));
+      s.a.style.opacity = '1'; s.b.style.opacity = (d * d * (3 - 2 * d)).toFixed(3);
+      const lean = Math.sin(u * Math.PI) * (v < s.at ? 7 : -7);
+      frame.style.transform = 'perspective(160cqw) rotateY(' + lean.toFixed(2) + 'deg)';
+    }
     dial.style.setProperty('--a', ((v - turning.at) * 30).toFixed(1) + 'deg');
+  }
+
+  /**
+   * Show it: the look, to show someone (the one who will cut it). The mirror's tools fall away and the picture comes
+   * forward, alive: turning slowly through every side of you where they were caught, else swaying a little on the
+   * device (and saying so); under it, the look in its words. The card keeps all of it as one picture.
+   * @param {boolean} on
+   */
+  async function showing(on) {
+    if (on === showingNow || (on && (!face || !picks.length))) return;
+    showingNow = on;
+    if (on && part) unchoose();
+    if (on) showWords.replaceChildren(...picks.map((q, i) => h('li.mr-show__word', { style: { '--d': (140 + i * 90) + 'ms' } },
+      h('span.mr-show__part', null, partById(q.part)?.name || q.part), h('em.mr-show__style', null, q.style.name), q.said ? h('span.mr-show__said', null, q.said) : null)));
+    const was = frame.getBoundingClientRect();
+    el.classList.toggle('is-showing', on); showEl.hidden = !on;
+    fit();
+    const now = frame.getBoundingClientRect();
+    if (!reduced && was.width && now.width) frame.animate([{ translate: (was.left + was.width / 2 - now.left - now.width / 2).toFixed(1) + 'px ' + (was.top + was.height / 2 - now.top - now.height / 2).toFixed(1) + 'px', scale: (was.width / now.width).toFixed(4) }, { translate: '0 0', scale: '1' }], { duration: 640, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    cancelAnimationFrame(sway); stopTurning();
+    if (!on) { lean(0, 0); return; }
+    if (reduced) return;
+    if (o.turns?.length === 3 && shown < 0) { startTurning(o.turns, 1, 'loop'); return; }
+    if (turn && (await mount()) && showingNow) {
+      const t0 = performance.now();
+      const step = (/** @type {number} */ t) => { if (!showingNow || !el.isConnected) return; const s = (t - t0) / 1000; lean(Math.sin(s * .9) * .13 * Math.min(1, s / 1.4), Math.sin(s * .55) * .02); sway = requestAnimationFrame(step); };
+      sway = requestAnimationFrame(step);
+    }
+  }
+  /** The card: the look on you (and every side of you, where caught), in its words, as one picture to keep or to send. */
+  async function saveCard() {
+    const s = await surface(); if (!s) return;
+    const both = o.turns?.length === 3 && shown < 0 ? [o.turns[0], o.turns[2]] : [];
+    const imgs = await Promise.all(both.map(t => new Promise(done => { const i = new Image(); i.onload = () => done(i); i.onerror = () => done(null); i.src = t.src; })));
+    await Promise.all(['italic 400 60px Fraunces', '400 30px Fraunces', '500 20px "IBM Plex Mono"'].map(f => document.fonts.load(f).catch(() => null)));
+    const stamp = (stampWas?.[0] || stampEl.textContent || '') + (el.classList.contains('has-sketch') ? ' + sketch' : '');
+    const sides = both.map((t, i) => ({ pic: /** @type {HTMLImageElement | null} */ (imgs[i]), face: t.face || null })).filter(x => x.pic);
+    const c = card({ front: { pic: s.canvas, face: s.face }, sides: /** @type {any} */ (sides), picks, stamp, date: new Date() });
+    const blob = await P.toBlob(c, 'image/png'), name = 'likeness-' + new Date().toISOString().slice(0, 10) + '.png';
+    const file = new File([blob], name, { type: 'image/png' });
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e instanceof DOMException && e.name === 'AbortError') return; } }
+    const a = /** @type {HTMLAnchorElement} */ (h('a', { href: URL.createObjectURL(blob), download: name })); document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+    toast('The card is saved');
   }
 
   /** The look on your own face: the live mirror where there is a camera, else a photo. */
   async function onMe() {
-    const got = /** @type {{ print: any, picks: Pick[], from?: Element, face?: any, turns?: string[] } | null} */ ((await canLive()) ? await openLive({ picks, fallback: bringPhoto, from: frame }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
+    const got = /** @type {{ print: any, picks: Pick[], from?: Element, face?: any, turns?: import('./live.js').Side[] } | null} */ ((await canLive()) ? await openLive({ picks, fallback: bringPhoto, from: frame }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
     if (got) openMirror({ print: got.print, picks: got.picks, words: input.value, from: got.from || null, face: got.face, turns: got.turns });
   }
 
   function close(now = false) {
     if (current !== self) return; current = null;
-    stops.forEach(f => f()); stopTurning();
+    stops.forEach(f => f()); stopTurning(); cancelAnimationFrame(sway);
     if (now || reduced) { el.remove(); return; }
     el.classList.remove('is-in'); el.classList.add('is-out'); setTimeout(() => el.remove(), 420);
   }
@@ -754,7 +880,7 @@ export function openMirror(o) {
   new ResizeObserver(() => fit()).observe(stageEl);
   new ResizeObserver(() => fit(true)).observe(takesRow);
   requestAnimationFrame(() => { el.classList.add('is-in'); fit(); if (from) flip(frame, from, { duration: 620 }); });
-  const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Escape') close(); };
+  const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Escape') { if (showingNow) showing(false); else close(); } };
   document.addEventListener('keydown', onKey); stops.push(() => document.removeEventListener('keydown', onKey));
 
   (async () => {
@@ -782,12 +908,71 @@ export function openMirror(o) {
     else if (picks[0] && !face) choose(picks[0].part);
     // then, unless they came asking for something already, the face looks this way and that as its notes come in
     // every side of you, caught by the live mirror: shown first, the frame turning through them; else the face says hello
-    if (o.go) tryOn(); else if (o.turns?.length === 3 && shown < 0 && !reduced) setTimeout(() => { if (el.isConnected && !turning) startTurning(/** @type {string[]} */ (o.turns), 1, true); }, 500); else if (face && shown < 0) hello();
+    if (o.go) tryOn(); else if (o.turns?.length === 3 && shown < 0 && !reduced) setTimeout(() => { if (el.isConnected && !turning) startTurning(/** @type {import('./live.js').Side[]} */ (o.turns), 1, true); }, 500); else if (face && shown < 0) hello();
   })();
 
   const self = { close };
   current = self;
   return self;
+}
+
+/**
+ * The card a look is kept on, 1080 by 1350: the look on you, large, with every side of you beside it where they were
+ * caught; under it, each part in its words; at the foot, what the pictures are, honestly, and the day.
+ * @param {{ front: { pic: HTMLCanvasElement, face: Face | null }, sides: { pic: HTMLImageElement, face: Face | null }[], picks: Pick[], stamp: string, date: Date }} o
+ */
+function card(o) {
+  const W = 1080, H = 1350, c = P.make(W, H), x = /** @type {CanvasRenderingContext2D & { letterSpacing: string }} */ (c.getContext('2d'));
+  x.fillStyle = '#0e0b09'; x.fillRect(0, 0, W, H);
+  const g = x.createRadialGradient(W / 2, -80, 0, W / 2, -80, W); g.addColorStop(0, 'rgba(242,197,138,.17)'); g.addColorStop(1, 'rgba(242,197,138,0)'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  const mono = (/** @type {number} */ px, /** @type {string} */ colour) => { x.font = '500 ' + px + 'px "IBM Plex Mono", monospace'; x.fillStyle = colour; x.letterSpacing = (px * .16).toFixed(1) + 'px'; };
+  const serif = (/** @type {string} */ style, /** @type {number} */ px, /** @type {string} */ colour) => { x.font = style + ' 400 ' + px + 'px Fraunces, Georgia, serif'; x.fillStyle = colour; x.letterSpacing = '0px'; };
+  serif('italic', 46, '#f6efe6'); x.fillText('Likeness', 72, 98);
+  mono(19, 'rgba(246,239,230,.58)'); x.textAlign = 'right'; x.fillText(o.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase(), W - 72, 94); x.textAlign = 'left';
+  // the pictures, each cut round the face: the head and the shoulders
+  const top = 136, ph = 870;
+  if (o.sides.length === 2) {
+    panel(x, o.front.pic, o.front.face, 72, top, 600, ph);
+    o.sides.forEach((s, i) => panel(x, s.pic, s.face, 696, top + i * (ph + 24) / 2, 312, (ph - 24) / 2));
+  } else panel(x, o.front.pic, o.front.face, (W - 640) / 2, top, 640, ph);
+  // the words, a column for each part
+  const ws = o.picks.slice(0, 6), cols = Math.min(3, ws.length), rows = Math.ceil(ws.length / cols), k = rows > 1 ? .78 : 1, gap = 40, cw = (W - 144 - (cols - 1) * gap) / cols;
+  ws.forEach((q, i) => {
+    const cx = 72 + (i % cols) * (cw + gap), cy = top + ph + 76 + Math.floor(i / cols) * 128;
+    mono(Math.round(19 * k), '#f2c58a'); x.fillText((partById(q.part)?.name || q.part).toUpperCase(), cx, cy);
+    let size = Math.round(54 * k); serif('italic', size, '#f6efe6'); while (size > 26 && x.measureText(q.style.name).width > cw) { size -= 2; serif('italic', size, '#f6efe6'); }
+    x.fillText(q.style.name, cx, cy + Math.round(58 * k));
+    if (q.said) {
+      serif('normal', Math.round(27 * k), 'rgba(246,239,230,.66)');
+      const lines = wrap(x, q.said, cw).slice(0, rows > 1 ? 1 : 2);
+      lines.forEach((l, j) => x.fillText(l, cx, cy + Math.round((98 + j * 34) * k)));
+    }
+  });
+  // what the pictures are: never a sketch passed off as anything else
+  mono(16, 'rgba(246,239,230,.42)'); x.fillText(o.stamp.toUpperCase() + (o.sides.length ? '  ·  SIDES: LIVE SKETCH ON THIS DEVICE' : ''), 72, H - 56);
+  return c;
+}
+/**
+ * A picture laid in a rounded panel, cut round its face (the head and the shoulders, the eyes a little above the middle),
+ * or round its middle where no face is known.
+ * @param {CanvasRenderingContext2D} x @param {HTMLCanvasElement | HTMLImageElement} pic @param {Face | null} f @param {number} px @param {number} py @param {number} pw @param {number} ph
+ */
+function panel(x, pic, f, px, py, pw, ph) {
+  const sw = 'naturalWidth' in pic ? pic.naturalWidth : pic.width, sh = 'naturalHeight' in pic ? pic.naturalHeight : pic.height, ar = pw / ph;
+  let ch = sh, cw = ch * ar; if (cw > sw) { cw = sw; ch = cw / ar; }
+  const kx = f ? sw / f.w : 1, ky = f ? sh / f.h : 1;
+  if (f) { const want = f.box[3] * ky * 2.4; if (want < ch) { ch = want; cw = ch * ar; } if (cw > sw) { cw = sw; ch = cw / ar; } }
+  const mx = f ? (f.box[0] + f.box[2] / 2) * kx : sw / 2, my = f ? (f.box[1] + f.box[3] * .5) * ky : sh / 2;
+  const sx = Math.max(0, Math.min(sw - cw, mx - cw / 2)), sy = Math.max(0, Math.min(sh - ch, my - ch * .46));
+  x.save(); x.beginPath(); x.roundRect(px, py, pw, ph, 26); x.clip(); x.drawImage(pic, sx, sy, cw, ch, px, py, pw, ph); x.restore();
+  x.save(); x.strokeStyle = 'rgba(246,239,230,.14)'; x.lineWidth = 2; x.beginPath(); x.roundRect(px + 1, py + 1, pw - 2, ph - 2, 25); x.stroke(); x.restore();
+}
+/** Words in lines no wider than w, in the context's font. @param {CanvasRenderingContext2D} x @param {string} text @param {number} w */
+function wrap(x, text, w) {
+  const out = []; let line = '';
+  for (const word of text.split(/\s+/)) { const next = line ? line + ' ' + word : word; if (line && x.measureText(next).width > w) { out.push(line); line = word; } else line = next; }
+  if (line) out.push(line);
+  return out;
 }
 
 /** The picks an example's look stands for. @param {Look} look @returns {Pick[]} */

@@ -30,6 +30,14 @@ test('the camera is a mirror: the look sketched live on the face, and the shutte
   // the face read in the camera comes with the photo, so the mirror has it at once: no second reading
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 6_000 });
   await expect(mirror).not.toHaveClass(/is-close/);
+  // the look on you, shown: the picture comes forward and sways a little on the device (and says so), the look in words
+  await mirror.locator('.mr-bar__show').click();
+  await expect(mirror).toHaveClass(/is-showing/);
+  await expect(mirror.locator('.mr-show__style')).toHaveText(['High arch', 'Red']);
+  await expect(mirror.locator('.mr-stamp')).toHaveText(/Turned on this device/);
+  await page.keyboard.press('Escape');
+  await expect(mirror).not.toHaveClass(/is-showing/);
+  await expect(mirror).toBeVisible();
 });
 
 test('words typed first: the camera opens straight away with the look as it was said, and the shutter keeps it', async ({ page }) => {

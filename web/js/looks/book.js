@@ -224,7 +224,7 @@ function lookbook() {
   }
   /** Your face, for the look: the live mirror where there is a camera (a photo can be chosen from it), else a photo. */
   async function pickPhoto(/** @type {HTMLElement} */ from = photoBtn) {
-    const got = /** @type {{ print: any, picks: any[], from?: Element, face?: any, turns?: string[] } | null} */ ((await canLive()) ? await openLive({ picks: livePicks(), keep: picks, fallback: bringPhoto, from }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
+    const got = /** @type {{ print: any, picks: any[], from?: Element, face?: any, turns?: import('./live.js').Side[] } | null} */ ((await canLive()) ? await openLive({ picks: livePicks(), keep: picks, fallback: bringPhoto, from }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
     if (!got) return;
     photo = got.print; photoBtn.replaceChildren(h('img', { src: URL.createObjectURL(photo.blob), alt: '' })); photoBtn.classList.add('has-photo');
     open({ print: photo, picks: got.picks, words: input.value, from: got.from || from, face: got.face, turns: got.turns });

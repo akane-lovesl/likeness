@@ -104,6 +104,13 @@ export function reframed(f, w, h, mirror = false) {
 /** A picture's hair, known already (a drawn sitter's, read when it was made ready): no segmenter is needed for it. @param {HTMLCanvasElement} c @param {HTMLCanvasElement} mask */
 export function knowHair(c, mask) { hairRead.set(c, Promise.resolve(mask)); }
 
+/**
+ * How far a face is turned, as the picture shows it: the nose from the middle of the cheeks, from -1 (to the left of
+ * the picture) to 1 (to its right). A head turned as far as a three-quarter view is at about a half.
+ * @param {{ pts: Pt[] }} f
+ */
+export const yawOf = (f) => { const L = f.pts[234], R = f.pts[454], N = f.pts[1]; return (N.x - (L.x + R.x) / 2) / (Math.abs(R.x - L.x) / 2 || 1); };
+
 /** A face read before (a drawn sitter's, shipped with it): its points as [x, y, z]. @param {number[][]} pts @param {number} w @param {number} h @returns {Face} */
 export const faceFrom = (pts, w, h) => boxed(pts.map(([x, y, z]) => ({ x, y, z: z || 0 })), w, h);
 
@@ -229,11 +236,35 @@ export function shapesOf(f) {
 }
 
 /**
- * Where the hair's new colour never goes, though the hair segmenter counts it as hair: a beard, with a little room round
- * it (a beard has depth, and it reaches up the sideburns as the head turns), and the brows.
- * @param {Face} f
+ * Clears from a hair mask what the hair segmenter counts as hair but a new colour never goes on: the brows, and the
+ * lower face. Where there is a beard, that far all round and more (a full beard reaches past the jaw and up the
+ * sideburns); where there is none, only a little past the jaw, so hair that falls beside it keeps its colour.
+ * @param {CanvasRenderingContext2D} x the mask, at k times the size of the face's own picture @param {Face} f @param {boolean} beard @param {number} [k]
  */
-export function notHair(f) { const s = shapesOf(f); return [...s.beard.map(b => grow(b, .1, .08)), ...s.brows]; }
+export function clearNotHair(x, f, beard, k = 1) {
+  const s = shapesOf(f), path = (/** @type {Pt[]} */ pts) => { x.beginPath(); pts.forEach((p, i) => (i ? x.lineTo(p.x * k, p.y * k) : x.moveTo(p.x * k, p.y * k))); x.closePath(); };
+  x.save(); x.globalCompositeOperation = 'destination-out'; x.fillStyle = x.strokeStyle = '#fff'; x.lineJoin = 'round';
+  for (const b of s.beard) { path(beard ? b : grow(b, .1, .08)); x.fill(); if (beard) { x.lineWidth = f.box[2] * k * .36; x.stroke(); } }
+  for (const b of s.brows) { path(b); x.fill(); }
+  x.restore();
+}
+
+/**
+ * Whether a face wears a beard: the chin, between the lip and the point of it, far darker than the cheekbones. A full
+ * beard reaches past the jaw and up the sideburns, and is kept from a new hair colour that far; without one, hair that
+ * falls beside the jaw keeps its colour.
+ * @param {HTMLCanvasElement} pic the picture the face is in, at any size @param {Face} f
+ */
+export function bearded(pic, f) {
+  const x = /** @type {CanvasRenderingContext2D} */ (pic.getContext('2d')), kx = pic.width / f.w, ky = pic.height / f.h, r = Math.max(1, Math.round(f.box[2] * kx * .025));
+  const lum = (/** @type {Pt} */ p) => {
+    const d = x.getImageData(Math.round(p.x * kx) - r, Math.round(p.y * ky) - r, 2 * r + 1, 2 * r + 1).data; let s = 0;
+    for (let k = 0; k < d.length; k += 4) s += .2126 * d[k] + .7152 * d[k + 1] + .0722 * d[k + 2];
+    return s / (d.length / 4);
+  };
+  const mid = (/** @type {number} */ a, /** @type {number} */ b) => ({ x: (f.pts[a].x + f.pts[b].x) / 2, y: (f.pts[a].y + f.pts[b].y) / 2 });
+  try { return lum(mid(17, 152)) < (lum(f.pts[50]) + lum(f.pts[280])) / 2 * .6; } catch { return false; }
+}
 
 /**
  * A part's mask: white where it may change, the edge softened. For the hair's colour, the hair itself, found by the
@@ -247,7 +278,7 @@ export async function maskOf(picture, f, part) {
     x.drawImage(hair, 0, 0, w, h);
     // the hair on the head, not a beard: the segmenter counts both as hair
     x.globalCompositeOperation = 'destination-out'; x.filter = 'blur(' + Math.max(1.5, w / 200).toFixed(1) + 'px)'; x.fillStyle = '#fff';
-    for (const s of notHair(f)) { x.beginPath(); s.forEach((p, i) => (i ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y))); x.closePath(); x.fill(); }
+    clearNotHair(x, f, bearded(picture, f));
     x.globalCompositeOperation = 'source-over'; x.filter = 'none';
     return c;
   }

@@ -2,6 +2,8 @@
 
 Two machines build Likeness, and they never talk to each other. The code is written on one; the other is the workstation, where Codex CLI runs and makes the pictures. **GitHub is the only channel between them.** Work for the workstation travels as a numbered packet in this folder.
 
+**Start at `START.md`.** It is the whole hand-off as one prompt: installing on the workstation, then packet 0003, then packet 0004, then every feature checked with real pictures, and the phone last.
+
 ```
 relay/NNNN-slug/
   PROMPT.md     what to do and why, for Codex on the workstation. Self-contained.
@@ -13,9 +15,9 @@ relay/NNNN-slug/
 ## One cycle
 
 1. A packet is written and pushed.
-2. On the workstation the user pulls, opens Codex in the repository and says:
+2. On the workstation the user opens Codex and says:
 
-   > Carry out relay/0003-codex-studio/PROMPT.md.
+   > Clone https://github.com/akane-lovesl/likeness (or use the copy already here), switch to the studio branch, and carry out relay/START.md.
 
 3. Codex follows the prompt. The mechanical part is one command, `uv run likeness relay run <id>`. It runs the stages in order, stops at the first failed gate, and writes everything down in `out/`.
 4. Codex fixes what it finds, commits and pushes the code, and leaves `REPORT.md` for the user.

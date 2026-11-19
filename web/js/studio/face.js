@@ -145,6 +145,69 @@ function videoModel() {
   return videoLoading;
 }
 
+let asideMade = /** @type {Promise<Worker | null> | null} */ (null);
+/** The worker that reads faces aside from the page: made once and kept (the model takes a moment to load); null where none can be had. */
+function asideWorker() {
+  asideMade ||= (async () => {
+    if (typeof Worker !== 'function' || typeof createImageBitmap !== 'function') return null;
+    const w = new Worker(new URL('./follow.worker.js', import.meta.url));
+    const ok = await new Promise(done => {
+      const late = setTimeout(() => done(false), 15000);
+      w.onmessage = (e) => { clearTimeout(late); done(e.data?.type === 'ready'); };
+      w.onerror = () => { clearTimeout(late); done(false); };
+      w.postMessage({ type: 'init', vendor: VENDOR, cpu: softwareGL() });
+    });
+    if (!ok) { w.terminate(); return null; }
+    return w;
+  })();
+  asideMade.then(w => { if (!w) asideMade = null; }, () => { asideMade = null; });
+  return asideMade;
+}
+let asked = 0;
+/**
+ * A face followed through a video, read aside from the page (in a worker), so the page goes on drawing while a face is
+ * read: the frame showing now is handed over whenever the last reading is back, and the latest face is there to draw
+ * with, in the pixels of a crop of the frame at the viewer's size, smoothed as follower's are (at: when it came
+ * back; from: when its frame was handed over; took: the time between). Null where no worker can read (follower reads
+ * on the page instead).
+ * @returns {Promise<null | { ask(video: HTMLVideoElement, crop: Crop, w: number, h: number): void, readonly face: Face | null, readonly at: number, readonly took: number, readonly from: number, stop(): void }>}
+ */
+export async function followerAside() {
+  const worker = await asideWorker(); if (!worker) return null;
+  let busy = false, on = true, last = 0, at = 0, took = 0, mine = 0, from = 0;
+  let prev = /** @type {Pt[] | null} */ (null), face = /** @type {Face | null} */ (null);
+  /** @type {null | { crop: Crop, w: number, h: number, vw: number, vh: number, t0: number }} */ let q = null;
+  worker.onmessage = (e) => {
+    const m = e.data; if (m?.type !== 'face' || m.id !== mine || !q) return;
+    busy = false; took = performance.now() - q.t0; at = performance.now(); from = q.t0;
+    if (!on) return;
+    if (!m.pts) { prev = null; face = null; return; }
+    const { crop, w, h, vw, vh } = q, kx = w / crop.sw, ky = h / crop.sh, raw = /** @type {Float32Array} */ (m.pts);
+    /** @type {Pt[]} */ let pts = [];
+    for (let i = 0; i < raw.length; i += 3) pts.push({ x: (raw[i] * vw - crop.sx) * kx, y: (raw[i + 1] * vh - crop.sy) * ky, z: raw[i + 2] * vw * kx });
+    const was = prev;
+    if (was && was.length === pts.length) {
+      const a = Math.min(1, .3 + Math.hypot(pts[1].x - was[1].x, pts[1].y - was[1].y) / w * 45);
+      pts = pts.map((p, i) => ({ x: was[i].x + (p.x - was[i].x) * a, y: was[i].y + (p.y - was[i].y) * a, z: (was[i].z || 0) + ((p.z || 0) - (was[i].z || 0)) * a }));
+    }
+    prev = pts; face = boxed(pts, w, h);
+  };
+  return {
+    ask(video, crop, w, h) {
+      if (busy || !on || !video.videoWidth) return;
+      busy = true; const t = Math.max(last + 1, performance.now()); last = t;
+      const id = mine = ++asked;
+      q = { crop: { ...crop }, w, h, vw: video.videoWidth, vh: video.videoHeight, t0: performance.now() };
+      createImageBitmap(video).then(bitmap => { if (!on || id !== mine) { bitmap.close(); busy = false; return; } worker.postMessage({ type: 'frame', bitmap, t, id }, [bitmap]); }, () => { busy = false; });
+    },
+    get face() { return face; },
+    get at() { return at; },
+    get took() { return took; },
+    get from() { return from; },
+    stop() { on = false; busy = false; mine = -1; },
+  };
+}
+
 /**
  * A face followed through a video. Each call reads the frame showing now and gives its face in the pixels of a crop
  * of it (the part the viewer shows, at the viewer's size), smoothed from one frame to the next: steady when the head

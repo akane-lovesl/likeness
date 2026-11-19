@@ -96,3 +96,17 @@ test('On me, on a face in the ring: the camera opens with that look on', async (
   await expect(live.locator('.lv-parts .mr-part[data-part="bangs"]')).toHaveAttribute('data-style', 'curtain');
   await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
 });
+
+test('with a core to spare, the face is read aside (in a worker), and the mirror follows it and keeps it as before', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => 8 }));
+  await page.goto('/');
+  await page.locator('.lb-ask__photo').click();
+  const live = page.locator('section.lv');
+  await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
+  await expect(live).toHaveAttribute('data-reader', 'aside');
+  await expect(live).toHaveAttribute('data-read', /^\d+$/);
+  await live.locator('.lv-shutter').click();
+  const mirror = page.locator('section.mr');
+  await expect(mirror).toBeVisible();
+  await expect(mirror.locator('.mr-note').first()).toBeVisible({ timeout: 6_000 });
+});

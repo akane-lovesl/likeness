@@ -10,7 +10,7 @@
 import { h, icon, stage } from '../core/dom.js';
 import { reduced, flip } from '../core/motion.js';
 import * as P from '../studio/painter.js';
-import { follower, hairFollower, reframed, clearNotHair, bearded, faceOf, yawOf, LIPS, MOUTH } from '../studio/face.js';
+import { follower, followerAside, hairFollower, reframed, clearNotHair, bearded, faceOf, yawOf, LIPS, MOUTH } from '../studio/face.js';
 import { addPrint, addItem } from '../state.js';
 import { studio } from '../studio/studio.js';
 import { partById, styleOf, plateSVG, tintOf } from './vocab.js';
@@ -30,6 +30,18 @@ export async function canLive() {
 const LIVE = ['bangs', 'brows', 'lashes', 'lips', 'beard', 'cut', 'colour'];
 /** How long the picture takes to come apart into tiles, or back. */
 const GRID_MS = 560;
+// a face read aside is of a frame a moment old: it is carried on the way it was moving, for up to this long (ms)
+const AHEAD = 100;
+/**
+ * The face moved on by how it was moving (pixels a millisecond) for ms.
+ * @param {import('../studio/face.js').Face} f @param {number} vx @param {number} vy @param {number} ms
+ * @returns {import('../studio/face.js').Face}
+ */
+function ahead(f, vx, vy, ms) {
+  const dx = vx * ms, dy = vy * ms;
+  if (Math.abs(dx) < .5 && Math.abs(dy) < .5) return f;
+  return { ...f, pts: f.pts.map(p => ({ x: p.x + dx, y: p.y + dy, z: p.z })), box: [f.box[0] + dx, f.box[1] + dy, f.box[2], f.box[3]] };
+}
 const pc = (/** @type {number} */ v) => (v * 100).toFixed(3) + '%';
 const ease = (/** @type {number} */ t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const mix = (/** @type {number[]} */ a, /** @type {number[]} */ b, /** @type {number} */ t) => a.map((v, i) => v + (b[i] - v) * t);
@@ -66,6 +78,9 @@ export function openLive(o) {
     if (!picks.length) { const s = styleOf('bangs', 'curtain'); if (s) picks = [{ part: 'bangs', style: s }]; }
     let part = picks[picks.length - 1]?.part || 'bangs', stream = /** @type {MediaStream | null} */ (null), raf = 0, done = false;
     let follow = /** @type {null | ((v: HTMLVideoElement, c: import('../studio/face.js').Crop, w: number, h: number) => any)} */ (null);
+    // the face read aside from the page where it can be (a worker), so the mirror is drawn on every frame meanwhile
+    let aside = /** @type {Awaited<ReturnType<typeof followerAside>>} */ (null), asideAt = 0;
+    let held = /** @type {import('../studio/face.js').Face | null} */ (null), heldFrom = 0, vx = 0, vy = 0;
     let hair = /** @type {null | ((f: HTMLCanvasElement, now?: boolean) => HTMLCanvasElement | null)} */ (null), hairAsked = false;
     let face = /** @type {any} */ (null), seen = 0, read = 0, slow = 0, chose = false;
     // every style of a part, on you at once: the part shown as tiles, how far apart they have come (0 one picture, 1 all
@@ -76,6 +91,12 @@ export function openLive(o) {
     let sides = /** @type {null | { got: Record<string, Promise<Side>>, front: null | { still: HTMLCanvasElement, face: any }, yaw: number, zone: string, since: number }} */ (null);
 
     const video = /** @type {HTMLVideoElement} */ (h('video', { autoplay: true, playsinline: true }));
+    // when the camera's newest frame came: the mirror is drawn once for each (drawing more often shows nothing new and
+    // takes time from reading the face), and a face carried on is carried to that frame
+    let frameAt = 0, drawnAt = -1;
+    const perFrame = typeof video.requestVideoFrameCallback === 'function';
+    const onFrame = () => { frameAt = performance.now(); if (!done) video.requestVideoFrameCallback(onFrame); };
+    if (perFrame) video.requestVideoFrameCallback(onFrame);
     video.muted = true; video.setAttribute('playsinline', ''); video.setAttribute('muted', '');
     const view = /** @type {HTMLCanvasElement} */ (h('canvas.lv-view', { 'aria-hidden': 'true' }));
     const name = h('p.lv-name', { 'aria-live': 'polite' }), hint = h('p.lv-hint', null, 'Look into the camera');
@@ -165,12 +186,30 @@ export function openLive(o) {
       const c = crop(), x = ctx(view), w = view.width, hh = view.height;
       // the face is read as often as the device keeps up with, and drawn on every frame between; its points are turned
       // round with the picture, as you see yourself, so a look that leans one way leans that way here and in the photo
-      if (follow && now - read > slow) {
-        const t0 = performance.now(); read = now;
+      let fresh = false;
+      if (aside) {
+        aside.ask(video, c, w, hh);
+        if (aside.at !== asideAt) {
+          fresh = true; asideAt = aside.at; el.dataset.read = String(Math.round(aside.took));
+          const f = aside.face ? reframed(aside.face, w, hh, true) : null, dt = aside.from - heldFrom, cap = w / 400;
+          // how fast the face was going between the last two readings, eased so one jumpy reading doesn't throw it
+          if (f && held && dt > 0 && dt < 400) {
+            const [x0, y0, bw, bh] = f.box, [x1, y1, cw, ch] = held.box;
+            vx = Math.max(-cap, Math.min(cap, vx * .4 + (x0 + bw / 2 - x1 - cw / 2) / dt * .6));
+            vy = Math.max(-cap, Math.min(cap, vy * .4 + (y0 + bh / 2 - y1 - ch / 2) / dt * .6));
+          } else vx = vy = 0;
+          held = f; heldFrom = aside.from; if (f) seen = now;
+        }
+      } else if (follow && now - read > slow) {
+        const t0 = performance.now(); read = now; fresh = true;
         let f = null; try { f = follow(video, c, w, hh); } catch { f = null; }
         face = f ? reframed(f, w, hh, true) : null; if (face) seen = now;
         const took = performance.now() - t0; slow = Math.min(400, Math.max(28, took * 1.1)); el.dataset.read = String(Math.round(took));
       }
+      // nothing new to show (the camera's frame, the face and the tiles all as last drawn): wait for the next
+      if (perFrame && !fresh && frameAt === drawnAt && !gDir) return;
+      drawnAt = frameAt;
+      if (aside) face = held ? ahead(held, vx, vy, Math.max(0, Math.min(AHEAD, (perFrame ? frameAt : performance.now()) - heldFrom))) : null;
       const there = !!face && now - seen < 450;
       // the camera, mirrored as you see yourself, once a frame: the view, or each of its tiles, is drawn from it
       if (base.width !== w || base.height !== hh) { base.width = w; base.height = hh; }
@@ -253,7 +292,7 @@ export function openLive(o) {
       const n = Object.keys(s.got).length;
       tell(n === 3 ? 'Every side of you' : !s.got.front ? 'Now look straight at the camera' : n === 1 ? 'Now slowly to one side' : 'And the other side');
       if (n === 3) {
-        cancelAnimationFrame(raf); follow = null; el.classList.add('is-taking');
+        cancelAnimationFrame(raf); follow = null; aside?.stop(); aside = null; el.classList.add('is-taking');
         // in the order the mirror turns through them, as with the studio's angles: the nose to the right, straight on, to the left
         Promise.all(['b', 'front', 'a'].map(z => s.got[z])).then(turns => setTimeout(() => { if (s.front) keep(s.front.still, s.front.face, turns); }, reduced ? 0 : 700));
       }
@@ -325,7 +364,12 @@ export function openLive(o) {
         if (done) { stream.getTracks().forEach(t => t.stop()); return; }
         video.srcObject = stream; await video.play().catch(() => {});
         size(); raf = requestAnimationFrame(tick);
-        follow = await follower().catch(() => null);
+        // read aside only with a core to spare for it: where there are two, drawing the mirror needs both, a reading
+        // aside comes back late and the look trails a turning head, so the page reads between frames instead
+        aside = (navigator.hardwareConcurrency || 2) > 2 ? await followerAside().catch(() => null) : null;
+        if (done) { aside?.stop(); aside = null; return; }
+        if (!aside) follow = await follower().catch(() => null);
+        el.dataset.reader = aside ? 'aside' : follow ? 'page' : 'none';
         if (picks.some(q => q.part === 'colour')) { hairAsked = true; hair = await hairFollower().catch(() => null); }
       } catch {
         el.classList.add('no-camera');
@@ -337,7 +381,7 @@ export function openLive(o) {
     async function take() {
       if (!video.videoWidth || done) return;
       // the moment held: the frame stops where it is (the reading with it) while the photo is kept
-      cancelAnimationFrame(raf); follow = null;
+      cancelAnimationFrame(raf); follow = null; aside?.stop(); aside = null;
       const held = face && performance.now() - seen < 450 ? face : null;
       frame.append(h('div.lv-flash')); el.classList.add('is-taking');
       await keep(stillNow(), held);
@@ -364,7 +408,7 @@ export function openLive(o) {
     /** @param {{ print: any, picks: Pick[], from?: Element, face?: any, turns?: Side[] } | null} result @param {boolean} [instead] a photo chosen instead */
     function finish(result, instead = false) {
       if (done) return; done = true; if (current) current = null;
-      cancelAnimationFrame(raf); stream?.getTracks().forEach(t => t.stop()); stream = null; video.srcObject = null;
+      cancelAnimationFrame(raf); aside?.stop(); aside = null; stream?.getTracks().forEach(t => t.stop()); stream = null; video.srcObject = null;
       removeEventListener('resize', size); document.removeEventListener('keydown', onKey);
       el.classList.remove('is-in'); setTimeout(() => el.remove(), reduced ? 0 : 380);
       // a photo chosen instead takes only the looks someone chose, not the one the mirror opened on to show itself

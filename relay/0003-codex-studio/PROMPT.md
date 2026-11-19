@@ -2,11 +2,15 @@
 
 **Wire it to this machine, prove it end to end, and polish what real use reveals.**
 
+> Part 3 of the hand-off in `relay/START.md`, which comes first: it installs what this needs and holds the house rules. Your step 10, the phone, is done last, as its Part 6.
+
 You are Codex, working in the Likeness repository on the user's own computer. This packet is a one-shot hand-off: when you are done, the studio should work here, beautifully, without the user having to go back to the author for fixes. So you have a broad mandate. Where this prompt and reality disagree, believe reality, change the code, and keep the tests honest. Read the whole prompt before starting.
 
 ## What Likeness is
 
 A personal image studio you talk to. It is a phone-shaped web app (`web/`: plain HTML, CSS and ES modules, no build step, laid out on a 9:16 stage sized in `cqw`). Pictures sit on a desk with handles (A, B, C, …), and you say what you want: *"Use @B as a reference and make @A look like it"*, *"#Velvet Hour, two versions"*, or you pin part of a picture (tap: an on-device segmenter selects it) and write what it should become. While you type, the app reads your intent and shows it as a reading strip with a time estimate. Sending makes a *turn*. The studio works on it live: stage words in the room's voice, notes, a plan, previews, then the pictures, a short reply, and three suggestions for what to say next.
+
+It opens on the **Lookbook**: a ring of faces wearing looks, with the mirror behind it, where a look is tried on a face (`relay/0004-lookbook/PROMPT.md` and `README.md` describe it). This packet is about the desk and the studio behind both.
 
 Around that sits the atmosphere:
 
@@ -34,7 +38,7 @@ There are three editions, each always labelled honestly. Never let one pass for 
 - The briefs Codex is given (`likeness/brief.py`).
 - Settings (`studio.toml`).
 - `likeness probe codex`.
-- 41 pytest tests and a 43-test browser suite.
+- 41 pytest tests and a 44-test browser suite.
 
 **Not proven anywhere yet.** All of these are yours to settle:
 
@@ -86,7 +90,7 @@ The app talks to the studio over a small protocol (top of `likeness/server.py`, 
 - **Labels stay honest.** The Workstation edition only shows when the Codex engine is running. Only Codex's pictures are labelled Render.
 - **Keep the sandbox.** Use `workspace-write`, never `danger-full-access`. If the image tool needs the network, enable `sandbox_workspace_write.network_access` through `[codex.overrides]` rather than dropping the sandbox.
 - **Before every push**, run `npm run check`, `uv run pytest` and `npm test`. When you change how the engine reads Codex, change `tests/fake_codex.py` to match the real thing, so the tests describe this machine's Codex rather than a guess.
-- **Commit as you go** with plain messages, and push to this repository, the public one the user named. Never force-push.
+- **Commit as you go** with plain messages, and push to the `studio` branch of this repository, the public one the user named. Never push to `main`, and never force-push.
 
 ## The work, in order
 
@@ -185,7 +189,7 @@ Use it as the user would, for real, for a while, and fix what bothers you: slown
 
 `uv run likeness serve` prints a pairing link and a QR code. The phone must be on the same network as this machine; allow Python through the Windows firewall on private networks when asked. Scan the code once and the phone stays paired; strangers get a polite refusal. Then do the whole walk-through from step 6 on the phone.
 
-**The look camera needs HTTPS.** Under *Bring a picture → Through a look*, the camera is live and the looks are sketched on the device. Browsers only allow the camera on a secure origin, so over plain `http://` on the network the app quietly falls back to the phone's own photo picker, which still offers the camera.
+**The cameras need HTTPS.** Under *Bring a picture → Through a look* on the desk, and in the Lookbook's live mirror (the camera in its ask bar, and *On me*), the camera is live and the looks are sketched on the device. Browsers only allow the camera on a secure origin, so over plain `http://` on the network the app quietly falls back to the phone's own photo picker, which still offers the camera.
 
 To get the live camera on the phone:
 

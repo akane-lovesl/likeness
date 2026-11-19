@@ -17,7 +17,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SCENES = ['welcome', 'ring', 'words', 'mix', 'mirror', 'tryon', 'show', 'marks', 'you', 'rooms', 'live', 'sides', 'desk'];
+const SCENES = ['welcome', 'ring', 'words', 'mix', 'mirror', 'weeks', 'tryon', 'show', 'marks', 'you', 'rooms', 'live', 'sides', 'desk'];
 const arg = (name, fallback) => { const i = process.argv.indexOf('--' + name); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback; };
 const URL_ = arg('url', 'http://127.0.0.1:8787').replace(/\/$/, '');
 const OUT = resolve(ROOT, arg('out', 'relay/0004-lookbook/out/tour'));
@@ -148,6 +148,23 @@ await scene('mirror', 'The mirror, on a face from the ring', page, async ({ shot
     await shot('dragged sideways: it turns'); await page.mouse.up(); await sleep(1000); await shot('let go');
   }
   await page.locator('section.mr .mr-bar__back').click(); await sleep(900);
+});
+await scene('weeks', 'Weeks on: the look in the weeks after the salon, its upkeep marked', page, async ({ shot, note }) => {
+  const book = page.locator('section.book'), mirror = page.locator('section.mr');
+  for (const [part, style] of [['bangs', 'blunt'], ['colour', 'platinum']]) { await book.locator('.lb-part[data-part="' + part + '"]').click(); await sleep(600); await book.locator('.lb-style[data-style="' + style + '"]').click(); await sleep(700); }
+  await book.locator('.lb-card.is-front').click(); await mirror.waitFor({ timeout: 20000 });
+  await mirror.locator('.mr-when').waitFor({ timeout: 40000 }); await sleep(1500); await shot('the look today, and Grow out');
+  await mirror.locator('.mr-when').click(); await sleep(700); await shot('looking ahead');
+  const said = () => mirror.locator('.mr-cap__say').textContent().catch(() => '');
+  await sleep(2200); await shot('the weeks walk on to the first trim: ' + await said());
+  for (const w of [6, 12]) { await mirror.locator('.mr-time__range').fill(String(w)); await sleep(1800); await shot(w + ' weeks: ' + await said()); }
+  note('upkeep marked: ' + (await mirror.locator('.mr-time__mark').allTextContents()).join(', '));
+  await mirror.locator('.mr-time__done').click(); await sleep(1000); await shot('Done: today again');
+  await mirror.locator('.mr-bar__back').click(); await sleep(900);
+  // put back as it was, for the scenes after
+  while (await book.locator('.lb-token').count()) { await book.locator('.lb-token').first().click(); await sleep(300); }
+  const open = book.locator('.lb-part[aria-pressed="true"]'); if (await open.count()) await open.click();
+  await sleep(800);
 });
 let tookTry = 0, tookAngles = 0;
 await scene('tryon', 'On me: a photo, a look shaped, Try on, the wait, the takes, every angle', page, async ({ shot, note }) => {

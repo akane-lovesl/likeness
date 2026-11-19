@@ -36,6 +36,8 @@ test('the camera is a mirror: the look sketched live on the face, and the shutte
   await mirror.locator('.mr-bar__show').click();
   await expect(mirror).toHaveClass(/is-showing/);
   await expect(mirror.locator('.mr-show__style')).toHaveText(['High arch', 'Red']);
+  // and what it will want, for the one who keeps it up (lipstick is put on each morning: nothing)
+  await expect(mirror.locator('.mr-show__keep')).toHaveText(['Shape every 3 weeks']);
   await expect(mirror.locator('.mr-stamp')).toHaveText(/Turned on this device/);
   await page.keyboard.press('Escape');
   await expect(mirror).not.toHaveClass(/is-showing/);

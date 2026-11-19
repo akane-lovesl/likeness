@@ -179,3 +179,25 @@ test('a look mixed from four parts, drawn on and with a reference, goes to the s
   await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(4, { timeout: 90_000 });
   await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated');
 });
+
+test('a look asked for weeks on: the studio is told what the weeks have done, and may change the fringe as far as it has grown', async ({ page }) => {
+  const turns = [];
+  page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-style[data-style="blunt"]').click();
+  await mirror.locator('.mr-when').click();
+  await expect(mirror.locator('.mr-time__head b')).toHaveText('3 weeks', { timeout: 10_000 });
+  await mirror.locator('.mr-time__range').fill('6');
+  await mirror.locator('.mr-ask__go').click();
+  await expect(mirror.locator('.mr-take.is-pending[data-weeks="6"]')).toHaveCount(4);
+  await expect.poll(() => turns.length, { timeout: 20_000 }).toBe(1);
+  const [t] = turns;
+  expect(t.intent.op).toBe('region');
+  expect(t.pins[0].note).toContain('Show it 6 weeks after the salon: the fringe grown out about 1.7 cm since it was cut');
+  await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(4, { timeout: 90_000 });
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated · 6 weeks on');
+});

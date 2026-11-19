@@ -28,6 +28,7 @@ import { hear } from './words.js';
 import { turner } from './turn.js';
 import { openLive, canLive } from './live.js';
 import { coat, dyeHair } from './tint.js';
+import { ages, aged, upkeepOf, upkeepSaid, weeksSaid, noteAt, grownWords, rootsOf, markOf, WEEKS, GROW } from './time.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const INK = '#fff4e0';
@@ -39,13 +40,15 @@ const HINTS = /** @type {Record<string, string>} */ ({ bangs: 'a little longer, 
 /** @typedef {{ part: string, style: import('./vocab.js').Style, shape?: Record<string, number>, said?: string, heard?: Record<string, number> }} Pick a style picked for a part, shaped (see markup.js) and saying so; heard, the part of its shape the words gave it */
 /** @typedef {{ part: string, style: string, words?: string, image: string, takes?: string[], angles?: string[] }} Look */
 /** @typedef {{ id: string, name?: string, kind?: string, portrait: string, looks: Look[] }} Person */
-/** @typedef {{ url: string, label: string, kind: string, print?: any, picks?: Pick[], look?: Look, pending?: boolean, p?: number, preview?: string }} Take */
+/** @typedef {{ url: string, label: string, kind: string, print?: any, picks?: Pick[], look?: Look, pending?: boolean, p?: number, preview?: string, weeks?: number }} Take a picture in the frame; weeks, how long after the salon it shows the look */
 /** What the mirror says at each stage of a turn while the studio works, until the studio says something itself. */
 const STAGE_SAYS = /** @type {Record<string, string>} */ ({ read: 'Looking closely', plan: 'Working out how', draw: 'Making it', finish: 'Nearly there' });
 /** How long is left, as a person would say it; once past what was expected, how long it has been. @param {number} left @param {number} gone */
 const timeLeft = (left, gone) => (left > 4500 ? 'about ' + Math.ceil(left / 5000) * 5 + ' s' : left > -6000 ? 'any moment' : Math.round(gone / 1000) + ' s so far');
 
 let current = /** @type {{ close: (now?: boolean) => void } | null} */ (null);
+/** Whether Grow out has been shown once already (it is lit up the first time). */
+let toldWhen = false;
 
 /** A photo chosen from the device, kept as a print on the desk. @returns {Promise<any | null>} */
 export async function bringPhoto() {
@@ -93,24 +96,42 @@ function loopOf(m) {
   return size > .04 && Math.hypot(a.x - b.x, a.y - b.y) < size * .25;
 }
 
+/** Each picture's parts as last recoloured (its mask, and the colour put on it): weeks on, only the roots are new. @type {WeakMap<HTMLCanvasElement, Map<string, { tint: string, mask: HTMLCanvasElement, layer: HTMLCanvasElement }>>} */
+const dyedAt = new WeakMap();
 /**
  * The new colours, painted where they go (the hair, the lips) and nowhere else: the picture itself recoloured inside
- * the part's mask, so the light and the strands stay its own. Transparent where nothing changes colour.
- * @param {HTMLCanvasElement} pic @param {any} f @param {Pick[]} picks
+ * the part's mask, so the light and the strands stay its own. Weeks on, a colour's roots have come in, along the
+ * hairline and up the parting, in the hair's own colour (kept with it as roots, for a painted fringe to take too).
+ * Transparent where nothing changes colour.
+ * @param {HTMLCanvasElement} pic @param {any} f @param {Pick[]} picks @param {number} [weeks]
+ * @returns {Promise<(HTMLCanvasElement & { roots?: HTMLCanvasElement | null }) | null>}
  */
-async function washOf(pic, f, picks) {
-  const c = P.make(pic.width, pic.height), x = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
-  let any = false;
+async function washOf(pic, f, picks, weeks = 0) {
+  const c = /** @type {HTMLCanvasElement & { roots?: HTMLCanvasElement | null }} */ (P.make(pic.width, pic.height)), x = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
+  let any = false; c.roots = null;
+  let kept = dyedAt.get(pic); if (!kept) dyedAt.set(pic, kept = new Map());
   for (const q of picks) {
     const tint = tintOf(q.part, q.style.id, q.shape?.shade || 0); if (!tint || !f) continue;
-    const m = await maskOf(pic, f, q.part); if (!m) continue;
-    const layer = P.copy(pic), lx = /** @type {CanvasRenderingContext2D} */ (layer.getContext('2d'));
-    if (q.part === 'colour') dyeHair(lx, tint, m); else coat(lx, tint, q.part);
-    lx.globalCompositeOperation = 'destination-in'; lx.globalAlpha = 1; lx.drawImage(m, 0, 0);
-    x.drawImage(layer, 0, 0); any = true;
+    let was = kept.get(q.part);
+    const m = was?.mask || await maskOf(pic, f, q.part); if (!m) continue;
+    if (!was || was.tint !== tint) {
+      const layer = P.copy(pic), lx = /** @type {CanvasRenderingContext2D} */ (layer.getContext('2d'));
+      if (q.part === 'colour') dyeHair(lx, tint, m); else coat(lx, tint, q.part);
+      lx.globalCompositeOperation = 'destination-in'; lx.globalAlpha = 1; lx.drawImage(m, 0, 0);
+      kept.set(q.part, was = { tint, mask: m, layer });
+    }
+    const roots = q.part === 'colour' && weeks > 0 ? rootsOf(f, m, weeks, q.style.id) : null;
+    if (roots) {
+      const grown = P.copy(was.layer), gx = /** @type {CanvasRenderingContext2D} */ (grown.getContext('2d'));
+      gx.globalCompositeOperation = 'destination-out'; gx.drawImage(roots, 0, 0, grown.width, grown.height);
+      x.drawImage(grown, 0, 0); c.roots = roots;
+    } else x.drawImage(was.layer, 0, 0);
+    any = true;
   }
   return any ? c : null;
 }
+/** A face's forehead, brow to hairline, in its picture's pixels: what the hair grows by is measured in it. @param {Face} f */
+const foreheadOf = (f) => { const bh = f.box[3]; return Math.max(bh * .12, Math.min(f.pts[105].y, f.pts[334].y) - (f.pts[10].y - bh * .02)); };
 
 /**
  * Opens the mirror on a photo (a print) or on one of the studio's example people.
@@ -125,6 +146,10 @@ export function openMirror(o) {
   const byWords = /** @type {Set<string>} */ (new Set());
   for (const x of o.words ? hear(o.words) : []) picks = picks.map(q => (q.part === x.part ? (byWords.add(q.part), { ...q, heard: x.shape }) : q));
   let part = '', shown = -1, busy = false, spotsUp = false, washing = 0, swap = 0;
+  // the weeks after the salon: how many the frame shows the look at, and whether the mirror is looking ahead
+  let weeks = 0, timing = false, moved = false, timeWalk = 0, sketchRaf = 0, fadeNext = false, timePainting = false, timeAgain = false;
+  /** The fades from one week to the next, while they run. @type {Animation[]} */
+  let fading = [];
   /** What was drawn on the picture, each mark in its colour, as shares of the picture's width and height. @type {{ ink: string, w: number, pts: { x: number, y: number }[] }[]} */
   let marks = [];
   let drawingNow = false, ink = '#ff3b5c';
@@ -159,6 +184,8 @@ export function openMirror(o) {
   const wash = /** @type {HTMLCanvasElement} */ (h('canvas.mr-wash', { 'aria-hidden': 'true' }));
   // what is painted rather than drawn: a fringe in the hair's own colour, brows, liner, a beard (the pencil only shows while shaping)
   const paintEl = /** @type {HTMLCanvasElement} */ (h('canvas.mr-paint', { 'aria-hidden': 'true' }));
+  // a week as it was, fading as the next comes up through it
+  const ghost = /** @type {HTMLCanvasElement} */ (h('canvas.mr-ghost', { 'aria-hidden': 'true' }));
   const sk = document.createElementNS(SVG, 'svg'); sk.setAttribute('class', 'mr-sketch'); sk.setAttribute('aria-hidden', 'true'); sk.setAttribute('preserveAspectRatio', 'none');
   const notes = h('div.mr-notes'), lines = document.createElementNS(SVG, 'svg'); lines.setAttribute('class', 'mr-lines'); lines.setAttribute('aria-hidden', 'true');
   const stampEl = h('span.mr-stamp');
@@ -168,19 +195,33 @@ export function openMirror(o) {
   const handlesEl = h('div.mr-handles'), sayEl = h('div.mr-say', { 'aria-live': 'polite' });
   // what leans in when a part is chosen: the picture and everything drawn on it, not the notes in its margins
   const marksEl = /** @type {HTMLCanvasElement} */ (h('canvas.mr-marks', { 'aria-hidden': 'true' }));
-  const lens = h('div.mr-lens', null, pic, over, glint, preview, turnView, wash, paintEl, read, workEl, sk, marksEl, handlesEl);
+  const lens = h('div.mr-lens', null, pic, over, glint, preview, turnView, wash, paintEl, ghost, read, workEl, sk, marksEl, handlesEl);
   const INKS = ['#ff3b5c', '#ffd43b', '#ffffff'];
   const drawBar = h('div.mr-drawbar', { role: 'toolbar', 'aria-label': 'Drawing' },
     ...INKS.map((c, i) => h('button.mr-drawbar__ink', { type: 'button', 'aria-label': ['Red', 'Yellow', 'White'][i] + ' pen', 'aria-pressed': String(i === 0), style: { '--pen': c }, onclick: (/** @type {Event} */ e) => { ink = c; drawBar.querySelectorAll('.mr-drawbar__ink').forEach(b => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } })),
     h('button.mr-drawbar__do', { type: 'button', 'aria-label': 'Undo the last mark', html: icon('undo'), onclick: () => { marks.pop(); paintMarks(); paintPicks(); } }),
     h('button.mr-drawbar__do', { type: 'button', 'aria-label': 'Clear the marks', html: icon('trash'), onclick: () => { marks = []; paintMarks(); paintPicks(); } }),
     h('button.mr-drawbar__done', { type: 'button', onclick: () => drawing(false) }, 'Done'));
-  const frame = h('div.mr-frame', null, lens, lines, notes, sayEl, stampEl, keepBtn, turnBtn, dial, wordsEl, drawBar);
+  // the weeks after the salon, for a look that grows (a fringe, a colour's roots, a cut, brows, a beard): asked for on the
+  // frame; then the frame says what the weeks have done, and is dated the day it would be, the way a camera once
+  // printed the date in the corner of a picture
+  const whenBtn = h('button.mr-when', { type: 'button', hidden: true, 'aria-label': 'Grow it out: the look in the weeks after the salon', onclick: () => timeMode(true) }, h('span', { html: icon('weeks') }), 'Grow out');
+  const capSay = h('span.mr-cap__say'), capDate = /** @type {HTMLTimeElement} */ (h('time.mr-cap__date'));
+  const capEl = h('p.mr-cap', { 'aria-hidden': 'true' }, capSay, capDate);
+  const frame = h('div.mr-frame', null, lens, lines, notes, sayEl, stampEl, keepBtn, turnBtn, whenBtn, dial, capEl, wordsEl, drawBar);
   const takesRow = h('div.mr-takes', { role: 'listbox', 'aria-label': 'Takes' });
   const chips = PARTS.map(p => h('button.mr-part', { type: 'button', 'data-part': p.id, 'aria-pressed': 'false', onclick: () => choose(p.id) },
     h('span.mr-part__glyph', { html: plateSVG(p.id, p.styles[0].id) }), h('span.mr-part__name', null, p.name)));
   const partsRow = h('div.mr-parts', { role: 'toolbar', 'aria-label': 'What to change' }, ...chips);
   const stylesRow = h('div.mr-styles', { role: 'listbox', hidden: true });
+  // the weeks, a ruler from today to three months on: a tick each week, taller each month, and a mark where the look
+  // will want seeing to (a trim, its roots), lit once the weeks have reached it
+  const range = /** @type {HTMLInputElement} */ (h('input.mr-time__range', { type: 'range', min: '0', max: String(WEEKS), step: '1', value: '0', 'aria-label': 'Weeks from today', oninput: () => setWeeks(range.valueAsNumber, true) }));
+  const headEl = h('span.mr-time__head', { 'aria-hidden': 'true' }, h('b')), marksRow = h('span.mr-time__marks', { 'aria-hidden': 'true' });
+  const ruler = h('div.mr-time__ruler', null,
+    h('span.mr-time__ticks', { 'aria-hidden': 'true' }, ...Array.from({ length: WEEKS + 1 }, (_, k) => h('i' + (k % 4 ? '' : '.is-month'), { style: { '--x': String(k / WEEKS) } }))),
+    h('i.mr-time__fill', { 'aria-hidden': 'true' }), marksRow, headEl, range);
+  const timeBar = h('div.mr-time', { hidden: true, role: 'group', 'aria-label': 'The weeks after the salon' }, ruler, h('button.mr-time__done', { type: 'button', onclick: () => timeMode(false) }, 'Done'));
   const tokens = h('div.mr-ask__tokens');
   // more ways to say it than words: draw on the picture, or bring a picture whose look to borrow
   const trayEl = h('div.mr-tray', { role: 'menu', 'aria-label': 'More ways to ask' },
@@ -190,7 +231,7 @@ export function openMirror(o) {
   const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => { paintGo(); listen(); }, onfocus: () => hint(), onblur: () => hint() }));
   const goBtn = h('button.mr-ask__go', { type: 'submit' }, h('span', { html: icon('sparkle') }), h('span.mr-ask__label', null, 'Try on'));
   const ask = h('form.mr-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); tryOn(); } }, addBtn, h('div.mr-ask__field', null, tokens, input), goBtn);
-  const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => (showingNow ? showing(false) : close()) });
+  const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => (timing ? timeMode(false) : showingNow ? showing(false) : close()) });
   // on a drawn face, the look is tried on you next; on you, it is shown to someone (the one who will cut it)
   const mine = person ? h('button.mr-bar__mine', { type: 'button', onclick: () => onMe() }, h('span', { html: icon('camera') }), 'On me')
     : h('button.mr-bar__mine.mr-bar__show', { type: 'button', hidden: true, 'aria-label': 'Show it: the look, large, to show someone', onclick: () => showing(true) }, h('span', { html: icon('expand') }), 'Show');
@@ -203,7 +244,7 @@ export function openMirror(o) {
   // a reference, clipped to the mirror's corner like a photo tucked into its frame
   const refEl = h('button.mr-ref', { type: 'button', hidden: true, 'aria-label': 'The reference: remove it', onclick: () => { ref = null; paintRef(); paintPicks(); hint(); } }, h('img', { alt: '' }), h('span.mr-ref__say', null, 'Reference'), h('i.mr-ref__x', { html: icon('close') }));
   const stageEl = h('div.mr-stage', null, frame, refEl, takesRow);
-  const el = h('section.mr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mirror', 'data-mode': studio.mode }, glow, bar, stageEl, h('div.mr-dock', null, partsRow, stylesRow, trayEl, ask), showEl);
+  const el = h('section.mr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mirror', 'data-mode': studio.mode }, glow, bar, stageEl, h('div.mr-dock', null, partsRow, stylesRow, timeBar, trayEl, ask), showEl);
   stage().append(el);
   const from = o.from?.getBoundingClientRect() || null;
 
@@ -221,7 +262,7 @@ export function openMirror(o) {
     clearTimeout(sizing); if (soon) { sizing = setTimeout(() => fit(), 140); focus(part); return; }
     const dpr = Math.min(2, devicePixelRatio || 1), sharp = Math.max(1, (base?.width || 0) / (fw * dpr));
     // the outline and the wash as sharp as the picture itself, for when the mirror leans in close
-    for (const c of [read, wash, paintEl, turnView, marksEl]) { const k = c === turnView ? 1 : sharp, w = Math.round(fw * dpr * k), hgt = Math.round(fh * dpr * k); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
+    for (const c of [read, wash, paintEl, ghost, turnView, marksEl]) { const k = c === turnView ? 1 : sharp, w = Math.round(fw * dpr * k), hgt = Math.round(fh * dpr * k); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
     turn?.draw();
     if (part) mark(part); paintWash(); focus(part); paintHandles(); paintMarks(); placeRef();
   }
@@ -287,7 +328,8 @@ export function openMirror(o) {
     for (const [sideParts, left] of /** @type {[string[], boolean][]} */ ([[['bangs', 'brows', 'cut'], true], [['colour', 'lashes', 'lips', 'beard'], false]])) {
       const list = sideParts.map(id => ({ id, a: { x: clamp(at[id].x / f.w, .02, .98), y: clamp(at[id].y / f.h, .04, .96) }, y: 0 })).sort((m, k) => m.a.y - k.a.y);
       list.forEach((m, k) => { m.y = Math.max(m.a.y + (left ? -.02 : .02), k ? list[k - 1].y + gap : .1); });
-      const over = list[list.length - 1].y - .9; if (over > 0) list.forEach(m => { m.y -= over; });
+      // (on the left, clear of the frame's corner, where Grow out is)
+      const over = list[list.length - 1].y - (left ? .82 : .9); if (over > 0) list.forEach(m => { m.y -= over; });
       const edge = left ? Math.min(.24, Math.min(...list.map(m => m.a.x)) - .07) : Math.max(.76, Math.max(...list.map(m => m.a.x)) + .07);
       for (const m of list) {
         const i = PARTS.findIndex(p => p.id === m.id), name = partById(m.id)?.name || m.id;
@@ -319,7 +361,7 @@ export function openMirror(o) {
   /** A part, chosen: it is outlined on the face and its styles come up under the parts; chosen again, it is put down. @param {string} id */
   function choose(id) {
     const p = partById(id); if (!p) return;
-    stopGreeting();
+    stopGreeting(); if (timing) timeMode(false);
     if (part === id && !partsRow.hidden) { unchoose(); return; }
     part = id; read.classList.toggle('is-quiet', fresh().some(q => q.part === id));
     chips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.part === id))); lit();
@@ -335,8 +377,8 @@ export function openMirror(o) {
    * by gliding, not jumping: the frame and the parts are moved where they land, then eased there from where they were.
    */
   function menu() {
-    const glide = [frame, partsRow], was = glide.map(e => e.getBoundingClientRect());
-    partsRow.hidden = false; stylesRow.hidden = !part; el.classList.toggle('has-menu', !!part); hint();
+    const glide = [frame, partsRow, timeBar], was = glide.map(e => e.getBoundingClientRect());
+    partsRow.hidden = timing; stylesRow.hidden = timing || !part; timeBar.hidden = !timing; el.classList.toggle('has-menu', !!part && !timing); hint();
     if (reduced || !el.isConnected) return;
     glide.forEach((e, i) => {
       const a = was[i], b = e.getBoundingClientRect(); if (!a.height || !b.height) return;
@@ -375,15 +417,140 @@ export function openMirror(o) {
   function paintPicks(sketch = true) {
     // each pick saying how it was shaped: shortly on the line, fully to the studio
     picks = picks.map(q => { const cs = sayOf(q), said = cs.map(c => c.phrase).filter(Boolean).join(', '); return said === (q.said || '') ? q : { ...q, said }; });
-    tokens.replaceChildren(...picks.map(q => { const shorts = sayOf(q).map(c => c.short).filter(Boolean).join(' · '); return h('button.mr-token', { type: 'button', 'data-part': q.part, 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.mr-token__plate', { html: plateSVG(q.part, q.style.id) }), h('span.mr-token__name', null, q.style.name), shorts ? h('em.mr-token__shape', null, shorts) : null); }),
-      ...(marks.length && !drawingNow ? [h('button.mr-token.mr-token--marks', { type: 'button', 'aria-label': 'Remove your marks', onclick: () => { marks = []; paintMarks(); paintPicks(); } }, h('span.mr-token__plate', { html: icon('brush') }), h('span.mr-token__name', null, 'Your marks'))] : []),
-      ...(ref ? [h('button.mr-token.mr-token--ref', { type: 'button', 'aria-label': 'Remove the reference', onclick: () => { ref = null; paintRef(); paintPicks(); hint(); } }, h('img.mr-token__plate', { src: ref.url, alt: '' }), h('span.mr-token__name', null, 'Reference'))] : []));
+    paintTokens();
     stylesRow.querySelectorAll('.mr-style').forEach(b => b.setAttribute('aria-selected', String(picks.some(q => q.part === part && q.style.id === /** @type {HTMLElement} */ (b).dataset.style))));
     chips.forEach(c => c.classList.toggle('is-picked', picks.some(q => q.part === c.dataset.part)));
+    // the weeks ahead, for a look that changes with them (and, looking ahead, its marks as the look now is)
+    const grows = !!face && ages(picks);
+    if (timing && !grows) timeMode(false);
+    if (timing) { paintRuler(); paintTime(weeks); }
+    if (whenBtn.hidden === (grows && !timing)) { whenBtn.hidden = !(grows && !timing); if (!whenBtn.hidden && !toldWhen) { toldWhen = true; whenBtn.classList.add('is-new'); setTimeout(() => whenBtn.classList.remove('is-new'), 3200); } }
     paintGo(); if (sketch) drawSketch(); paintWash(); paintHandles();
     if (!person) mine.hidden = !face || !picks.length;
   }
+  /**
+   * The line's tokens: the weeks on (first, as they are said of all of it), each pick (and, shortly, its shape), the
+   * marks, the reference; each touched to take it off. A token stays as it is while it is still there, saying what it
+   * now says, so only one new to the line pops in.
+   */
+  function paintTokens() {
+    /** @type {[string, () => HTMLElement, ((b: HTMLElement) => void)?][]} */
+    const want = [];
+    if (timing && weeks) want.push(['when', () => h('button.mr-token.mr-token--when', { type: 'button', 'aria-label': 'Back to today', onclick: () => setWeeks(0, true) }, h('span.mr-token__plate', { html: icon('weeks') }), h('span.mr-token__name')), b => { /** @type {HTMLElement} */ (b.lastElementChild).textContent = weeksSaid(weeks) + ' on'; }]);
+    for (const q of picks) {
+      const shorts = sayOf(q).map(c => c.short).filter(Boolean).join(' · ');
+      want.push(['pick:' + q.part + ':' + q.style.id, () => h('button.mr-token', { type: 'button', 'data-part': q.part, 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.mr-token__plate', { html: plateSVG(q.part, q.style.id) }), h('span.mr-token__name', null, q.style.name)),
+        b => { let em = b.querySelector('.mr-token__shape'); if (!shorts) { em?.remove(); return; } if (!em) b.append(em = h('em.mr-token__shape')); em.textContent = shorts; }]);
+    }
+    if (marks.length && !drawingNow) want.push(['marks', () => h('button.mr-token.mr-token--marks', { type: 'button', 'aria-label': 'Remove your marks', onclick: () => { marks = []; paintMarks(); paintPicks(); } }, h('span.mr-token__plate', { html: icon('brush') }), h('span.mr-token__name', null, 'Your marks'))]);
+    if (ref) { const url = ref.url; want.push(['ref:' + url, () => h('button.mr-token.mr-token--ref', { type: 'button', 'aria-label': 'Remove the reference', onclick: () => { ref = null; paintRef(); paintPicks(); hint(); } }, h('img.mr-token__plate', { src: url, alt: '' }), h('span.mr-token__name', null, 'Reference'))]); }
+    const had = new Map([...tokens.children].map(b => [/** @type {HTMLElement} */ (b).dataset.key, /** @type {HTMLElement} */ (b)]));
+    const els = want.map(([key, make, fill]) => { let b = had.get(key); if (!b) { b = make(); b.dataset.key = key; } fill?.(b); return b; });
+    for (const c of [...tokens.children]) if (!els.includes(/** @type {HTMLElement} */ (c))) c.remove();
+    els.forEach((b, i) => { if (tokens.children[i] !== b) tokens.insertBefore(b, tokens.children[i] || null); });
+  }
   function paintGo() { goBtn.toggleAttribute('disabled', !picks.length && !input.value.trim() && !marks.length && !ref); }
+
+  // —— the weeks after the salon: the look as time will have it, and when it will want seeing to ——
+  /** The day so many weeks from today, as a camera once printed it in the corner of a picture. @param {number} w */
+  const dateAt = (w) => {
+    const d = new Date(); d.setDate(d.getDate() + w * 7);
+    const s = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase();
+    return d.getFullYear() === new Date().getFullYear() ? s : s + " '" + String(d.getFullYear()).slice(2);
+  };
+  /**
+   * Looking ahead, or back to today. Ahead, the parts make way for the weeks and the look is painted on the face as it
+   * is; then the weeks walk on by themselves to the first time the look will want seeing to, showing what they do, and
+   * from there they are the finger's. Back, the look is as it is today again. @param {boolean} on
+   */
+  function timeMode(on) {
+    if (on === timing || (on && (!face || !ages(picks) || showingNow))) return;
+    stopGreeting(); clearTimeout(timeWalk);
+    const focused = timeBar.contains(document.activeElement) || whenBtn === document.activeElement;
+    if (on) {
+      if (drawingNow) drawing(false);
+      tray(false); input.blur();
+      if (part) { part = ''; chips.forEach(c => c.setAttribute('aria-pressed', 'false')); lit(); ctx(read).clearRect(0, 0, read.width, read.height); focus(''); }
+      if (shown >= 0) show(-1);
+    }
+    const was = weeks;
+    timing = on; weeks = 0; moved = false; range.value = '0';
+    el.classList.toggle('is-when', on); whenBtn.hidden = on || !ages(picks); headEl.classList.remove('is-new');
+    menu(); paintRuler(); paintTime(was); paintTokens(); paintHandles();
+    if (was) { fadeNext = true; growSketch(was, 0); paintWash(); }
+    if (!reduced) (on ? timeBar : partsRow).animate([{ opacity: 0, translate: '0 3cqw' }, { opacity: 1, translate: '0 0' }], { duration: 440, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+    if (focused) (on ? range : whenBtn).focus({ preventScroll: true });
+    if (!on) return;
+    // the weeks walk on, a week at a time, to the first time the look will want seeing to
+    const to = Math.min(WEEKS, ...upkeepOf(picks).map(u => u.at));
+    if (reduced) { setWeeks(to); return; }
+    let w = 0;
+    const walk = () => { if (!timing || moved) return; setWeeks(++w); if (w < to) timeWalk = setTimeout(walk, 190); else timeWalk = setTimeout(() => { if (timing && !moved) headEl.classList.add('is-new'); }, 700); };
+    timeWalk = setTimeout(walk, 650);
+  }
+  /** The weeks the frame shows: by hand, on the ruler, or walking on by themselves. @param {number} w @param {boolean} [byHand] */
+  function setWeeks(w, byHand = false) {
+    if (byHand) { moved = true; clearTimeout(timeWalk); headEl.classList.remove('is-new'); }
+    const to = clamp(Math.round(w) || 0, 0, WEEKS); if (!timing || to === weeks) return;
+    const was = weeks; weeks = to; if (range.valueAsNumber !== to) range.value = String(to);
+    paintTime(was, byHand); paintTokens(); growSketch(was, to);
+    fadeNext = true; repaintTime();
+  }
+  /** The look painted again for the weeks now: one painting at a time, and the last asked for painted next, so a moving finger is always followed. */
+  async function repaintTime() {
+    if (timePainting) { timeAgain = true; return; }
+    timePainting = true;
+    try { do { timeAgain = false; await paintWash(); } while (timeAgain && timing); }
+    finally { timePainting = false; }
+  }
+  /**
+   * What the weeks say: how long it has been, what is due by then (the caption), the day (in the frame's corner), and
+   * on the ruler, how far they have come, each mark passed lighting up. @param {number} was @param {boolean} [byHand]
+   */
+  function paintTime(was, byHand = false) {
+    if (!timing) return;
+    const say = weeks ? noteAt(picks, weeks) : 'Fresh from the salon';
+    /** @type {HTMLElement} */ (headEl.firstElementChild).textContent = weeksSaid(weeks);
+    if (capSay.textContent !== say) { capSay.textContent = say; if (!reduced) capSay.animate([{ opacity: 0, translate: '0 .5em', filter: 'blur(2px)' }, { opacity: 1, translate: '0 0', filter: 'blur(0)' }], { duration: 380, easing: 'cubic-bezier(.2, .8, .2, 1)' }); }
+    capDate.textContent = dateAt(weeks);
+    ruler.style.setProperty('--at', (weeks / WEEKS).toFixed(4));
+    range.setAttribute('aria-valuetext', weeksSaid(weeks) + ': ' + say);
+    for (const m of /** @type {HTMLElement[]} */ ([...marksRow.children])) {
+      const at = Number(m.dataset.at), due = weeks >= at;
+      m.classList.toggle('is-due', due);
+      // passing a mark, it lights with a little give (and, under a finger, a tick in the hand)
+      if (due && was < at && !reduced) { m.animate([{ scale: 1 }, { scale: 1.4 }, { scale: 1 }], { duration: 460, easing: 'cubic-bezier(.3, 1.5, .5, 1)' }); if (byHand) navigator.vibrate?.(8); }
+    }
+  }
+  /** The ruler's marks: when the look will want seeing to, and for what. What falls in the same week shares a mark; words that would touch take the row below. */
+  function paintRuler() {
+    /** @type {Map<number, string[]>} */ const by = new Map();
+    for (const u of upkeepOf(picks)) { if (u.at > WEEKS) continue; const ws = by.get(u.at) || [], w = markOf(u); if (!ws.includes(w)) ws.push(w); by.set(u.at, ws); }
+    const ends = [-Infinity, -Infinity];
+    marksRow.replaceChildren(...[...by].sort((a, b) => a[0] - b[0]).map(([at, ws]) => {
+      const say = ws.length > 2 ? ws.slice(0, 2).join(' · ') + ' +' + (ws.length - 2) : ws.join(' · '), half = say.length * .1 + .2;
+      const row = ends[0] <= at - half ? 0 : ends[1] <= at - half ? 1 : ends[0] <= ends[1] ? 0 : 1;
+      ends[row] = at + half;
+      return h('span.mr-time__mark', { 'data-at': String(at), 'data-row': String(row), style: { '--x': String(at / WEEKS) } }, h('i'), h('b', null, say));
+    }));
+  }
+  /** The pencil's strokes (a cut is drawn, not painted) grown from one week to another, moving where they are. @param {number} a @param {number} b */
+  function growSketch(a, b) {
+    cancelAnimationFrame(sketchRaf);
+    if (reduced || !face) { drawSketch(); return; }
+    const f = face, now = fresh().filter(q => aged(q, 1) !== q), t0 = performance.now(), D = 300;
+    if (!now.length) return;
+    const step = (/** @type {number} */ t) => {
+      const u = Math.min(1, (t - t0) / D), e = 1 - (1 - u) ** 3, grow = (a + (b - a) * e) * GROW;
+      for (const q of now) {
+        const g = sk.querySelector('g[data-part="' + q.part + '"]'), strokes = markup(f, q.part, q.style.id, { ...(q.shape || {}), grow });
+        if (!g || g.children.length !== strokes.length) { drawSketch(); return; }
+        strokes.forEach((s, k) => { g.children[k].setAttribute('d', s.d); g.children[k].setAttribute('stroke-width', s.w.toFixed(2)); });
+      }
+      if (u < 1) sketchRaf = requestAnimationFrame(step);
+    };
+    sketchRaf = requestAnimationFrame(step);
+  }
 
   // —— more ways to ask: drawing on the picture, and a picture whose look to borrow ——
   /** The + tray, open or shut. @param {boolean} on */
@@ -393,6 +560,7 @@ export function openMirror(o) {
    * over the picture until they are cleared, going to the studio with whatever is asked. @param {boolean} on
    */
   function drawing(on) {
+    if (on && timing) timeMode(false);
     drawingNow = on; frame.classList.toggle('is-drawing', on); el.classList.toggle('is-drawing', on);
     if (on && !marks.length) toast('Draw on the picture: circle what to change, sketch the shape', 3400);
     paintMarks(); paintPicks(); hint();
@@ -433,6 +601,8 @@ export function openMirror(o) {
 
   /** The picks not yet made on the picture on show: what the sketch draws, and what a try-on asks for anew. */
   const fresh = () => { const made = shown >= 0 ? takes[shown]?.picks || [] : []; return picks.filter(q => !made.some(d => d.part === q.part && d.style.id === q.style.id && shapeKey(d) === shapeKey(q))); };
+  /** The look as the frame shows it: those picks, as they will be the weeks on the mirror is looking at. */
+  const lookNow = () => (timing && weeks ? fresh().map(q => aged(q, weeks)) : fresh());
   /** A pick's shape, as one comparable string. @param {Pick} q */
   const shapeKey = (q) => Object.entries(q.shape || {}).filter(([, v]) => Math.abs(v) > .02).sort().map(([k, v]) => k + v.toFixed(2)).join(',');
   /** The new picks, drawn over the face the way a stylist marks up a photo: strokes for shapes, washes for colours. */
@@ -442,7 +612,7 @@ export function openMirror(o) {
   function drawSketch() {
     sk.replaceChildren(); if (!face) return;
     sk.setAttribute('viewBox', '0 0 ' + face.w + ' ' + face.h);
-    const now = fresh(); let k = 0;
+    const now = lookNow(); let k = 0;
     for (const q of now) {
       const strokes = markup(face, q.part, q.style.id, q.shape); if (!strokes.length) continue;
       const g = document.createElementNS(SVG, 'g'); g.dataset.part = q.part; if (PAINTED.has(q.part) && !bare.has(q.part)) g.classList.add('is-painted');
@@ -454,23 +624,36 @@ export function openMirror(o) {
     read.classList.toggle('is-quiet', now.some(q => q.part === part));
   }
   async function paintWash() {
-    const n = ++washing, x = ctx(wash);
-    const now = fresh(), w = face && base && now.some(q => tintOf(q.part, q.style.id)) ? await washOf(base, face, now) : null;
+    const n = ++washing, now = lookNow(), wk = timing ? weeks : 0;
+    const w = face && base && now.some(q => tintOf(q.part, q.style.id)) ? await washOf(base, face, now, wk) : null;
     if (n !== washing) return;
+    // then what is painted from the picture itself, in its own colours (or the colour the look dyes the hair, its roots
+    // grown in): made whole before either is shown, so the colour and the fringe change together
+    const want = face && base ? now.filter(q => PAINTED.has(q.part)) : [], key = want.map(q => q.part + q.style.id).join();
+    /** @type {ReturnType<typeof paintLook>} */ let c = null;
+    if (want.length && face && base) {
+      const f = face, b = base, src = await onShow(); if (n !== washing) return;
+      const tone = await tonesOf(src || b); if (n !== washing) return;
+      c = paintLook(src || b, f, want.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], paintEl.width / f.w, { ...tone, dye: dyeOf(now), roots: w?.roots || null });
+    }
+    // from one week to the next, the last fades as the next comes up through it
+    const fade = fadeNext && !reduced; fadeNext = false;
+    if (fade) { const gx = ctx(ghost); gx.clearRect(0, 0, ghost.width, ghost.height); gx.globalAlpha = .95; gx.drawImage(wash, 0, 0, ghost.width, ghost.height); gx.globalAlpha = 1; gx.drawImage(paintEl, 0, 0, ghost.width, ghost.height); }
+    const x = ctx(wash), px = ctx(paintEl);
     x.clearRect(0, 0, wash.width, wash.height); if (w) x.drawImage(w, 0, 0, wash.width, wash.height);
-    // then what is painted from the picture itself, in its own colours (or the colour the look dyes the hair)
-    const px = ctx(paintEl), want = face && base ? now.filter(q => PAINTED.has(q.part)) : [], key = want.map(q => q.part + q.style.id).join();
-    if (!want.length || !face || !base) { px.clearRect(0, 0, paintEl.width, paintEl.height); paintedKey = ''; unbare(new Set()); return; }
-    const f = face, b = base, src = await onShow(); if (n !== washing) return;
-    const tone = await tonesOf(src || b); if (n !== washing) return;
-    const c = paintLook(src || b, f, want.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], paintEl.width / f.w, { ...tone, dye: dyeOf(now) });
-    if (n !== washing) return;
     px.clearRect(0, 0, paintEl.width, paintEl.height); if (c) px.drawImage(c, 0, 0, paintEl.width, paintEl.height);
     // what could not be painted on this picture (a fringe where no hair was found) keeps its pencil
     unbare(new Set(want.filter(q => !c?.painted.has(q.part)).map(q => q.part)));
+    if (fade) crossfade();
     // a new look falls into place; a reshaped one is simply there
-    if (key !== paintedKey && !reduced) { paintEl.classList.remove('is-new'); void paintEl.offsetWidth; paintEl.classList.add('is-new'); }
+    else if (key && key !== paintedKey && !reduced) { paintEl.classList.remove('is-new'); void paintEl.offsetWidth; paintEl.classList.add('is-new'); }
     paintedKey = key;
+  }
+  /** The week that was (on the ghost) fading as the one now comes up through it. */
+  function crossfade() {
+    for (const a of fading) a.cancel();
+    fading = [ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, easing: 'cubic-bezier(.45, 0, .7, 1)' }),
+      ...[wash, paintEl].map(c => c.animate([{ opacity: 0 }, { opacity: getComputedStyle(c).opacity }], { duration: 340, easing: 'cubic-bezier(.2, .7, .3, 1)' }))];
   }
   let paintedKey = '';
   /** The colours of each picture shown, read once each (a render's hair is not the portrait's). @type {WeakMap<HTMLCanvasElement, Promise<ReturnType<typeof coloursOf>>>} */
@@ -494,13 +677,14 @@ export function openMirror(o) {
    */
   function show(i, instant = false, arrived = false) {
     const t = i < 0 ? origin : takes[i]; if (!t || t.pending) return;
+    if (i >= 0 && timing) timeMode(false);
     shown = i;
     over.classList.remove('is-in', 'is-sweep'); glint.classList.remove('is-on'); clearTimeout(swap);
     if (instant || reduced) pic.src = t.url;
     else if (arrived) { over.src = t.url; void over.offsetWidth; over.classList.add('is-sweep'); glint.classList.add('is-on'); swap = setTimeout(() => { pic.src = t.url; over.classList.remove('is-sweep'); glint.classList.remove('is-on'); }, 1300); }
     else { over.src = t.url; void over.offsetWidth; over.classList.add('is-in'); swap = setTimeout(() => { pic.src = t.url; over.classList.remove('is-in'); }, 300); }
     glow.style.backgroundImage = 'url("' + t.url + '")';
-    stampEl.textContent = t.label; stampEl.dataset.kind = t.kind;
+    stampEl.textContent = t.label + (t.weeks ? ' · ' + weeksSaid(t.weeks) + ' on' : ''); stampEl.dataset.kind = t.kind;
     keepBtn.hidden = !t.print; keepBtn.setAttribute('aria-pressed', String(!!t.print?.kept));
     takesRow.querySelectorAll('.mr-take').forEach(b => b.setAttribute('aria-selected', String(Number(/** @type {HTMLElement} */ (b).dataset.i) === i)));
     el.classList.toggle('is-take', i >= 0);
@@ -511,7 +695,7 @@ export function openMirror(o) {
     const all = [origin, ...takes];
     // only a take that is new is dealt in; the rest stay where they are
     takesRow.replaceChildren(...all.map((t, k) => {
-      const i = k - 1, b = h('button.mr-take', { type: 'button', role: 'option', 'data-i': String(i), 'aria-selected': String(i === shown), 'aria-label': i < 0 ? 'As they are' : t.look ? titleOf(t.picks || []) : 'Take ' + k, style: { '--i': k, '--n': all.length }, onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0) show(i); } },
+      const i = k - 1, b = h('button.mr-take', { type: 'button', role: 'option', 'data-i': String(i), 'aria-selected': String(i === shown), 'aria-label': (i < 0 ? 'As they are' : t.look ? titleOf(t.picks || []) : 'Take ' + k) + (t.weeks ? ', ' + weeksSaid(t.weeks) + ' on' : ''), 'data-weeks': t.weeks ? String(t.weeks) : null, style: { '--i': k, '--n': all.length }, onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0) show(i); } },
         t.pending ? (t.preview ? h('img.mr-take__preview', { src: t.preview, alt: '', draggable: false }) : h('span.mr-take__wait')) : h('img' + (developed.has(t) ? '.is-still' : ''), { src: t.url, alt: '', draggable: false }));
       b.classList.toggle('is-pending', !!t.pending); b.classList.toggle('is-origin', i < 0);
       if (dealt.has(t)) b.classList.add('is-dealt');
@@ -562,7 +746,7 @@ export function openMirror(o) {
   const NAMES = /** @type {Record<string, string>} */ ({ arch: 'arch', full: 'fullness', tail: 'tails', length: 'length', part: 'parting', long: 'length', volume: 'volume', shade: 'shade' });
   let taught = false;
   /** The chosen part's pick, if it is drawn over the picture on show (so it can be shaped). */
-  const shapeable = () => { const q = part ? picks.find(p => p.part === part) : null; return q && face && fresh().includes(q) ? q : null; };
+  const shapeable = () => { const q = part && !timing ? picks.find(p => p.part === part) : null; return q && face && fresh().includes(q) ? q : null; };
   /** The handles for the chosen part's style, where its strokes now are. @param {import('./markup.js').Control[]} [known] */
   function paintHandles(known) {
     const q = shapeable(), cs = known || (q && face ? controlsOf(face, q.part, q.style.id, q.shape) : []), f = face;
@@ -654,7 +838,7 @@ export function openMirror(o) {
     }
     const about = heard[heard.length - 1]?.part || '';
     glide(next, about);
-    if (about && about !== part) choose(about);
+    if (about && about !== part && !timing) choose(about);
   }
   let gliding = 0, quiet = 0;
   /**
@@ -673,7 +857,7 @@ export function openMirror(o) {
       const t = Math.min(1, (now - t0) / D), e = t < 1 ? 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2 : 1;
       picks = next.map(q => mix(q, e));
       // the same strokes, moved: each part's drawing reshaped in place (drawn again only if its strokes changed in number)
-      for (const q of fresh()) {
+      for (const q of lookNow()) {
         const g = sk.querySelector('g[data-part="' + q.part + '"]'), strokes = markup(f, q.part, q.style.id, q.shape);
         if (!g || g.children.length !== strokes.length) { drawSketch(); break; }
         strokes.forEach((s, k) => { g.children[k].setAttribute('d', s.d); g.children[k].setAttribute('stroke-width', s.w.toFixed(2)); });
@@ -692,6 +876,8 @@ export function openMirror(o) {
   // a tap picks the part under it, and holding shows the face as it was
   let hold = 0, comparing = false, turning = /** @type {null | Turning} */ (null), showingNow = false, sway = 0, p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
   let leaning = false, ready = false, pitchNow = 0, stampWas = /** @type {[string, string] | null} */ (null);
+  // whether the finger has moved (or lifted) since it went down: a hold is only a hold if not
+  let held0 = false;
   let greeting = 0;
   // a turn by hand is steered rather than set: the head goes after the finger with a little weight, so a jittery finger,
   // a picture that is still being made ready, or a lift-off never makes it jump
@@ -712,11 +898,14 @@ export function openMirror(o) {
       if (drawingNow) { const at = toShare(e.clientX, e.clientY); marks.push({ ink, w: .011, pts: [at] }); paintMarks(); return; }
       anim?.stop(); if (turning) { p0 = turning.p; return; }
       if (turn && face) { ready = false; mount().then(ok => { ready = ok; }).catch(() => {}); }
-      hold = setTimeout(() => { if (leaning || (shown < 0 && !picks.length)) return; comparing = true; frame.classList.add('is-comparing'); over.src = origin.url; over.classList.add('is-held'); }, 280);
+      // (decided a frame later: a finger that moved while the device was busy, painting the face to turn, has its moves
+      // heard first, so a drag is never taken for a hold)
+      held0 = true;
+      hold = setTimeout(() => requestAnimationFrame(() => { if (!held0 || leaning || (shown < 0 && !picks.length)) return; comparing = true; frame.classList.add('is-comparing'); over.src = origin.url; over.classList.add('is-held'); }), 280);
     },
     move: d => {
       if (drawingNow) { marks[marks.length - 1]?.pts.push(toShare(d.x, d.y)); paintMarks(); return; }
-      if (Math.abs(d.dx) > 8 || Math.abs(d.dy) > 8) clearTimeout(hold);
+      if (Math.abs(d.dx) > 8 || Math.abs(d.dy) > 8) { clearTimeout(hold); held0 = false; }
       if (turning) { turnTo(clamp(p0 - d.dx / (frame.clientWidth * .45), 0, turning.ring.length - 1)); return; }
       if (turn && !comparing && (leaning || Math.abs(d.dx) > 8)) {
         if (!leaning) { leaning = true; held.y = turn.yaw; held.p = pitchNow; }
@@ -727,7 +916,7 @@ export function openMirror(o) {
     },
     end: d => {
       if (drawingNow) { paintPicks(); return; }
-      clearTimeout(hold);
+      clearTimeout(hold); held0 = false;
       if (turning) { const to = Math.round(clamp(turning.p - d.vx / (frame.clientWidth * .45) * .25, 0, turning.ring.length - 1)); anim = spring({ from: turning.p, to, velocity: -d.vx / (frame.clientWidth * .45), stiffness: 140, damping: 22, onUpdate: v => turnTo(v) }); return; }
       if (comparing) { comparing = false; frame.classList.remove('is-comparing'); over.classList.remove('is-held'); return; }
       if (leaning) {
@@ -738,7 +927,8 @@ export function openMirror(o) {
         anim = spring({ from: 1, to: 0, velocity: Math.abs(y) > .01 ? clamp(-.75 * d.vx / frame.clientWidth / y, -2.5, 2.5) : 0, stiffness: 110, damping: 20, onUpdate: s => lean(y * s, p * s), onRest: () => { held.y = held.p = 0; lean(0, 0); } });
         return;
       }
-      if (Math.abs(d.dx) < 8 && Math.abs(d.dy) < 8 && face) {
+      // (looking ahead, the face is for looking at: a part is chosen once back to today)
+      if (Math.abs(d.dx) < 8 && Math.abs(d.dy) < 8 && face && !timing) {
         const at = toPicture(d.x, d.y), hit = partAt(face, at.x, at.y);
         if (hit) choose(hit); else if (part) unchoose();
       }
@@ -762,7 +952,7 @@ export function openMirror(o) {
    */
   async function surface() {
     if (!face) return null;
-    const t = shown >= 0 ? takes[shown] : origin, now = fresh();
+    const t = shown >= 0 ? takes[shown] : origin, now = lookNow();
     // the picture at the face's own size, kept, so its face and its hair are read once however often it is turned
     let pic0 = surfaces.get(t);
     if (!pic0) {
@@ -773,10 +963,10 @@ export function openMirror(o) {
     const own = pic0 === base ? face : await faceOf(pic0); if (!own) return null;
     const c = P.make(face.w, face.h), x = ctx(c); x.drawImage(pic0, 0, 0);
     if (now.length) {
-      const w = await washOf(pic0, own, now); if (w) x.drawImage(w, 0, 0);
+      const w = await washOf(pic0, own, now, timing ? weeks : 0); if (w) x.drawImage(w, 0, 0);
       const painted = now.filter(q => PAINTED.has(q.part));
       // painted as the frame paints it: with the picture's own hair (the fringe is combed from it)
-      const pc = painted.length ? paintLook(pic0, own, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, own.w, own.h], c.width / own.w, { ...(await tonesOf(pic0)), dye: dyeOf(now) }) : null;
+      const pc = painted.length ? paintLook(pic0, own, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, own.w, own.h], c.width / own.w, { ...(await tonesOf(pic0)), dye: dyeOf(now), roots: w?.roots || null }) : null;
       if (pc) x.drawImage(pc, 0, 0, c.width, c.height);
       x.save(); x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, c.width / 400);
       for (const q of now) if (!pc?.painted.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
@@ -844,9 +1034,16 @@ export function openMirror(o) {
     const s = await subject(), pic2 = s === print && base ? base : await canvasOf(s.blob), f = s === print ? face : await faceOf(pic2);
     const masked = f && parts.length && !parts.includes('cut') ? parts : [];
     let mask = null;
+    // asked weeks on, the studio is told what the weeks have done, and may change what has grown since
+    const wk = timing ? weeks : 0;
     if (masked.length && f) {
       mask = P.make(pic2.width, pic2.height); const mx = ctx(mask);
-      for (const p of masked) { const m = await maskOf(pic2, f, p); if (m) mx.drawImage(m, 0, 0); }
+      for (const p of masked) {
+        const m = await maskOf(pic2, f, p); if (!m) continue;
+        mx.drawImage(m, 0, 0);
+        // (a fringe weeks on has grown down past where it was cut: what it may change goes down with it)
+        if (wk && p === 'bangs') { const drop = foreheadOf(f) * wk * GROW; for (const s of [.34, .67, 1]) mx.drawImage(m, 0, drop * s); }
+      }
     }
     // what was drawn: where it may change (a loop drawn round something takes in what is inside it), and a copy of the
     // picture with the marks on it, for the studio to read them from
@@ -867,12 +1064,13 @@ export function openMirror(o) {
     const extra = [];
     if (borrowed) extra.push(masked.length ? 'Take what they ask for from the reference picture: its look, never its face' : 'Give them the look of the reference picture (its hair, colour, make-up and clothes) as far as the words ask, never its face');
     if (drawn.length) extra.push('Follow the marks drawn on the marked copy, and never draw the marks themselves');
+    if (wk) extra.push(grownWords(picks, wk));
     // the studio takes a long note, but not an endless one: cut at a word, never mid-way through one
     const words = clip(wordsFor(picks, own, extra), 1200);
-    const said = titleOf(picks) || own || (drawn.length ? 'As drawn' : borrowed ? 'Like the reference' : '');
+    const said = (titleOf(picks) || own || (drawn.length ? 'As drawn' : borrowed ? 'Like the reference' : '')) + (wk ? ' · ' + weeksSaid(wk) + ' on' : '');
     const intent = mask ? { op: 'region', subject: s.id, refs, look: null, n: 4, pace: null, pins: [{ print: s.id, n: 1, note: words, mask }] } : { op: 'edit', subject: s.id, refs, look: null, n: 4, pace: null, pins: [] };
     const now = picks.slice(), first = takes.length;
-    for (let k = 0; k < 4; k++) takes.push({ url: '', label: '', kind: '', pending: true, picks: now });
+    for (let k = 0; k < 4; k++) takes.push({ url: '', label: '', kind: '', pending: true, picks: now, weeks: wk });
     paintTakes();
     await follow(onItem => runTurn({ text: mask ? 'Changes to @' + s.handle : '@' + s.handle + ' ' + words, said, intent, pace: settings.get('pace', 'fine'), n: 4, onItem }), first, 4, (k, p) => { Object.assign(takes[first + k], { url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, pending: false }); }, mask);
   }
@@ -960,21 +1158,23 @@ export function openMirror(o) {
   /** Here, with no studio: the change sketched over the face, stamped as a sketch, kept on the desk. */
   async function sketchIt() {
     if (!base || !face) { toast('Sketching needs a face to draw on'); return; }
-    const c = P.copy(base), x = ctx(c), w = await washOf(base, face, picks), b = base, f = face;
+    // (looking ahead, the look as the weeks will have it)
+    const wk = timing ? weeks : 0, look = wk ? picks.map(q => aged(q, wk)) : picks;
+    const c = P.copy(base), x = ctx(c), w = await washOf(base, face, look, wk), b = base, f = face;
     if (w) x.drawImage(w, 0, 0);
-    const painted = picks.filter(q => PAINTED.has(q.part));
-    const pc = painted.length ? paintLook(b, f, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], c.width / f.w, { ...(await tonesOf(b)), dye: dyeOf(picks) }) : null;
+    const painted = look.filter(q => PAINTED.has(q.part));
+    const pc = painted.length ? paintLook(b, f, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], c.width / f.w, { ...(await tonesOf(b)), dye: dyeOf(look), roots: w?.roots || null }) : null;
     if (pc) x.drawImage(pc, 0, 0, c.width, c.height);
     x.save(); x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, c.width / 400);
-    for (const q of picks) if (!pc?.painted.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
+    for (const q of look) if (!pc?.painted.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
     x.restore();
     drawMarks(x, c.width, c.height, marks);
     if (ref) { const r = await canvasOf(ref.url).catch(() => null); if (r) { const w = c.width * .26, hh = w * r.height / r.width; x.save(); x.translate(w * .66, c.height - hh - w * .42); x.rotate(-.05); x.shadowColor = 'rgba(0,0,0,.4)'; x.shadowBlur = c.width / 60; x.fillStyle = '#fbf8f2'; x.fillRect(-w * .52, 0, w * 1.04, hh + w * .2); x.shadowBlur = 0; x.drawImage(r, -w / 2, w * .02, w, hh); x.restore(); } }
     P.stamp(c);
     const blob = await P.toBlob(c, 'image/jpeg', .9), parent = print || null;
-    const p = await addPrint({ blob, w: c.width, h: c.height, origin: 'made', provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + (titleOf(picks) || 'a change') }, parents: parent ? [parent.id] : [], prompt: wordsFor(picks, input.value) });
+    const p = await addPrint({ blob, w: c.width, h: c.height, origin: 'made', provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + (titleOf(picks) || 'a change') + (wk ? ' · ' + weeksSaid(wk) + ' on' : '') }, parents: parent ? [parent.id] : [], prompt: wordsFor(picks, input.value, wk ? [grownWords(picks, wk)] : []) });
     await addItem({ type: 'prints', prints: [p.id] });
-    takes.push({ url: urlOf(p), label: 'Sketch', kind: 'sketch', print: p, picks: picks.slice() }); paintTakes(); show(takes.length - 1);
+    takes.push({ url: urlOf(p), label: 'Sketch', kind: 'sketch', print: p, picks: picks.slice(), weeks: wk }); paintTakes(); show(takes.length - 1);
   }
 
   async function keep() {
@@ -1119,11 +1319,11 @@ export function openMirror(o) {
    */
   async function showing(on) {
     if (on === showingNow || (on && (!face || !picks.length))) return;
-    stopGreeting();
+    stopGreeting(); if (on && timing) timeMode(false);
     showingNow = on;
     if (on && part) unchoose();
     if (on) showWords.replaceChildren(...picks.map((q, i) => h('li.mr-show__word', { style: { '--d': (140 + i * 90) + 'ms' } },
-      h('span.mr-show__part', null, partById(q.part)?.name || q.part), h('em.mr-show__style', null, q.style.name), q.said ? h('span.mr-show__said', null, q.said) : null)));
+      h('span.mr-show__part', null, partById(q.part)?.name || q.part), h('em.mr-show__style', null, q.style.name), q.said ? h('span.mr-show__said', null, q.said) : null, upkeepSaid(q) ? h('span.mr-show__keep', null, upkeepSaid(q)) : null)));
     const was = frame.getBoundingClientRect();
     el.classList.toggle('is-showing', on); showEl.hidden = !on;
     fit();
@@ -1165,7 +1365,7 @@ export function openMirror(o) {
 
   function close(now = false) {
     if (current !== self) return; current = null;
-    stops.forEach(f => f()); stopGreeting(); stopTurning(); cancelAnimationFrame(sway);
+    stops.forEach(f => f()); stopGreeting(); stopTurning(); cancelAnimationFrame(sway); clearTimeout(timeWalk); cancelAnimationFrame(sketchRaf);
     if (now || reduced) { el.remove(); return; }
     el.classList.remove('is-in'); el.classList.add('is-out'); setTimeout(() => el.remove(), 420);
   }
@@ -1178,7 +1378,7 @@ export function openMirror(o) {
   new ResizeObserver(() => fit()).observe(stageEl);
   new ResizeObserver(() => fit(true)).observe(takesRow);
   requestAnimationFrame(() => { el.classList.add('is-in'); fit(); if (from) flip(frame, from, { duration: 620 }); });
-  const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Escape') { if (showingNow) showing(false); else close(); } };
+  const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Escape') { if (timing) timeMode(false); else if (showingNow) showing(false); else close(); } };
   document.addEventListener('keydown', onKey); stops.push(() => document.removeEventListener('keydown', onKey));
 
   (async () => {
@@ -1251,11 +1451,16 @@ function card(o) {
     mono(Math.round(19 * k), '#f2c58a'); x.fillText((partById(q.part)?.name || q.part).toUpperCase(), cx, cy);
     let size = Math.round(54 * k); serif('italic', size, '#f6efe6'); while (size > 26 && x.measureText(q.style.name).width > cw) { size -= 2; serif('italic', size, '#f6efe6'); }
     x.fillText(q.style.name, cx, cy + Math.round(58 * k));
+    let below = cy + Math.round(98 * k);
     if (q.said) {
       serif('normal', Math.round(27 * k), 'rgba(246,239,230,.66)');
       const lines = wrap(x, q.said, cw).slice(0, rows > 1 ? 1 : 2);
       lines.forEach((l, j) => x.fillText(l, cx, cy + Math.round((98 + j * 34) * k)));
+      below = cy + Math.round((98 + lines.length * 34) * k);
     }
+    // and, where there is room, what it will want: "Trim every 3 weeks"
+    const keep = rows === 1 ? upkeepSaid(q).toUpperCase() : '';
+    if (keep) { let px = 16; mono(px, 'rgba(242,197,138,.72)'); while (px > 11 && x.measureText(keep).width > cw) mono(--px, 'rgba(242,197,138,.72)'); x.fillText(keep, cx, below + (q.said ? 8 : -4)); }
   });
   const stamp = o.stamp.startsWith('GPT Image') ? o.stamp.slice('GPT Image'.length).replace(/^\s*\+\s*/, '') : o.stamp;
   const footer = [stamp.toUpperCase(), o.sides.length ? 'SIDES: LIVE SKETCH ON THIS DEVICE' : ''].filter(Boolean).join('  ·  ');

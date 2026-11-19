@@ -331,7 +331,7 @@ function combed(pic, f, hairMask, at, shape, ways, deep, F, how, r, skin) {
  * which): the rest is left to the pencil and the washes. Null when nothing could be.
  * @param {CanvasImageSource & { width: number, height: number }} pic @param {import('../studio/face.js').Face} f
  * @param {{ part: string, style: string, shape?: Record<string, number> }[]} look
- * @param {number[]} box @param {number} k @param {ReturnType<typeof coloursOf> & { dye?: string }} [tone] a dye: the hair colour the look also asks for, which the fringe and the beard take
+ * @param {number[]} box @param {number} k @param {ReturnType<typeof coloursOf> & { dye?: string, roots?: CanvasImageSource | null }} [tone] a dye: the hair colour the look also asks for, which the fringe and the beard take; roots: where, weeks on, the hair's own colour has grown back in (time.js)
  * @returns {(HTMLCanvasElement & { painted: Set<string> }) | null}
  */
 export function paintLook(pic, f, look, box, k, tone) {
@@ -347,7 +347,9 @@ export function paintLook(pic, f, look, box, k, tone) {
     else if (q.part === 'brows') brows(x, f, q, t, r, k, pic, box);
     else if (q.part === 'lashes') ink(x, f, q, t, k);
     else if (q.part === 'beard') beard(x, layer, f, q, t, r, k, at, pic);
-    o.drawImage(layer, 0, 0); out.painted.add(q.part);
+    // brows weeks on: the new shape fading as the old one grows back
+    o.globalAlpha = q.part === 'brows' ? 1 - Math.min(.55, (q.shape?.grow || 0) * 1.1) : 1;
+    o.drawImage(layer, 0, 0); o.globalAlpha = 1; out.painted.add(q.part);
   }
   return out.painted.size ? out : null;
 }
@@ -383,7 +385,7 @@ const line = (/** @type {Pt[]} */ ps) => { const p = new Path2D(); ps.forEach((q
  * @param {import('../studio/face.js').Face} f @param {string} style @param {Record<string, number>} shape
  */
 function fringeOf(f, style, shape) {
-  const m = measure(f), P = m.P, v = (/** @type {string} */ id) => Math.max(-1, Math.min(1, shape[id] || 0));
+  const m = measure(f), P = m.P, v = (/** @type {string} */ id) => Math.max(-1, Math.min(1, shape[id] || 0)), g = Math.max(0, shape.grow || 0);
   // each side of the face by where it is in the picture (a mirrored picture has its points mirrored too)
   const by = (/** @type {number} */ a, /** @type {number} */ b, /** @type {number} */ s) => ((P(a).x < P(b).x) === (s < 0) ? P(a) : P(b));
   const side = (/** @type {number} */ s) => ({ temple: by(54, 284, s), cheek: by(234, 454, s), corner: by(33, 263, s), browOut: by(70, 300, s) });
@@ -391,14 +393,27 @@ function fringeOf(f, style, shape) {
   /** @type {Fringe} */
   const out = { cover: [], m, ways: [{ lean: 0, from: -Infinity, to: Infinity }] };
   if (style === 'curtain') {
-    const mid = m.cx + v('part') * m.bw * .12, drop = v('length') * m.F * .9;
+    const mid = m.cx + v('part') * m.bw * .12, drop = v('length') * m.F * .9 + g * m.F;
+    // weeks on, grown heavier, it falls into the eyes (cut longer, it is only longer: it still sweeps clear of them)
+    const open = 1 - Math.min(.36, g * .55);
     for (const s of [-1, 1]) {
-      // the inner edge: from the parting, an arch over the middle of the forehead, down past the brow's outer half to
-      // the cheekbone; the hair it covers is everything outside it, up to the hair already there
-      const sd = side(s), browMid = { x: (sd.browOut.x + P(s * (P(263).x - P(33).x) > 0 ? 334 : 105).x) / 2, y: m.brow };
-      // as a curtain is worn: open across the middle of the forehead, the hair swept out from the parting over its
-      // corners and down past the outer end of the brow to the cheekbone, framing the face
-      const edge = smooth([{ x: mid + s * m.bw * .01, y: m.hair - m.F * .25 }, { x: mid + s * m.bw * .1, y: m.hair + m.F * .1 + drop * .1 }, { x: mid + s * m.bw * .23, y: m.hair + m.F * .4 + drop * .25 }, { x: (browMid.x + sd.browOut.x) / 2, y: m.brow - m.F * .26 + drop * .4 }, { x: sd.corner.x + s * m.bw * .1, y: sd.corner.y + drop * .7 }, { x: sd.cheek.x - s * m.bw * .02, y: sd.corner.y + m.F * .55 + drop }]);
+      // as a curtain is worn: parted, open across the forehead, the hair swept out from the parting over its corners,
+      // clear of the eyes, and down past the outer end of the brow to the cheekbone, framing the face. Its inner edge is
+      // the way the hair falls (as each strand does: nearly straight down from the hairline, sweeping out further down),
+      // opening faster than the strands, so they leave it one by one rather than being cut along a line
+      const sd = side(s), eye = sd.corner.y, low = eye + m.F * .55 + drop, top = m.hair - m.F * .1, N = 18, far = sd.cheek.x - s * m.bw * .02;
+      const fall = (/** @type {number} */ y) => { const d = Math.max(0, Math.min(1, (y - m.hair) / (1.25 * m.F))); return .6 * (.18 + .82 * d * d * (3 - 2 * d)); };
+      // how much faster than its strands it must open to be past the eye's outer corner by the eye
+      let xs = mid + s * m.bw * .015; for (let y = top, dy = (eye - top) / 40; y < eye; y += dy) xs += s * fall(y) * dy;
+      const need = Math.max(0, s * (sd.corner.x + s * m.bw * .03 - xs)) * open, reach = Math.max(m.F * .3, eye - m.hair);
+      const edge = [{ x: mid + s * m.bw * .01, y: m.hair - m.F * .25 }];
+      let x = mid + s * m.bw * .015;
+      for (let i = 1; i <= N; i++) {
+        const dy = (low - top) / N, y = top + dy * i, e = Math.max(0, Math.min(1, (y - m.hair) / reach));
+        x += s * fall(y - dy / 2) * dy;
+        const at = x + s * need * e * e * (3 - 2 * e);
+        edge.push({ x: s > 0 ? Math.min(at, far) : Math.max(at, far), y });
+      }
       const back = [{ x: sd.cheek.x + s * m.bw * .03, y: sd.corner.y + m.F * .15 + drop }, { x: sd.temple.x + s * m.bw * .08, y: m.hair + m.F * .05 }, { x: sd.temple.x + s * m.bw * .02, y: m.hair - m.F * 1.6 }, { x: mid + s * m.bw * .008, y: m.hair - m.F * 2 }];
       out.cover.push([...edge, ...back]);
     }
@@ -407,11 +422,20 @@ function fringeOf(f, style, shape) {
     return out;
   }
   if (style === 'side') {
-    const part = m.cx - m.bw * .2 + v('part') * m.bw * .15, drop = v('length') * m.F * .6, dir = part < m.cx ? 1 : -1, far = side(dir);
-    const edge = smooth([{ x: part, y: m.hair - m.F * .2 }, { x: part + dir * m.bw * .04, y: m.hair + m.F * .32 }, { x: part + dir * m.bw * .16, y: m.hair + m.F * .66 + drop * .3 }, { x: m.cx + dir * m.bw * .16, y: m.brow - m.F * .26 + drop * .6 }, { x: far.browOut.x - dir * m.bw * .02, y: m.brow - m.F * .08 + drop * .8 }, { x: far.temple.x + dir * m.bw * .03, y: m.brow + m.F * .2 + drop }]);
-    const back = [{ x: far.temple.x + dir * m.bw * .09, y: m.brow - m.F * .4 + drop }, { x: far.temple.x + dir * m.bw * .06, y: m.hair - m.F * .35 }, { x: far.temple.x + dir * m.bw * .02, y: m.hair - m.F * 1.6 }, { x: part - dir * m.bw * .04, y: m.hair - m.F * 2 }];
+    const part = m.cx - m.bw * .2 + v('part') * m.bw * .15, dir = part < m.cx ? 1 : -1, far = side(dir);
+    // longer (and, weeks on, grown), it falls further before it sweeps across
+    const L = 2.7 / (1 + Math.max(0, v('length') * .6 + g) * .9);
+    // its lower edge is the way the hair falls from the parting, as each strand beside it does: down from the hairline,
+    // then sweeping across the forehead to the far temple; the strands run along it, never cut across by it
+    const edge = [{ x: part, y: m.hair - m.F * .2 }], end = far.temple.x + dir * m.bw * .03, dy = m.F * .04;
+    let x = part, y = m.hair - m.F * .05;
+    while (dir * (end - x) > 0 && y < m.brow + m.F * 1.6) {
+      const d = Math.max(0, Math.min(1, (y - m.hair) / (1.25 * m.F)));
+      x += dir * L * (.18 + .82 * d * d * (3 - 2 * d)) * dy; y += dy; edge.push({ x, y });
+    }
+    const back = [{ x: far.temple.x + dir * m.bw * .09, y: y - m.F * .3 }, { x: far.temple.x + dir * m.bw * .06, y: m.hair - m.F * .35 }, { x: far.temple.x + dir * m.bw * .02, y: m.hair - m.F * 1.6 }, { x: part - dir * m.bw * .04, y: m.hair - m.F * 2 }];
     out.cover.push([...edge, ...back]);
-    out.ways = [{ lean: -dir * .85, curve: 1, from: -Infinity, to: Infinity }];
+    out.ways = [{ lean: -dir * L, curve: 1, from: -Infinity, to: Infinity }];
     return out;
   }
   // straight fringes: the markup's strands, closed into one, and a bridge up into the hair across the top
@@ -465,14 +489,21 @@ function fringe(/** @type {CanvasRenderingContext2D} */ x, /** @type {HTMLCanvas
     curtain: { ends: .9, apart: .55, see: .06, back: .2, taper: .42, wisp: .14, sheen: .1 }, side: { ends: .8, apart: .5, see: .04, back: .3, taper: .38, wisp: .12, sheen: .1 },
   })[q.style] || { ends: .6, apart: .25, see: 0, back: .4, taper: .2, wisp: .06, sheen: .04 };
   const ways = g0.ways.map(w => ({ lean: w.lean, curve: w.curve, from: (w.from - box[0]) * k, to: (w.to - box[0]) * k }));
-  const hair = combed(pic, f, t.mask, at, soft(shape, m.F * k * .035), ways, m.F * k * 2.4, m.F * k, { ...how, straight: straightOf(pic, f, t.mask), h0: (m.hair - box[1]) * k, reach: reachOf(f, t.mask) }, r, t.skin);
+  // weeks on, it has grown: longer (the hair with it), and its line gone softer and less even
+  const g = Math.max(0, q.shape?.grow || 0), cut = g ? { ...how, ends: how.ends + g * 1.6, apart: Math.min(1, how.apart + g * .9), wisp: how.wisp + g * .5, taper: how.taper + g * .35 } : how;
+  const hair = combed(pic, f, t.mask, at, soft(shape, m.F * k * .035), ways, m.F * k * 2.4, m.F * k, { ...cut, straight: straightOf(pic, f, t.mask), h0: (m.hair - box[1]) * k, reach: reachOf(f, t.mask) + g }, r, t.skin);
   if (!hair) return false;
   // its shadow on the forehead, a little below and softer, then the hair (dyed, if the look dyes it)
   const sh = make(layer.width, layer.height), shx = ctx(sh);
   shx.drawImage(soft(hair, m.F * k * .06), 0, m.F * k * .05); shx.globalCompositeOperation = 'source-in'; shx.fillStyle = css(shade(t.skin.dark, -.55), .38); shx.fillRect(0, 0, sh.width, sh.height);
   shx.globalCompositeOperation = 'destination-out'; shx.drawImage(hair, 0, 0);
-  // dyed as the rest of the hair is (the layer's own alpha says where the hair is)
-  if (t.dye) dyeHair(ctx(hair), t.dye, null, /** @type {any} */ (hair).hairMean);
+  // dyed as the rest of the hair is (the layer's own alpha says where the hair is), but for its own roots, weeks on
+  if (t.dye) {
+    const own = t.roots ? make(hair.width, hair.height) : null;
+    if (own && t.roots) { const ox = ctx(own); ox.drawImage(hair, 0, 0); ox.globalCompositeOperation = 'destination-in'; at(ox); ox.drawImage(t.roots, 0, 0, f.w, f.h); }
+    dyeHair(ctx(hair), t.dye, null, /** @type {any} */ (hair).hairMean);
+    if (own) ctx(hair).drawImage(own, 0, 0);
+  }
   x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(sh, 0, 0); x.drawImage(hair, 0, 0); x.restore();
   return true;
 }
@@ -567,18 +598,25 @@ function beard(/** @type {CanvasRenderingContext2D} */ x, /** @type {HTMLCanvasE
   const mask = soft(shape, m.u * k * (q.style === 'stubble' ? 2 : 1.8));
   // how thick it grows: a base, then hair by hair, short and pointing down and out along the jaw
   const dens = make(layer.width, layer.height), dx = ctx(dens); at(dx);
-  const full = q.style === 'full', stub = q.style === 'stubble', base = stub ? .22 : q.style === 'moustache' ? .55 : full ? .56 : .42;
+  // (weeks on it has filled in)
+  // (weeks on, it has filled in, and its hairs are longer)
+  const full = q.style === 'full', stub = q.style === 'stubble', grow = Math.max(0, q.shape?.grow || 0), base = Math.min(.6, (stub ? .16 : q.style === 'moustache' ? .42 : full ? .44 : .3) + Math.min(.1, grow * .3));
   const gy = dx.createLinearGradient(0, Math.min(P(234).y, P(454).y), 0, P(152).y);
   gy.addColorStop(0, 'rgb(255 255 255 / ' + (base * .55).toFixed(3) + ')'); gy.addColorStop(.55, 'rgb(255 255 255 / ' + (base * .9).toFixed(3) + ')'); gy.addColorStop(1, 'rgb(255 255 255 / ' + base + ')');
   dx.fillStyle = gy; dx.fillRect(m.bx - m.bw, m.by - m.bh, m.bw * 3, m.bh * 3);
-  dx.lineCap = 'round';
   const y0 = P(2).y - m.bh * .06, span = m.bh * .95;
-  const many = Math.min(stub ? 5200 : 6400, Math.max(700, m.bw * k * (stub ? 12 : 16)));
+  // never even: thicker in places and thinner in others, as a beard grows (a few cells of noise, eased between)
+  const cells = make(12, 12), cx2 = ctx(cells), cd = cx2.createImageData(12, 12);
+  for (let i = 0; i < cd.data.length; i += 4) { cd.data[i] = cd.data[i + 1] = cd.data[i + 2] = 255; cd.data[i + 3] = Math.round(255 * (.45 + r() * .55)); }
+  cx2.putImageData(cd, 0, 0);
+  dx.save(); dx.globalCompositeOperation = 'destination-in'; dx.imageSmoothingEnabled = true; dx.imageSmoothingQuality = 'high'; dx.drawImage(cells, m.bx - m.bw * .15, y0 - m.bh * .12, m.bw * 1.3, span + m.bh * .24); dx.restore();
+  dx.lineCap = 'round';
+  const many = Math.min(stub ? 5200 : 8000, Math.max(900, m.bw * k * (stub ? 12 : 21)));
   for (let i = 0; i < many; i++) {
     const p = { x: m.bx - m.bw * .1 + r() * m.bw * 1.2, y: y0 + r() * span }, side = (p.x - m.cx) / (m.bw / 2);
     if (stub) { dx.fillStyle = 'rgb(255 255 255 / ' + (.25 + r() * .5).toFixed(2) + ')'; dx.fillRect(p.x, p.y, m.u * .32, m.u * .32); continue; }
-    const a = Math.PI / 2 + side * .55 + (r() - .5) * .8, len = Math.max(4 / k, m.u * (full ? 1.4 + r() * 2.2 : .7 + r() * 1.2));
-    dx.strokeStyle = 'rgb(255 255 255 / ' + (.1 + r() * .3).toFixed(2) + ')'; dx.lineWidth = m.u * (.08 + r() * .1) + .3 / k;
+    const a = Math.PI / 2 + side * .55 + (r() - .5) * .8, len = Math.max(4 / k, m.u * (full ? 1.4 + r() * 2.2 : .75 + r() * 1.25) * (1 + grow * (full ? 1 : 1.6)));
+    dx.strokeStyle = 'rgb(255 255 255 / ' + (.14 + r() * .42).toFixed(2) + ')'; dx.lineWidth = m.u * (.06 + r() * .08) + .3 / k;
     dx.beginPath(); dx.moveTo(p.x, p.y); dx.lineTo(p.x + Math.cos(a) * len, p.y + Math.sin(a) * len); dx.stroke();
   }
   dx.setTransform(1, 0, 0, 1, 0, 0); dx.globalCompositeOperation = 'destination-in'; dx.drawImage(mask, 0, 0);

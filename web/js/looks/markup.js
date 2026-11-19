@@ -71,6 +71,8 @@ function draw(f, part, style, shape) {
   const hair = P(10).y - bh * .02, brow = Math.min(P(105).y, P(334).y), F = Math.max(bh * .12, brow - hair);
   const out = /** @type {Stroke[]} */ ([]), controls = /** @type {Mark[]} */ ([]), r = jitter(part.length * 31 + style.length);
   const v = (/** @type {string} */ id) => Math.max(-1, Math.min(1, shape[id] || 0));
+  // weeks on: how far the hair has grown since the look was cut, of the forehead's height (see time.js)
+  const g = Math.max(0, shape.grow || 0);
   const control = (/** @type {string} */ id, /** @type {Pt} */ at, /** @type {'x' | 'y'} */ axis, /** @type {{ short: string, phrase: string }} */ words) => { controls.push({ id, x: at.x, y: at.y, axis, v: v(id), ...words }); };
   // which way round the face is: a front camera's picture is mirrored, its points with it, so sides are found by where they are
   const m = P(263).x >= P(33).x ? 1 : -1;
@@ -79,7 +81,7 @@ function draw(f, part, style, shape) {
   if (part === 'bangs') {
     if (style === 'curtain') {
       // the parting moves with 'part'; the curtains fall further with 'length'
-      const mid = cx + v('part') * bw * .12, drop = v('length') * F * .9;
+      const mid = cx + v('part') * bw * .12, drop = v('length') * F * .9 + g * F;
       let tip = { x: 0, y: 0 };
       for (const s of [-1, 1]) {
         const sd = side(s);
@@ -95,7 +97,7 @@ function draw(f, part, style, shape) {
       control('part', { x: mid, y: hair - F * .25 }, 'x', say(v('part'), ['parted right', 'the parting moved toward the right of the picture'], ['parted left', 'the parting moved toward the left of the picture']));
     }
     else if (style === 'side') {
-      const a = { x: cx - bw * .2 + v('part') * bw * .15, y: hair - F * .25 }, drop = v('length') * F * .6;
+      const a = { x: cx - bw * .2 + v('part') * bw * .15, y: hair - F * .25 }, drop = v('length') * F * .6 + g * F;
       let tip = { x: 0, y: 0 };
       for (let k = 0; k < 6; k++) {
         const s = { x: a.x + bw * k * .035, y: a.y + F * k * .02 }, e = { x: side(1).temple.x + bw * (.04 - k * .015), y: brow - F * (.05 - k * .1) + drop };
@@ -108,7 +110,7 @@ function draw(f, part, style, shape) {
     else {
       // fringes that fall straight: how far down, how many strands, how loose
       const look = /** @type {Record<string, { to: number, n: number, line: boolean, loose: number }>} */ ({ blunt: { to: .86, n: 11, line: true, loose: .15 }, micro: { to: .42, n: 11, line: true, loose: .1 }, wispy: { to: .95, n: 9, line: false, loose: .9 }, birkin: { to: 1.36, n: 13, line: false, loose: .5 } })[style] || { to: .86, n: 11, line: true, loose: .2 };
-      const to = Math.max(.25, Math.min(1.45, look.to + v('length') * .38));
+      const to = Math.max(.25, Math.min(1.45 + g, look.to + v('length') * .38 + g));
       const L = side(-1).temple, R = side(1).temple, w = R.x - L.x + bw * .08, x0 = L.x - bw * .04, end = (/** @type {number} */ t) => hair + F * to + Math.sin(t * Math.PI) * F * .08;
       for (let k = 0; k < look.n; k++) {
         const t = (k + .5) / look.n, x = x0 + w * t, y1 = end(t) + (look.line ? 0 : r() * F * .22 * look.loose), lean = (t - .5) * bw * .06 + r() * bw * .015 * look.loose;
@@ -200,12 +202,12 @@ function draw(f, part, style, shape) {
     const crown = (/** @type {number} */ k) => 'M' + pt({ x: L - bw * k, y: chin }) + ' C' + pt({ x: L - bw * (k + .06), y: by }) + ', ' + pt({ x: mid - bw * .62, y: top }) + ', ' + pt({ x: mid, y: top }) + ' C' + pt({ x: mid + bw * .62, y: top }) + ', ' + pt({ x: R + bw * (k + .06), y: by }) + ', ' + pt({ x: R + bw * k, y: chin });
     const lengths = /** @type {Record<string, number>} */ ({ bob: 1.06, long: 1.9, shag: 1.4, curls: 1.25 });
     if (style === 'buzz' || style === 'pixie') {
-      const t = by - bh * (style === 'buzz' ? .1 : .2), ear = P(234).y - (style === 'buzz' ? bh * .05 : -bh * .04);
+      const t = by - bh * (style === 'buzz' ? .1 : .2) - g * F * .4, ear = P(234).y - (style === 'buzz' ? bh * .05 : -bh * .04) + g * F;
       out.push({ d: 'M' + pt({ x: bx - bw * .04, y: ear }) + ' C' + pt({ x: bx - bw * .1, y: by }) + ', ' + pt({ x: mid - bw * .55, y: t }) + ', ' + pt({ x: mid, y: t }) + ' C' + pt({ x: mid + bw * .55, y: t }) + ', ' + pt({ x: bx + bw * 1.1, y: by }) + ', ' + pt({ x: bx + bw * 1.04, y: ear }), w: u * .9 });
       if (style === 'pixie') for (let k = 0; k < 7; k++) { const x = bx + bw * (.15 + k * .11); out.push({ d: 'M' + pt({ x, y: t + bh * .02 }) + ' Q' + pt({ x: x + bw * .06, y: hair }) + ', ' + pt({ x: x + bw * .1, y: hair + F * .45 }), w: u * .45 }); }
       else for (let k = 0; k < 90; k++) { const a = Math.PI * (1.05 + (r() + .5) * .9), rr = .35 + (r() + .5) * .12; out.push({ d: 'M' + pt({ x: mid + Math.cos(a) * bw * rr * 1.25, y: by + bh * .12 + Math.sin(a) * bh * rr * .7 }) + ' h.1', w: u * .45 }); }
     } else {
-      const fall = chin + (lengths[style] - 1) * bh * 1.2 + v('length') * bh * .7, wave = style === 'curls' ? 1 : 0;
+      const fall = chin + (lengths[style] - 1) * bh * 1.2 + v('length') * bh * .7 + g * F, wave = style === 'curls' ? 1 : 0;
       /** @type {Pt[]} */ let right = [];
       for (const s of [-1, 1]) {
         const x0 = s < 0 ? L : R, pts = [];

@@ -319,3 +319,68 @@ test('in the mirror a fringe is painted on the photo at once, its pencil kept fo
   await expect(pencil).not.toHaveClass(/is-painted/, { timeout: 20_000 });
   await expect.poll(() => pencil.evaluate(g => getComputedStyle(g).opacity)).toBe('1');
 });
+
+test('a look weeks on: Grow out walks the weeks to its first trim, the fringe falls and the roots come in, the frame dated; asked for, it is sketched so', async ({ page }) => {
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/ines.jpg');
+  const mirror = page.locator('section.mr'), when = mirror.locator('.mr-when');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  // make-up is put on each morning: nothing to grow out
+  await mirror.locator('.mr-part[data-part="lips"]').click();
+  await mirror.locator('.mr-style[data-style="red"]').click();
+  await expect(when).toBeHidden();
+  // a fringe and a colour grow
+  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-style[data-style="blunt"]').click();
+  await mirror.locator('.mr-part[data-part="colour"]').click();
+  await mirror.locator('.mr-style[data-style="platinum"]').click();
+  await expect(when).toBeVisible();
+  const paint = mirror.locator('.mr-paint'), wash = mirror.locator('.mr-wash');
+  // the fringe's foot down the middle of the face, and how much of the hair is dyed
+  const foot = () => paint.evaluate(c => { const w = Math.round(c.width * .1), d = c.getContext('2d').getImageData(Math.round(c.width * .45), 0, w, c.height).data; let y = -1; for (let i = 0; i < c.height; i++) for (let j = 0; j < w; j++) if (d[(i * w + j) * 4 + 3] > 90) { y = i; break; } return y / c.height; });
+  const dyed = () => wash.evaluate(c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 16) n += d[i]; return n; });
+  await expect.poll(foot, { timeout: 20_000 }).toBeGreaterThan(.05);
+  await page.waitForTimeout(600);
+  const [foot0, dyed0] = [await foot(), await dyed()];
+  // looking ahead: the parts and the takes make way, and the weeks walk on by themselves to the first trim
+  await when.click();
+  await expect(mirror).toHaveClass(/is-when/);
+  await expect(mirror.locator('.mr-parts')).toBeHidden();
+  await expect(mirror.locator('.mr-time')).toBeVisible();
+  await expect(mirror.locator('.mr-time__head b')).toHaveText('3 weeks', { timeout: 10_000 });
+  await expect(mirror.locator('.mr-cap__say')).toHaveText('The fringe in the eyes');
+  await expect(mirror.locator('.mr-time__mark.is-due')).toHaveText('trim');
+  await expect(mirror.locator('.mr-time__mark:not(.is-due)')).toHaveText('roots');
+  await expect.poll(foot, { timeout: 20_000 }).toBeGreaterThan(foot0 + .002);
+  const foot3 = await foot(), date3 = await mirror.locator('.mr-cap__date').textContent();
+  expect(date3).toMatch(/^\d{1,2} [A-Z]{3}( '\d\d)?$/);
+  // by hand, six weeks: the roots are in, and the line says the weeks go with what is asked
+  await mirror.locator('.mr-time__range').fill('6');
+  await expect(mirror.locator('.mr-time__head b')).toHaveText('6 weeks');
+  await expect(mirror.locator('.mr-cap__say')).toHaveText('The fringe in the eyes · roots showing');
+  await expect(mirror.locator('.mr-time__range')).toHaveAttribute('aria-valuetext', '6 weeks: The fringe in the eyes · roots showing');
+  await expect(mirror.locator('.mr-cap__date')).not.toHaveText(date3);
+  await expect(mirror.locator('.mr-token').first()).toHaveText('6 weeks on');
+  await expect.poll(dyed, { timeout: 20_000 }).toBeLessThan(dyed0 * .995);
+  expect(await foot()).toBeGreaterThan(foot3 + .002);
+  // Done: today again, as it was
+  await mirror.locator('.mr-time__done').click();
+  await expect(mirror).not.toHaveClass(/is-when/);
+  await expect(mirror.locator('.mr-parts')).toBeVisible();
+  await expect(mirror.locator('.mr-token--when')).toHaveCount(0);
+  await expect.poll(foot, { timeout: 20_000 }).toBeLessThan(foot0 + .004);
+  // asked for weeks on, it is sketched weeks on, and says so
+  await when.click();
+  await expect(mirror.locator('.mr-time__head b')).toHaveText('3 weeks', { timeout: 10_000 });
+  await mirror.locator('.mr-time__range').fill('6');
+  await mirror.locator('.mr-ask__go').click();
+  await expect(mirror.locator('.mr-take[data-weeks="6"]')).toHaveCount(1, { timeout: 30_000 });
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Sketch · 6 weeks on');
+  await expect(mirror).not.toHaveClass(/is-when/);
+  // and Escape, looking ahead, comes back to today rather than closing the mirror
+  await when.click();
+  await expect(mirror).toHaveClass(/is-when/);
+  await page.keyboard.press('Escape');
+  await expect(mirror).not.toHaveClass(/is-when/);
+  await expect(mirror).toBeVisible();
+});

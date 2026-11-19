@@ -8,7 +8,7 @@ const tilt = id => (([...id].reduce((a, c) => a + c.charCodeAt(0), 0) % 7) - 3) 
 
 /** A print in the thread. */
 export function printEl(p, { i = 0, onOpen = null } = {}) {
-  const el = h('figure.print', { style: { '--ar': p.w && p.h ? `${p.w} / ${p.h}` : '3 / 4', '--i': i, '--tilt': tilt(p.id) }, data: { id: p.id } },
+  const el = h('figure.print', { style: { '--ar': p.w && p.h ? `${p.w} / ${p.h}` : '3 / 4', '--i': i, '--tilt': tilt(p.id) }, data: { id: p.id, ...(p.blob?.type === 'image/png' ? { alpha: '1' } : {}) } },
     h('div.print__frame', null,
       h('img.print__img', { src: urlOf(p), alt: `Picture ${p.handle}`, decoding: 'async', draggable: false }),
       h('span.print__handle', { 'aria-hidden': 'true' }, p.handle),

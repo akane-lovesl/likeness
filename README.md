@@ -42,6 +42,7 @@ uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speakin
   - While you type, the app reads what you mean (change, restyle, use as a reference, blend, pin, backdrop, variations) and shows it with a time estimate before you send.
   - In the showcase, a small proof rises behind the composer and sketches what you are asking for, painted again as the words change. Tap it for another arrangement; the picture you send for is the one it showed.
   - Every reply ends with three ideas for what to say next.
+  - On the device, a sketch does what it honestly can to any picture (warmer, brighter, black and white, a plain or transparent background, a profile picture around the face) and says plainly when something needs the studio, rather than pretending.
   - A sketch the device made can be talked to: *make it night*, *add a rabbit in a crown* or *two more like this* paints the same scene again, with just that changed.
 - **The sun.** On a sketch the device made, the sun can be held. Drag it across the sky and the scene is painted again under your finger: first light low on the left, the golden hour low on the right, and night once it goes under the horizon, when the moon rises across the sky. Indoors, the window's light moves across the table. Let go, and it offers to paint it at that hour.
 - **The look camera.** Point the camera and see the world in any look, sketched live on the device. Take the picture, and the studio paints it in that look.

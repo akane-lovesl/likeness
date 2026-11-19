@@ -37,7 +37,7 @@ const WORDS = [
   [/valentine|(?:pink|rose|blush) water ?colou?r/, 'valentine'], [/water ?colou?r|aquarelle/, 'watercolour'], [/\boil\b|old master|impasto|rembrandt/, 'oil'], [/pencil|sketch|drawing|charcoal|\bink\b|sumi/, 'ink-wash'],
   [/anime|cel|cartoon|comic|manga/, 'cel-pop'], [/pixel|8.?bit|retro game|game ?boy/, 'pixel-pocket'], [/neon|cyber|synthwave|vaporwave/, 'neon-noir', 'mood'],
   [/film|analog|polaroid/, 'film-77'], [/70s|seventies|vintage/, 'film-77', 'mood'], [/golden|sunset|warm light/, 'golden-hour', 'mood'], [/winter|frost|icy|snowy|cold/, 'hoarfrost', 'mood'],
-  [/dream|pastel|soft/, 'pastel-dream', 'mood'], [/riso|risograph|zine|screen ?print/, 'riso'], [/porcelain|delft|china|blue and white/, 'porcelain'],
+  [/dream|pastel|\bsoft (?:focus|light|glow|pink|colou?rs?)\b/, 'pastel-dream', 'mood'], [/riso|risograph|zine|screen ?print/, 'riso'], [/porcelain|delft|china|blue and white/, 'porcelain'],
   [/cyanotype|blueprint/, 'cyanotype'], [/sepia|old photo/, 'sepia-letter'], [/antique|victorian/, 'sepia-letter', 'mood'], [/moon|midnight|night/, 'moonlit', 'mood'], [/velvet|candle|moody|romantic/, 'velvet-hour', 'mood'],
 ];
 /** The look some words name. Pass moods: false when painting something new, so only a medium counts. */

@@ -896,13 +896,84 @@ export function regionEdit(src, mask, note, seed = 1) {
 
 /** The subject, kept, in front of new scenery. Without a mask the device guesses an oval around the centre. */
 export function composite(subject, mask, backdrop) {
-  const w = subject.width, h = subject.height, out = make(w, h), c = out.getContext('2d');
-  c.drawImage(backdrop, 0, 0, w, h);
-  const m = make(w, h), mc = m.getContext('2d');
+  const out = make(subject.width, subject.height), c = out.getContext('2d');
+  if (backdrop) c.drawImage(backdrop, 0, 0, out.width, out.height);
+  c.drawImage(cutout(subject, mask), 0, 0);
+  return out;
+}
+/** The subject alone, kept by its outline (softened a little), or by a soft oval in the middle when there is none. */
+export function cutout(subject, mask) {
+  const w = subject.width, h = subject.height, m = make(w, h), mc = m.getContext('2d');
   if (mask) { mc.filter = `blur(${Math.max(1.5, w / 400)}px)`; mc.drawImage(mask, 0, 0, w, h); }
   else { const g = mc.createRadialGradient(w / 2, h * .56, Math.min(w, h) * .18, w / 2, h * .56, Math.min(w, h) * .52); g.addColorStop(0, '#000'); g.addColorStop(.7, 'rgb(0 0 0 / .85)'); g.addColorStop(1, 'rgb(0 0 0 / 0)'); mc.fillStyle = g; mc.fillRect(0, 0, w, h); }
   const cut = make(w, h), cc = cut.getContext('2d'); cc.drawImage(subject, 0, 0); cc.globalCompositeOperation = 'destination-in'; cc.drawImage(m, 0, 0);
-  c.drawImage(cut, 0, 0);
+  return cut;
+}
+/** A plain backdrop: one colour, a little lighter in the middle, like a studio sweep. */
+export function plainBackdrop(w, h, colour) {
+  const c = make(w, h), x = c.getContext('2d'), g = x.createRadialGradient(w * .5, h * .38, 0, w * .5, h * .5, Math.max(w, h) * .75);
+  g.addColorStop(0, mix(colour, '#ffffff', .2)); g.addColorStop(1, mix(colour, '#000000', .1)); x.fillStyle = g; x.fillRect(0, 0, w, h);
+  return c;
+}
+
+/** Changes any picture can honestly take on the device, and the words for each. */
+const ADJUST = /** @type {[RegExp, string, string][]} */ ([
+  [/\bwarm(?:er|th|ing)?\b(?! light)/, 'warm', 'warmer'], [/\bcool(?:er|ing)?\b|\bcolder\b/, 'cool', 'cooler'],
+  [/\bbright(?:er|en)?\b|\blight(?:er|en)\b/, 'bright', 'brighter'], [/\bdark(?:er|en)?\b|\bdimm?(?:er)?\b/, 'dark', 'darker'],
+  [/more contrast|\bpunch(?:y|ier)\b|\bcrisp(?:er)?\b|\bstronger\b|\bbolder\b|\bsharper\b/, 'punch', 'with more punch'],
+  [/less contrast|\bsoft(?:er|en)?\b|\bgentler\b|\bsubtler\b|\bflatter\b/, 'soft', 'softer'],
+  [/more colou?r|\bvivid\b|\bsaturated?\b|\bcolou?rful\b|\bvibrant\b|\bricher\b/, 'vivid', 'more vivid'], [/less colou?r|\bmuted\b|desaturat|washed[- ]out|\bsubdued\b|\bpaler\b/, 'muted', 'muted'],
+  [/black (?:and|&) white|\bb ?& ?w\b|monochrome|gr[ae]yscale|no colou?r/, 'mono', 'in black and white'],
+]);
+/** The adjustments some words ask for ("warmer and brighter", "in black and white"), or null. @param {string} text */
+export function adjustmentsIn(text) {
+  const t = String(text || '').toLowerCase(), ops = /** @type {string[]} */ ([]), said = /** @type {string[]} */ ([]);
+  for (const [re, op, word] of ADJUST) if (re.test(t)) { ops.push(op); said.push(word); }
+  return ops.length ? { ops, said } : null;
+}
+/** @param {HTMLCanvasElement} src @param {string[]} ops */
+export function adjust(src, ops) {
+  const w = src.width, h = src.height, out = make(w, h), c = out.getContext('2d');
+  const f = /** @type {Record<string, string>} */ ({ bright: 'brightness(1.14)', dark: 'brightness(.84)', punch: 'contrast(1.18) saturate(1.08)', soft: 'contrast(.88) saturate(.88) brightness(1.03)', vivid: 'saturate(1.38)', muted: 'saturate(.6)', mono: 'grayscale(1) contrast(1.1)' });
+  c.filter = ops.map(o => f[o]).filter(Boolean).join(' ') || 'none'; c.drawImage(src, 0, 0); c.filter = 'none';
+  for (const [o, col] of [['warm', 'rgb(255 150 70 / .55)'], ['cool', 'rgb(70 140 255 / .5)']]) if (ops.includes(o)) { c.globalCompositeOperation = 'soft-light'; c.fillStyle = col; c.fillRect(0, 0, w, h); c.globalCompositeOperation = 'source-over'; }
+  return out;
+}
+
+/**
+ * A profile picture: a square around the face (the middle of the outline's top, above the shoulders), the subject kept
+ * by its outline on a soft backdrop in the picture's own light.
+ * @param {HTMLCanvasElement} src @param {HTMLCanvasElement | null} mask
+ */
+export function portrait(src, mask, size = 768) {
+  const w = src.width, h = src.height;
+  let box = { x0: w * .2, x1: w * .8, y0: h * .1, y1: h }, cx = w / 2, head = h * .3;
+  if (mask) {
+    const mw = 96, mh = Math.max(1, Math.round(96 * h / w)), d = copy(mask, mw, mh).getContext('2d').getImageData(0, 0, mw, mh).data;
+    let x0 = mw, x1 = -1, y0 = mh, y1 = -1;
+    for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) if (d[(y * mw + x) * 4 + 3] > 128) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if (x1 > x0 && y1 > y0) {
+      box = { x0: x0 / mw * w, x1: (x1 + 1) / mw * w, y0: y0 / mh * h, y1: (y1 + 1) / mh * h };
+      // the head: from the top of the outline down to the neck, the narrowest row before the shoulders spread wider
+      const rows = []; for (let y = y0; y <= y1; y++) { let a = 0; for (let x = x0; x <= x1; x++) if (d[(y * mw + x) * 4 + 3] > 128) a++; rows.push(a); }
+      let widest = 0, neck = -1, narrowest = 1e9;
+      for (let k = 0; k < rows.length; k++) {
+        if (neck < 0 && rows[k] >= widest) widest = rows[k];
+        else if (rows[k] < widest * .8 && rows[k] < narrowest) { narrowest = rows[k]; neck = k; }
+        if (neck >= 0 && rows[k] > widest * 1.15) break;
+      }
+      head = (neck > 0 ? neck : (y1 - y0) * .45) / mh * h;
+      let sum = 0, n = 0; const top = y0 + Math.max(1, Math.round(head / h * mh * .8));
+      for (let y = y0; y < top; y++) for (let x = x0; x <= x1; x++) if (d[(y * mw + x) * 4 + 3] > 128) { sum += x; n++; }
+      if (n) cx = (sum / n + .5) / mw * w;
+    }
+  }
+  // head and shoulders: the head a little under half the square, with room above it
+  const side = Math.min(w, h, Math.max(head * 2.2, w * .35));
+  const sx = Math.max(0, Math.min(w - side, cx - side / 2)), sy = Math.max(0, Math.min(h - side, box.y0 - side * .14));
+  const out = make(size, size), c = out.getContext('2d'), pal = paletteOf(src, 5), g = c.createRadialGradient(size * .5, size * .38, size * .05, size * .5, size * .5, size * .78);
+  g.addColorStop(0, mix(pal[4], '#ffffff', .45)); g.addColorStop(1, mix(pal[2], pal[1], .5)); c.fillStyle = g; c.fillRect(0, 0, size, size);
+  c.drawImage(cutout(src, mask), sx, sy, side, side, 0, 0, size, size);
   return out;
 }
 

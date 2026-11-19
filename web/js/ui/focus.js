@@ -45,7 +45,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
 
   const el = h('section.focus', { role: 'dialog', 'aria-modal': 'true', 'aria-label': `Picture ${print.handle}` });
   const ambient = h('div.focus__ambient', { style: { backgroundImage: `url("${url}")` } });
-  const img = h('img.focus__img', { src: url, alt: `Picture ${print.handle}`, draggable: false });
+  const img = h('img.focus__img' + (print.blob?.type === 'image/png' ? '.is-alpha' : ''), { src: url, alt: `Picture ${print.handle}`, draggable: false });
   const before = parent ? h('img.focus__before', { src: urlOf(parent), alt: '', draggable: false }) : null;
   const layer = h('div.focus__layer');
   const pic = h('div.focus__pic', null, img, before, layer);

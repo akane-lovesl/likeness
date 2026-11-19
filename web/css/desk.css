@@ -60,6 +60,8 @@
 .print__frame { position: relative; aspect-ratio: var(--ar, 3 / 4); border-radius: var(--print-radius); overflow: hidden; background: var(--ground-2); box-shadow: var(--card-shadow); transition: transform var(--t-quick) var(--ease); }
 .print:active .print__frame { transform: scale(.98); }
 .print__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* a picture with nothing behind it (a cutout) shows the old checkerboard, so its transparency reads as transparency */
+.print[data-alpha] .print__img, .focus__img.is-alpha { background: repeating-conic-gradient(rgb(128 128 128 / .16) 0 25%, rgb(255 255 255 / .5) 0 50%) 0 0 / 3.2cqw 3.2cqw; }
 .print__handle { position: absolute; left: 1.8cqw; top: 1.8cqw; z-index: 3; min-width: 6cqw; height: 6cqw; padding: 0 1.5cqw; border-radius: 99cqw; display: grid; place-items: center; background: var(--surface); color: var(--ink); font: 600 calc(2.8cqw * var(--m-scale)) / 1 var(--font-mono); box-shadow: 0 .4cqw 1.4cqw rgb(0 0 0 / .18); }
 .print__stamp { position: absolute; left: 1.8cqw; bottom: 1.8cqw; z-index: 3; padding: 1cqw 1.8cqw; border-radius: 99cqw; background: rgb(10 8 6 / .5); color: #fff; font: 500 calc(1.8cqw * var(--m-scale)) / 1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .print__kept { position: absolute; right: 1.8cqw; top: 1.8cqw; z-index: 3; width: 6cqw; height: 6cqw; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); box-shadow: 0 .4cqw 1.4cqw rgb(0 0 0 / .2); animation: pop var(--t-mid) var(--ease-pop) both; }

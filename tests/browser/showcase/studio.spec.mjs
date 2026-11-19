@@ -158,6 +158,19 @@ test('a picture put somewhere gets a new backdrop: “@A on a beach in Lisbon”
   await expect(page.getByText('A, somewhere new: a beach in Lisbon.')).toBeVisible({ timeout: 30_000 });
 });
 
+test('the device does what it honestly can to a photo, and says plainly when it cannot', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').first().click();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('button.bring__opt').first().click()]);
+  await chooser.setFiles('tests/fixtures/sitters/mei.jpg');
+  await expect(page.locator('figure.print')).toHaveCount(1);
+  await say(page, 'remove the background from @A');
+  await expect(page.getByText('A, cut out: the background is gone.')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('figure.print[data-alpha]')).toHaveCount(1);
+  await say(page, 'make @A smile');
+  await expect(page.getByText(/A sketch can’t do “make A smile”/)).toBeVisible({ timeout: 30_000 });
+});
+
 test('the look camera shows the world in a look, and the shutter sends it to be painted', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

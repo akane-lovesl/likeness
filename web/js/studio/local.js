@@ -26,6 +26,8 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
   const variant = l => (i === 0 ? l : { ...l, ramp: l.ramp?.map(c => c), keep: Math.min(1, (l.keep ?? .2) + i * .15), bloom: (l.bloom || 0) + i * .08 });
   const words = spec.text || '';
   let out, note = '', kept = null, shows = [], scene = null, changes = /** @type {string[]} */ ([]), painted = /** @type {string[]} */ ([]);
+  let say = /** @type {string | null} */ (null), next = /** @type {string[] | null} */ (null), alpha = false;
+  const took = (/** @type {any} */ pe) => { out = pe.canvas; note = pe.note; say = pe.say; next = pe.next || null; alpha = !!pe.alpha; };
   // a sketch made here knows its scene: an edit it understands, or another take, paints that scene again
   const was = it.subject && inputs[it.subject]?.scene, again = (/** @type {any} */ desc, /** @type {any} */ next) => {
     if (layers) desc.layers = kept = [];
@@ -52,6 +54,8 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
       note = it.pins?.length ? 'cleared under the pins' : 'nothing pinned: pin what should go'; break;
     }
     case 'backdrop': {
+      const pe = !spec.backdrop && !it.where ? await photoEdit(subject, it, words, inputs[it.subject]) : null;
+      if (pe) { took(pe); break; }
       const where = (spec.backdrop?.words || it.where || words.replace(/.*?(background|backdrop|behind \w+|setting|surroundings)\s*(to|of|with|into|in|as|:)?\s*/i, '')) || 'a garden at golden hour';
       const bd = P.scene(P.sceneFrom(where, spec.backdrop?.ramp || null, seed), subject.width, subject.height);
       const mask = spec.subjectMask || await subjectOf(inputs[it.subject]);
@@ -82,11 +86,46 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
           break;
         }
       }
-      const look = it.look || lookFromWords(words) || pick(LOOKS.filter(l => !l.pixel), rnd());
+      const pe = it.op === 'edit' ? await photoEdit(subject, it, words, inputs[it.subject]) : null;
+      if (pe) { took(pe); break; }
+      const named = it.look || lookFromWords(words), look = named || pick(LOOKS.filter(l => !l.pixel), rnd());
       out = P.grade(subject, variant(look), look.strength ?? .9, seed); note = look.name;
+      if (!named && it.op === 'edit') {
+        // nothing here it can do: say so, and offer a look meanwhile rather than pretend
+        const ask = words.replace(/@([A-Z]{1,2})\b/g, '$1').replace(/\s+/g, ' ').trim(), of = ask.length > 48 ? ask.slice(0, 47) + '…' : ask;
+        say = `A sketch can’t do “${of}”. Here is ${inputs[it.subject]?.handle || 'it'} in ${look.name} meanwhile; the studio on a workstation can.`;
+        note = look.name + ', a stand-in'; next = ['Warmer', 'Try a backdrop', 'As a profile picture'];
+      }
     }
   }
-  return { canvas: out, note, layers: kept, shows, scene, changes, painted };
+  return { canvas: out, note, layers: kept, shows, scene, changes, painted, say, next, alpha };
+}
+
+/**
+ * What the device can honestly do to any picture from words: take the background away (or make it one plain colour),
+ * make a profile picture, or adjust it (warmer, brighter, black and white…). The same for a proof as for the picture.
+ * Null when the words ask for none of these.
+ * @param {HTMLCanvasElement} src @param {any} it @param {string} words @param {any} input
+ */
+async function photoEdit(src, it, words, input) {
+  const t = words.toLowerCase(), who = input?.handle || 'it', bg = /\b(?:background|backdrop|bg)\b/.test(t);
+  const clear = /\btransparent\b|\bcut (?:it |her |him |them |@[a-z]{1,2} )?out\b|\bsticker\b|\b(?:remove|delete|erase|lose|drop|get rid of|take away|without|no)\b[^.]*\b(?:background|backdrop|bg)\b/.test(t);
+  const colour = bg ? Object.keys(P.COLOUR_WORDS).find(k => new RegExp('\\b' + k + '\\b').test(t)) : undefined;
+  if (clear || (bg && (colour || /\b(?:plain|blank|clean|solid|simple|studio|neutral|seamless)\b/.test(t)))) {
+    const mask = await subjectOf(input), keep = mask ? 'kept by its outline' : 'kept by a guess at the middle';
+    if (clear && !colour) return { canvas: P.composite(src, mask, null), alpha: true, note: 'cut out, ' + keep, say: `${who}, cut out: the background is gone.`, next: ['On a plain white background', 'On a beach in Lisbon', 'As a profile picture'] };
+    const named = colour || 'white';
+    return { canvas: P.composite(src, mask, P.plainBackdrop(src.width, src.height, P.COLOUR_WORDS[named] || '#f4f1ec')), note: `on plain ${named}, ${keep}`, say: `${who}, on plain ${named}.`, next: ['On a beach in Lisbon', 'As a profile picture', 'Warmer'] };
+  }
+  if (it.op === 'edit' && /profile (?:pic(?:ture)?|photo|image)|\bavatar\b|\bpfp\b|head ?shot|passport (?:photo|picture)|linkedin/.test(t)) {
+    return { canvas: P.portrait(src, await subjectOf(input), Math.max(256, Math.min(768, src.width))), note: 'a square around the face, on a clean backdrop', say: `${who}, as a profile picture: a square around the face, on a clean backdrop.`, next: ['On a plain blue background', 'Warmer', 'In watercolour'] };
+  }
+  const adj = it.op === 'edit' ? P.adjustmentsIn(t) : null;
+  if (adj) {
+    const list = adj.said.length > 1 ? adj.said.slice(0, -1).join(', ') + ' and ' + adj.said[adj.said.length - 1] : adj.said[0];
+    return { canvas: P.adjust(src, adj.ops), note: 'adjusted: ' + adj.said.join(', '), say: `${who}, ${list}.` };
+  }
+  return null;
 }
 
 /** A new picture's scene from its words: the look they name (a medium, never a mood), and the room's light when the words bring no colours. */
@@ -111,7 +150,14 @@ const thumbs = new WeakMap(), subjects = new WeakMap();
 /** Who or what a picture is of: the segmenter's outline of whatever is in the middle, found once per picture; null if it cannot tell. */
 const subjectOf = (/** @type {any} */ input) => {
   if (!input?.blob) return Promise.resolve(null);
-  if (!subjects.has(input.blob)) subjects.set(input.blob, P.fromBlob(input.blob, 512).then(c => selectAt(c, .5, .5)).then(r => (r.guessed ? null : r.mask)).catch(() => null));
+  if (!subjects.has(input.blob)) subjects.set(input.blob, P.fromBlob(input.blob, 512).then(async c => {
+    // a person in a picture is usually a face above the middle and a body below it: ask about both, keep them together
+    const face = await selectAt(c, .5, .45); if (face.guessed) return null;
+    const body = await selectAt(c, .5, .84).catch(() => null);
+    if (!body || body.guessed || body.area > .6) return face.mask;   // that was the room, not the body
+    const both = P.make(face.mask.width, face.mask.height), x = both.getContext('2d'); x.drawImage(face.mask, 0, 0); x.drawImage(body.mask, 0, 0, both.width, both.height);
+    return both;
+  }).catch(() => null));
   return subjects.get(input.blob);
 };
 const thumbOf = async (/** @type {any} */ input) => { if (!thumbs.has(input.blob)) thumbs.set(input.blob, await P.fromBlob(input.blob, 256)); return thumbs.get(input.blob); };
@@ -138,6 +184,7 @@ export async function proofOf(spec, inputs, w = 192, h = 256) {
     const t = await thumbOf(was), where = spec.backdrop?.words || it.where || words;
     return P.composite(t, await subjectOf(was), P.scene(P.sceneFrom(where, spec.backdrop?.ramp || null, Number.isFinite(spec.seed) ? spec.seed : 1), t.width, t.height));
   }
+  if (was?.blob && (it.op === 'edit' || (it.op === 'backdrop' && !spec.backdrop))) { const pe = await photoEdit(await thumbOf(was), it, words, was); if (pe) return pe.canvas; }
   if (was?.blob && it.op === 'restyle' && it.look) return P.grade(await thumbOf(was), it.look, it.look.strength ?? .9, 1);
   const ref = it.refs?.find((/** @type {any} */ r) => r.role === 'style' && inputs[r.id]);
   if (was?.blob && it.op === 'reference' && ref) return P.grade(await thumbOf(was), { ramp: P.paletteOf(await thumbOf(inputs[ref.id]), 5), keep: .3, grain: .03, bloom: .15, vignette: .15 }, .92, 1);
@@ -202,14 +249,14 @@ export const local = {
     }
     yield { type: 'stage', stage: 'finish' }; await gate(total * (most ? .04 : .08));
     for (let i = 0; i < n; i++) {
-      const c = P.stamp(P.copy(made[i].canvas)), blob = await P.toBlob(c);
+      const c = P.stamp(P.copy(made[i].canvas)), blob = await P.toBlob(c, made[i].alpha ? 'image/png' : 'image/jpeg');
       yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + made[i].note, ...(made[i].scene ? { scene: made[i].scene } : {}) } };
     }
     const handle = id => inputs[id]?.handle || 'it';
-    const said = made[0]?.changes?.length ? `${handle(spec.intent.subject)}, painted again: ${made[0].changes.join(', ')}.`
+    const said = made[0]?.say ? made[0].say : made[0]?.changes?.length ? `${handle(spec.intent.subject)}, painted again: ${made[0].changes.join(', ')}.`
       : made[0]?.painted?.length ? `Painted ${made[0].painted.map(p => '“' + p + '”').join(' and ')} into what you pinned on ${handle(spec.intent.subject)}.`
       : (SAY[spec.intent.op] || SAY.edit)(spec, handle, made[0]?.shows || []);
-    yield { type: 'reply', text: said, suggestions: NEXT[spec.intent.op] || NEXT.edit };
+    yield { type: 'reply', text: said, suggestions: made[0]?.next || NEXT[spec.intent.op] || NEXT.edit };
     yield { type: 'done', ms: performance.now() - t0 };
   },
   cancel(id) { cancelled.add(id); },

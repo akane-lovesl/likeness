@@ -22,7 +22,7 @@ const SET_AFTER = /^\s*as (?:the |a )?(?:background|backdrop|setting|scene)/;
  * Someone put somewhere: "@A on a beach", "put her in front of a lighthouse at sunset", "@A in Paris at night". A new
  * backdrop when what follows reads as a place; a medium there makes it a restyle instead ("@A in watercolour").
  */
-const PLACED = /(?:@[a-z]{1,2}\b|\b(?:her|him|them|me|us|it|she(?:['’]s| is)?|he(?:['’]s| is)?|they(?:['’]re| are)?))[,\s]+(?:(?:standing|sitting|walking|posing|stood|sat|lying|out)\s+)?(?:in front of|on top of|on|at|in|into|onto|by|beside|under|among|inside|outside)\s+(.+)$/;
+const PLACED = /(?:^\s*(?:put (?:it|her|him|them|me) )?|(?:@[a-z]{1,2}\b|\b(?:her|him|them|me|us|it|she(?:['’]s| is)?|he(?:['’]s| is)?|they(?:['’]re| are)?))[,\s]+)(?:(?:standing|sitting|walking|posing|stood|sat|lying|out)\s+)?(?:in front of|on top of|on|at|in|into|onto|by|beside|under|among|inside|outside)\s+(.+)$/;
 /** @param {string} t @param {any[] | undefined} looks */
 function placedIn(t, looks) {
   const m = t.toLowerCase().match(PLACED), end = m ? m.index + m[0].length : 0, where = m ? t.slice(end - m[1].length, end).replace(/[.!?]+$/, '').trim() : ''; // in the words as they were typed

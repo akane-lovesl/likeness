@@ -32,6 +32,19 @@ test('the camera is a mirror: the look sketched live on the face, and the shutte
   await expect(mirror).not.toHaveClass(/is-close/);
 });
 
+test('words typed first: the camera opens straight away with the look as it was said, and the shutter keeps it', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.lb-ask__input').click();
+  await page.locator('.lb-ask__input').pressSequentially('feathered brows, much fuller', { delay: 15 });
+  await page.locator('.lb-ask__go').click();
+  const live = page.locator('section.lv');
+  await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
+  await expect(live.locator('.lv-parts .mr-part[data-part="brows"]')).toHaveAttribute('data-style', 'feathered');
+  await live.locator('.lv-shutter').click();
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-token')).toHaveText([/^Feathered.*much fuller$/]);
+});
+
 test('On me, on a face in the ring: the camera opens with that look on', async ({ page }) => {
   await page.goto('/');
   const front = page.locator('section.book .lb-card.is-front');

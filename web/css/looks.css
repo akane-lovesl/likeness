@@ -60,6 +60,7 @@
 .lb-caption { position: relative; z-index: 2; text-align: center; padding: 0 6cqw 3.4cqw; min-height: 15cqw; }
 .lb-caption__title { margin: 0; font: italic 400 7.2cqw/1.05 var(--font-display); letter-spacing: -.01em; font-variation-settings: 'opsz' 96, 'SOFT' 100; }
 .lb-caption__part { margin: 1.8cqw 0 0; font: 500 2.1cqw/1 var(--font-mono); letter-spacing: .22em; color: var(--lk-faint); }
+.lb-caption__shape { display: block; margin-top: 1cqw; font: 400 3.4cqw/1.25 var(--font-text); font-style: normal; letter-spacing: .01em; color: var(--lk-soft); }
 
 .lb-dock, .mr-dock { position: relative; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr); gap: 3.2cqw; padding: 0 4cqw calc(5cqw + env(safe-area-inset-bottom)); }
 .lb-parts, .mr-parts { display: flex; justify-content: space-between; gap: .6cqw; }

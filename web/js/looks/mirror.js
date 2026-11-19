@@ -17,6 +17,7 @@ import { addPrint, addItem, setKept, printById, urlOf, settings } from '../state
 import { runTurn } from '../ui/turn.js';
 import { PARTS, partById, styleOf, wordsFor, titleOf, plateSVG, partsIn, tintOf } from './vocab.js';
 import { markup, controlsOf } from './markup.js';
+import { hear } from './words.js';
 import { turner } from './turn.js';
 import { openLive, canLive } from './live.js';
 import { coat } from './tint.js';
@@ -26,7 +27,7 @@ const INK = '#fff4e0';
 /** What else could be said about each part, shown in the empty line. */
 const HINTS = /** @type {Record<string, string>} */ ({ bangs: 'a little longer, parted off-centre', brows: 'a touch fuller at the front', colour: 'with soft lowlights', cut: 'keep the length at the back', lashes: 'subtle, for daytime', lips: 'a little sheer', beard: 'neat along the cheeks' });
 
-/** @typedef {{ part: string, style: import('./vocab.js').Style, shape?: Record<string, number>, said?: string }} Pick a style picked for a part, shaped (see markup.js) and saying so */
+/** @typedef {{ part: string, style: import('./vocab.js').Style, shape?: Record<string, number>, said?: string, heard?: Record<string, number> }} Pick a style picked for a part, shaped (see markup.js) and saying so; heard, the part of its shape the words gave it */
 /** @typedef {{ part: string, style: string, words?: string, image: string, takes?: string[], angles?: string[] }} Look */
 /** @typedef {{ id: string, name?: string, kind?: string, portrait: string, looks: Look[] }} Person */
 /** @typedef {{ url: string, label: string, kind: string, print?: any, picks?: Pick[], look?: Look, pending?: boolean, p?: number }} Take */
@@ -81,6 +82,9 @@ export function openMirror(o) {
   const person = o.person || null, live = studio.live;
   const print = o.print || null;
   /** @type {Pick[]} */ let picks = [...(o.picks || [])];
+  // words it came with were heard already: their shapes are the words' to change, and a look only they asked for goes when they stop asking
+  const byWords = /** @type {Set<string>} */ (new Set());
+  for (const x of o.words ? hear(o.words) : []) picks = picks.map(q => (q.part === x.part ? (byWords.add(q.part), { ...q, heard: x.shape }) : q));
   let part = '', shown = -1, busy = false, spotsUp = false, washing = 0, swap = 0;
   /** @type {ReturnType<typeof turner>} */ let turn = null;
   const surfaces = new WeakMap();
@@ -114,7 +118,7 @@ export function openMirror(o) {
   const partsRow = h('div.mr-parts', { role: 'toolbar', 'aria-label': 'What to change' }, ...chips);
   const stylesRow = h('div.mr-styles', { role: 'listbox', hidden: true });
   const tokens = h('div.mr-ask__tokens');
-  const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => paintGo(), onfocus: () => hint(), onblur: () => hint() }));
+  const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => { paintGo(); listen(); }, onfocus: () => hint(), onblur: () => hint() }));
   const goBtn = h('button.mr-ask__go', { type: 'submit' }, h('span', { html: icon('sparkle') }), h('span.mr-ask__label', null, 'Try on'));
   const ask = h('form.mr-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); tryOn(); } }, h('div.mr-ask__field', null, tokens, input), goBtn);
   const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => close() });
@@ -276,13 +280,13 @@ export function openMirror(o) {
     picks = had && had.style.id === id ? picks.filter(q => q !== had) : [...picks.filter(q => q.part !== p), { part: p, style: s }];
     paintPicks();
   }
-  function paintPicks() {
+  function paintPicks(sketch = true) {
     // each pick saying how it was shaped: shortly on the line, fully to the studio
     picks = picks.map(q => { const cs = sayOf(q), said = cs.map(c => c.phrase).filter(Boolean).join(', '); return said === (q.said || '') ? q : { ...q, said }; });
     tokens.replaceChildren(...picks.map(q => { const shorts = sayOf(q).map(c => c.short).filter(Boolean).join(' · '); return h('button.mr-token', { type: 'button', 'data-part': q.part, 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.mr-token__plate', { html: plateSVG(q.part, q.style.id) }), h('span.mr-token__name', null, q.style.name), shorts ? h('em.mr-token__shape', null, shorts) : null); }));
     stylesRow.querySelectorAll('.mr-style').forEach(b => b.setAttribute('aria-selected', String(picks.some(q => q.part === part && q.style.id === /** @type {HTMLElement} */ (b).dataset.style))));
     chips.forEach(c => c.classList.toggle('is-picked', picks.some(q => q.part === c.dataset.part)));
-    paintGo(); drawSketch(); paintWash(); paintHandles();
+    paintGo(); if (sketch) drawSketch(); paintWash(); paintHandles();
   }
   function paintGo() { goBtn.toggleAttribute('disabled', !picks.length && !input.value.trim()); }
 
@@ -451,6 +455,61 @@ export function openMirror(o) {
   }
   /** What a pick's shape says, for the studio (and, shortly, for the line). @param {Pick} q */
   const sayOf = (q) => (face && q.shape ? controlsOf(face, q.part, q.style.id, q.shape) : []);
+
+  // —— words: what is typed is heard as it is typed, and drawn ——
+  /**
+   * The words heard: a style they name is picked (and let go when they stop naming it), the shape they say is drawn,
+   * gliding there, and the part they are about comes close, its mark saying what the words did to it.
+   */
+  function listen() {
+    if (!face) return;
+    const heard = hear(input.value, part || picks[picks.length - 1]?.part || ''), named = new Set(heard.map(x => x.part));
+    const without = (/** @type {Record<string, number> | undefined} */ s, /** @type {Record<string, number> | undefined} */ drop) => Object.fromEntries(Object.entries(s || {}).filter(([k]) => !(drop && k in drop)));
+    // what the words no longer say goes: a look only they asked for, and the shape they gave a look picked by hand
+    let next = picks.filter(q => !(byWords.has(q.part) && !named.has(q.part))).map(q => (!named.has(q.part) && q.heard ? { ...q, shape: without(q.shape, q.heard), heard: undefined } : q));
+    for (const p of [...byWords]) if (!named.has(p)) byWords.delete(p);
+    for (const x of heard) {
+      const had = next.find(q => q.part === x.part), s = styleOf(x.part, x.style || had?.style.id || partById(x.part)?.styles[0].id || '');
+      if (!s) continue;
+      if (!had) byWords.add(x.part);
+      const nq = { part: x.part, style: s, shape: { ...without(had?.shape, had?.heard), ...x.shape }, heard: x.shape };
+      next = had ? next.map(q => (q === had ? nq : q)) : [...next, nq];
+    }
+    const about = heard[heard.length - 1]?.part || '';
+    glide(next, about);
+    if (about && about !== part) choose(about);
+  }
+  let gliding = 0, quiet = 0;
+  /**
+   * The picks become these: a new look is drawn at once; a new shape is glided to, the strokes moving where they are (a
+   * little past the mark, and back), and the handle the words moved says so. @param {Pick[]} next @param {string} about
+   */
+  function glide(next, about) {
+    const from = picks, same = next.length === from.length && next.every(q => from.some(p => p.part === q.part && p.style.id === q.style.id));
+    if (!same || reduced || !face) { gliding++; picks = next; paintPicks(); return; }
+    const moved = next.filter(q => shapeKey(q) !== shapeKey(/** @type {Pick} */ (from.find(p => p.part === q.part))));
+    if (!moved.length) { picks = next; return; }
+    const id = ++gliding, t0 = performance.now(), D = 600, f = face;
+    const mix = (/** @type {Pick} */ q, /** @type {number} */ e) => { const p = from.find(k => k.part === q.part), a = p?.shape || {}, b = q.shape || {}; return { ...q, shape: Object.fromEntries([...new Set([...Object.keys(a), ...Object.keys(b)])].map(k => [k, (a[k] || 0) + ((b[k] || 0) - (a[k] || 0)) * e])) }; };
+    const frame = (/** @type {number} */ now) => {
+      if (id !== gliding) return;
+      const t = Math.min(1, (now - t0) / D), e = t < 1 ? 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2 : 1;
+      picks = next.map(q => mix(q, e));
+      // the same strokes, moved: each part's drawing reshaped in place (drawn again only if its strokes changed in number)
+      for (const q of fresh()) {
+        const g = sk.querySelector('g[data-part="' + q.part + '"]'), strokes = markup(f, q.part, q.style.id, q.shape);
+        if (!g || g.children.length !== strokes.length) { drawSketch(); break; }
+        strokes.forEach((s, k) => { g.children[k].setAttribute('d', s.d); g.children[k].setAttribute('stroke-width', s.w.toFixed(2)); });
+      }
+      paintHandles();
+      if (t < 1) { requestAnimationFrame(frame); return; }
+      picks = next; paintPicks(false);
+      // the handle the words moved, saying what they made of it
+      const q = picks.find(k => k.part === about && k.part === part), c = q && q.heard ? sayOf(q).filter(k => k.id in (q.heard || {})).pop() : null;
+      if (c) { speak(c); clearTimeout(quiet); quiet = setTimeout(() => { sayEl.classList.remove('is-on'); said0 = ''; }, 1400); }
+    };
+    requestAnimationFrame(frame);
+  }
 
   // on the frame: a drag turns the face (through its angles when the studio has made them, on the device when not),
   // a tap picks the part under it, and holding shows the face as it was
@@ -705,7 +764,7 @@ export function openMirror(o) {
       if (turn && base) { const f = face; hairOf(base).then(m => { if (m) turn?.hair(m, f); }); }
       if (!known) await reading();
     }
-    placeNotes(); drawSketch(); menu();
+    placeNotes(); paintPicks(); menu();
     turnBtn.hidden = !(live || person?.looks.some(l => l.angles?.length));
     const look = o.look && takes.findIndex(t => t.look === o.look);
     if (typeof look === 'number' && look >= 0) show(look);

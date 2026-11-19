@@ -35,8 +35,6 @@ try {
         const px = sx.getImageData(0, 0, w, h).data, a = new Uint8Array(w * h), P = i => face.pts[i];
         if (read) { const mk = document.createElement('canvas'); mk.width = w; mk.height = h; const mx = mk.getContext('2d'); mx.drawImage(read, 0, 0, w, h); const d = mx.getImageData(0, 0, w, h).data; for (let i = 0; i < w * h; i++) a[i] = d[i * 4 + 3]; }
         let seeds = 0; for (let i = 0; i < w * h; i++) if (a[i] > 200) seeds++;
-        // where the segmenter is sure, it is hair even when it is the colour of skin (grey hair over a pale forehead)
-        const sure = new Uint8Array(w * h);
         const xs = face.pts.map(p => p.x), ys = face.pts.map(p => p.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), bw = x1 - x0, bh = y1 - y0;
         const cheek = k => { const p = P(k), i = (Math.round(p.y) * w + Math.round(p.x)) * 4; return [px[i], px[i + 1], px[i + 2]]; };
         // a square worn away (the least around each pixel) or grown (the most)
@@ -61,7 +59,6 @@ try {
         };
         const [c1, c2] = [cheek(50), cheek(280)], skin = [0, 1, 2].map(k => (c1[k] + c2[k]) / 2), off = i => Math.hypot(px[i * 4] - skin[0], px[i * 4 + 1] - skin[1], px[i * 4 + 2] - skin[2]);
         let reach = 240, near = 36;
-        if (seeds >= w * h * .004) for (let i = 0; i < w * h; i++) sure[i] = a[i] > 100 ? 1 : 0;
         if (seeds < w * h * .004) {
           // up from the top of the face to the first thing that is not skin: the hairline, and the hair just past it
           reach = 700; near = 50; a.fill(0);   // a drawn head of hair, lit on one side: its shades further apart
@@ -98,11 +95,15 @@ try {
         // thinner than 20 px is worn away is the hair's body, and only what lies near it stays
         // (first closed: hair in shadow grows in lace, and the lace is filled so the wearing away keeps it)
         { const solid = erode(dilate(a.map(v => (v > 64 ? 255 : 0)), 6), 6), body = dilate(home(erode(solid, 10)), 20); for (let i = 0; i < w * h; i++) a[i] = body[i] ? Math.max(a[i], solid[i]) : 0; }
-        // skin is cleared, and what is nearly skin: less nearly when the hair itself is nearly the skin's colour (pale grey on pale)
-        const skinNear = Math.min(42, Math.hypot(r - skin[0], g - skin[1], b - skin[2]) * .6);
-        for (let y = Math.max(0, Math.floor(y0)); y < Math.min(h, y1); y++) for (let x = Math.max(0, Math.floor(x0)); x < Math.min(w, x1); x++) {
+        // skin is cleared: what is near the skin's colour and nearer it than the hair's (so pale grey hair over a pale forehead
+        // is told from the forehead by which it is closer to, and blonde hair over fair skin stays hair)
+        const hairOff = (/** @type {number} */ i) => Math.hypot(px[i * 4] - r, px[i * 4 + 1] - g, px[i * 4 + 2] - b);
+        // and where the hair has no warmth of its own (grey, white, black), what is warm and anywhere near the skin is skin:
+        // an ear, a forehead in shadow
+        const neutral = Math.abs(r - b) < 18 && Math.abs(r - g) < 18, warm = (/** @type {number} */ i) => px[i * 4] - px[i * 4 + 2] > 18;
+        for (let y = Math.max(0, Math.floor(y0 - bh * .1)); y < Math.min(h, y1); y++) for (let x = Math.max(0, Math.floor(x0 - bw * .25)); x < Math.min(w, x1 + bw * .25); x++) {
           const i = y * w + x;
-          if ((off(i) < skinNear && !sure[i]) || (y > brow && inFace(x, y, y > nose ? .78 : .9))) a[i] = 0;
+          if ((off(i) < 42 && off(i) < hairOff(i)) || (neutral && warm(i) && off(i) < 70) || (y > brow && inFace(x, y, y > nose ? .78 : .9))) a[i] = 0;
         }
         // a beard (the chin far darker than the cheeks, not just shaded) is a part of its own, never the hair's colour: the jaw is
         // cleared, a little past its edge
@@ -110,6 +111,15 @@ try {
         for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) for (let k = 0; k < 3; k++) chinC[k] += px[(mid + dy * w + dx) * 4 + k] / 81;
         if (lum(chinC) < lum(skin) * .55 && Math.hypot(chinC[0] - skin[0], chinC[1] - skin[1], chinC[2] - skin[2]) > 60) {
           for (let y = Math.max(0, Math.floor(nose)); y < Math.min(h, y1 + bh * .25); y++) for (let x = Math.max(0, Math.floor(x0 - bw * .2)); x < Math.min(w, x1 + bw * .2); x++) if (inFace(x, y, 1.3)) a[y * w + x] = 0;
+        }
+        // the edges rounded off: the steps the squares above leave are blurred, and drawn again as a soft line
+        {
+          const m0 = document.createElement('canvas'), m1 = document.createElement('canvas'); m0.width = m1.width = w; m0.height = m1.height = h;
+          const x0c = /** @type {CanvasRenderingContext2D} */ (m0.getContext('2d')), x1c = /** @type {CanvasRenderingContext2D} */ (m1.getContext('2d')), im = x0c.createImageData(w, h);
+          for (let i = 0; i < w * h; i++) im.data[i * 4 + 3] = a[i];
+          x0c.putImageData(im, 0, 0); x1c.filter = 'blur(5px)'; x1c.drawImage(m0, 0, 0);
+          const d = x1c.getImageData(0, 0, w, h).data;
+          for (let i = 0; i < w * h; i++) { const v = d[i * 4 + 3]; a[i] = v < 90 ? 0 : v > 166 ? 255 : Math.round((v - 90) / 76 * 255); }
         }
         let kept = 0; for (let i = 0; i < w * h; i++) if (a[i] > 200) kept++;
         if (kept > w * h * .004 && kept < w * h * .3) {

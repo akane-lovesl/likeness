@@ -35,6 +35,64 @@ test('the Lookbook is the way in: a ring of looks that turns under a finger, the
   await expect(book).not.toHaveClass(/is-away/);
 });
 
+test('the words are read the way a stylist hears them: what to change, and how, each said in its own way', async ({ page }) => {
+  await page.goto('/');
+  const heard = await page.evaluate(async () => {
+    const { hear } = await import('/js/looks/words.js');
+    return ['Curtain bangs, a lot longer, parted left', 'softer brows and a red lip, much deeper', 'a bit shorter', 'A sleek bob, a little longer', 'make me look rested'].map(t => hear(t, 'bangs'));
+  });
+  expect(heard[0]).toEqual([{ part: 'bangs', style: 'curtain', shape: { length: .9, part: -.55 } }]);
+  expect(heard[1]).toEqual([{ part: 'brows', style: '', shape: { arch: -.55 } }, { part: 'lips', style: 'red', shape: { shade: -.9 } }]);
+  expect(heard[2]).toEqual([{ part: 'bangs', style: '', shape: { length: -.3 } }]);
+  expect(heard[3]).toEqual([{ part: 'cut', style: 'bob', shape: { volume: -.55, length: .3 } }]);
+  expect(heard[4]).toEqual([]);
+});
+
+test('left alone, the line says what can be asked, and the ring does it: the face it names comes round wearing it as said', async ({ page }) => {
+  await page.goto('/');
+  const shape = page.locator('.lb-caption__shape');
+  await expect(page.locator('.lb-caption__part')).toHaveText('BANGS · LENA');
+  await expect(shape).toHaveText('to the jaw', { timeout: 6_000 });
+  await expect(page.locator('.lb-caption__part')).toHaveText('BROWS · KOFI', { timeout: 10_000 });
+  await expect(shape).toHaveText('much fuller', { timeout: 6_000 });
+});
+
+test('words are heard as they are typed: the ring turns to the look they name, its face wears it as said, and it opens in the mirror so', async ({ page }) => {
+  await page.goto('/');
+  const input = page.locator('.lb-ask__input');
+  await input.click();
+  await input.pressSequentially('red lips, much deeper', { delay: 15 });
+  await expect(page.locator('.lb-caption__part')).toHaveText('LIPS · MEI');
+  await expect(page.locator('.lb-caption__shape')).toHaveText('deeper');
+  await input.fill('');
+  await input.pressSequentially('curtain bangs, a lot longer, parted left', { delay: 15 });
+  await expect(page.locator('.lb-caption__part')).toHaveText('BANGS · LENA');
+  await expect(page.locator('.lb-caption__shape')).toHaveText('to the jaw · parted left');
+  await page.locator('section.book .lb-card.is-front').click({ position: { x: 40, y: 60 } });
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-token')).toHaveText([/^Curtain.*to the jaw · parted left$/]);
+  await expect(mirror.locator('.mr-ask__input')).toHaveValue('curtain bangs, a lot longer, parted left');
+});
+
+test('in the mirror, words pick a look and shape it as they are typed, the mirror going to each part they are about', async ({ page }) => {
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/lena.jpg');
+  const mirror = page.locator('section.mr'), input = mirror.locator('.mr-ask__input');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await input.click();
+  await input.pressSequentially('curtain bangs, a bit shorter', { delay: 15 });
+  await expect(mirror).toHaveClass(/is-close/);
+  await expect(mirror.locator('.mr-style[data-style="curtain"]')).toHaveAttribute('aria-selected', 'true');
+  await expect(mirror.locator('.mr-handle')).toHaveCount(2);
+  await expect(mirror.locator('.mr-token')).toHaveText([/^Curtain.*shorter$/]);
+  await input.pressSequentially(' and a red lip', { delay: 15 });
+  await expect(mirror.locator('.mr-token')).toHaveText([/^Curtain.*shorter$/, 'Red']);
+  await expect(mirror.locator('.mr-style[data-style="red"]')).toHaveAttribute('aria-selected', 'true');
+  // what the words stop asking for goes: the lip they added, the shape they gave
+  await input.fill('curtain bangs');
+  await expect(mirror.locator('.mr-token')).toHaveText(['Curtain']);
+});
+
 test('a drawn sitter wears its look in the ring, and opens in the mirror wearing it: its face known, the notes at once, and it says it is drawn', async ({ page }) => {
   await page.goto('/');
   const front = page.locator('section.book .lb-card.is-front');

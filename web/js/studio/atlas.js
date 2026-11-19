@@ -692,9 +692,12 @@ function sanfrancisco(b) {
   ridge(b, hz + oh * .005, oh * .1, tone(b, '#7a8458', .45), 1.6, 3.6);
   // the fog lying in over the headlands, lit by the hour
   const fogC = L === 'night' ? '150 160 190' : L === 'dusk' ? '255 214 196' : '255 255 255';
-  x.save(); x.filter = 'blur(' + Math.max(2, Math.round(oh * .012)) + 'px)';
-  for (let k = 0; k < 14; k++) { x.fillStyle = 'rgb(' + fogC + ' / ' + (L === 'night' ? .28 : .5).toFixed(2) + ')'; x.beginPath(); x.ellipse(ox + ow * (k / 13), hz - oh * (.03 + b.q() * .05), ow * (.1 + b.q() * .08), oh * (.025 + b.q() * .02), 0, 0, T); x.fill(); }
-  x.restore();
+  // soft banks of it, each a glow fading to nothing at its edge
+  for (let k = 0; k < 14; k++) {
+    const fx = ox + ow * (k / 13), fy = hz - oh * (.03 + b.q() * .05), rx = ow * (.1 + b.q() * .08), ry = oh * (.025 + b.q() * .02), g = x.createRadialGradient(fx, fy, 0, fx, fy, rx);
+    g.addColorStop(0, 'rgb(' + fogC + ' / ' + (L === 'night' ? .3 : .55).toFixed(2) + ')'); g.addColorStop(.6, 'rgb(' + fogC + ' / ' + (L === 'night' ? .16 : .3).toFixed(2) + ')'); g.addColorStop(1, 'rgb(' + fogC + ' / 0)');
+    x.save(); x.translate(fx, fy); x.scale(1, ry / rx); x.translate(-fx, -fy); x.fillStyle = g; x.fillRect(fx - rx, fy - rx, rx * 2, rx * 2); x.restore();
+  }
   const red = tone(b, '#c03a2b', .12), steel = lit ? mix(red, '#ff9a5a', lit * .55) : red, deck = hz - oh * .07, topY = hz - oh * .38;
   const t1 = ox + ow * b.at, t2 = ox + ow * (1 - b.at), lw = ow * .016, gap = ow * .03;
   // the main cable, hung from the towers; the hangers down to the road

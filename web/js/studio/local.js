@@ -69,8 +69,8 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
       if (pe) { took(pe); break; }
       const where = (spec.backdrop?.words || it.where || words.replace(/.*?(background|backdrop|behind \w+|setting|surroundings)\s*(to|of|with|into|in|as|:)?\s*/i, '')) || 'a garden at golden hour';
       const mask = spec.subjectMask || await subjectOf(inputs[it.subject]), made = placed(subject, mask, where, words, seed, spec.backdrop?.ramp || null, layers, it.subject);
-      out = made.canvas; note = mask ? 'subject kept by its outline' : 'subject guessed as the centre'; kept = made.layers; recipe = made.recipe;
-      if (made.plan) { say = dressSay(inputs[it.subject]?.handle || 'it', made.plan, made.desc, made.because, words); next = ['In watercolour', 'As a profile picture', 'Somewhere else']; note += ', dressed: ' + D.pieceList(made.plan.pieces); }
+      out = made.canvas; note = mask ? '' : 'their outline was a guess'; kept = made.layers; recipe = made.recipe;
+      if (made.plan) { say = dressSay(inputs[it.subject]?.handle || 'it', made.plan, made.desc, made.because, words); next = ['In watercolour', 'As a profile picture', 'Somewhere else']; note = [note, 'dressed: ' + D.pieceList(made.plan.pieces)].filter(Boolean).join(', '); }
       else if (THERE[made.desc?.land] || /\bmars\b/i.test(where)) say = `${inputs[it.subject]?.handle || 'it'}, ${/\bmars\b/i.test(where) ? 'on Mars' : THERE[made.desc.land]}${/\bwithout\b[^.]*\bhelmet|helmetless/i.test(words) ? ', without a helmet' : ''}.`;
       break;
     }
@@ -84,7 +84,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
       const { look, desc } = freshScene(spec, words, seed + i * 13);
       if (layers) desc.layers = kept = [];
       out = P.scene(desc, 768, 1024); if (look) { out = P.grade(out, look, .6, seed); kept?.push({ label: 'All of it in ' + look.name, canvas: P.copy(out, out.width / 2, out.height / 2) }); }
-      note = look ? 'scenery, ' + look.name : 'scenery from the words'; shows = P.describeScene(desc); scene = { words, seed: seed + i * 13, edits: [], look: look?.id || null };
+      note = look ? 'in ' + look.name : ''; shows = P.describeScene(desc); scene = { words, seed: seed + i * 13, edits: [], look: look?.id || null };
       break;
     }
     default: {
@@ -129,14 +129,14 @@ async function photoEdit(src, it, words, input, frames = false) {
   const clear = /\btransparent\b|\bcut (?:it |her |him |them |@[a-z]{1,2} )?out\b|\bsticker\b|\b(?:remove|delete|erase|lose|drop|get rid of|take away|without|no)\b[^.]*\b(?:background|backdrop|bg)\b/.test(t);
   const colour = bg ? Object.keys(P.COLOUR_WORDS).find(k => new RegExp('\\b' + k + '\\b').test(t)) : undefined;
   if (clear || (bg && (colour || /\b(?:plain|blank|clean|solid|simple|studio|neutral|seamless)\b/.test(t)))) {
-    const mask = await subjectOf(input), keep = mask ? 'kept by its outline' : 'kept by a guess at the middle';
+    const mask = await subjectOf(input), keep = mask ? '' : ', kept by a guess at the middle';
     if (clear && !colour) {
       const canvas = P.composite(src, mask, null);
-      return { canvas, alpha: true, note: 'cut out, ' + keep, say: `${who}, cut out: the background is gone.`, next: ['On a plain white background', 'On a beach in Lisbon', 'As a profile picture'],
+      return { canvas, alpha: true, note: 'cut out' + keep, say: `${who}, cut out: the background is gone.`, next: ['On a plain white background', 'On a beach in Lisbon', 'As a profile picture'],
         layers: frames ? [found(src, mask), { label: 'The room behind, taken away', canvas: half(P.checkered(canvas)), reveal: 'fade' }] : null };
     }
     const named = colour || 'white', canvas = P.composite(src, mask, P.plainBackdrop(src.width, src.height, P.COLOUR_WORDS[named] || '#f4f1ec'));
-    return { canvas, note: `on plain ${named}, ${keep}`, say: `${who}, on plain ${named}.`, next: ['On a beach in Lisbon', 'As a profile picture', 'Warmer'],
+    return { canvas, note: `on plain ${named}${keep}`, say: `${who}, on plain ${named}.`, next: ['On a beach in Lisbon', 'As a profile picture', 'Warmer'],
       layers: frames ? [found(src, mask), { label: `Plain ${named} behind`, canvas: half(canvas), reveal: 'fade' }] : null };
   }
   if (it.op === 'edit' && /profile (?:pic(?:ture)?|photo|image)|\bavatar\b|\bpfp\b|head ?shot|passport (?:photo|picture)|linkedin/.test(t)) {
@@ -371,6 +371,19 @@ function placeOf(rec, mask = null) {
   if (desc && mask) desc.clear = clearOf(mask);
   return desc;
 }
+/**
+ * Where the sun is in a sketch, as it was painted: in a backdrop, worked out with the outline of who stands in it, as
+ * the painting had it (the moon keeps clear of their head), so the knob that holds it starts where the light is.
+ * @param {any} print @param {{ blob: Blob, handle: string } | null} source
+ */
+export async function sunOf(print, source) {
+  const rec = print.provenance?.recipe, kept = print.provenance?.scene;
+  const mask = !kept && rec?.scene && source ? await subjectOf(source) : null;
+  const desc = kept ? P.sceneAgain(kept) : rec?.scene ? placeOf(rec, mask) : null;
+  if (!desc) return null;
+  P.scene(desc, 96, Math.round(96 * (print.h || 4) / (print.w || 3)));
+  return desc.sunAt || null;
+}
 /** Where a landmark can stand beside someone: on their wider side, about the middle of what is clear there. @param {HTMLCanvasElement} mask */
 function clearOf(mask) {
   const f = D.figureOf(mask, mask.width, mask.height); if (!f.found) return null;
@@ -463,7 +476,7 @@ export async function makingOf(print, source = null) {
  * wear, where they stand. With a sun held somewhere else, or someone moved by hand, as the picture is shown just then.
  * Null when nothing in it moves, or when it was finished in a look or cut to a square: a painting holds still.
  * @param {any} print @param {any} [source] the photo a recipe was made from
- * @param {{ sun?: number[] | null, stand?: { x: number, s: number } | null }} [o]
+ * @param {{ sun?: number[] | null, stand?: { x: number, s: number } | null, flat?: boolean }} [o]
  * @returns {Promise<import('../ui/life.js').Life | null>}
  */
 export async function lifeOf(print, source = null, o = {}) {
@@ -475,21 +488,36 @@ export async function lifeOf(print, source = null, o = {}) {
   const desc = rec ? placeOf(rec, mask) : P.sceneAgain(kept);
   if (!desc) return null;
   if (o.sun) P.setSun(desc, o.sun);
-  const w = print.w || 768, h = print.h || 1024, { hints, front, bare, cut } = P.lifeIn(desc, w, h);
-  let person = null;
+  // looked into, unless asked for flat: the place in planes, and whoever was put there the nearest of them
+  const w = print.w || 768, h = print.h || 1024, deep = !o.flat, L = P.lifeIn(desc, w, h, { depth: deep }), { hints, front, bare, cut } = L;
+  let person = null, near = null;
   if (rec && mask) {
-    const src = await sizedOf(source, 192);
+    const src = await sizedOf(source, deep ? Math.max(w, h) : 192);
     const { plan } = planFor(rec, desc), sw = src.width, sh = src.height, fig = D.figureOf(mask, sw, sh), fx = fig.cx / sw, stand = o.stand || rec.stand || null;
     const dressed = plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, rec.seed ?? 7).canvas : P.composite(src, mask, null);
-    person = placeOn(P.make(front.width, front.height), dressed, stand, fx); front.getContext('2d')?.drawImage(person, 0, 0);
+    if (deep) near = placeOn(P.make(w, h), dressed, stand, fx);
+    else if (front) { person = placeOn(P.make(front.width, front.height), dressed, stand, fx); front.getContext('2d')?.drawImage(person, 0, 0); }
     // a fairy's sparkle about the head, a party's confetti coming down: where the person stands now
     const at = (/** @type {number} */ x, /** @type {number} */ y) => stand ? [fx + stand.x + (x - fx) * stand.s, 1 + (y - 1) * stand.s] : [x, y], k = stand?.s || 1;
     if (plan?.sparkle) { const [x0, y0] = at((fig.cx - fig.headW * 1.3) / sw, Math.max(0, fig.top / sh - .06)); hints.push({ k: 'sparkle', box: [x0, y0, fig.headW * 2.6 / sw * k, (fig.headH / sh + .2) * k] }); }
     if (plan?.confetti) hints.push({ k: 'confetti', box: [0, 0, 1, 1] });
   }
-  if (!hints.some(o => !['window', 'arch'].includes(o.k))) return null;
-  // the picture itself, for what moves whole (a boat, a balloon) to be cut from
-  const picture = bare && print.blob ? await P.fromBlob(print.blob, Math.max(w, h)) : null;
+  if (!deep && !hints.some(o => !['window', 'arch'].includes(o.k))) return null;
+  // the picture itself, for what moves whole (a boat, a balloon) to be cut from, and for what stays put over the planes
+  const picture = (bare || deep) && print.blob ? await P.fromBlob(print.blob, Math.max(w, h)) : null;
+  if (deep && L.depth) {
+    const top = P.make(w, h), tx = /** @type {CanvasRenderingContext2D} */ (top.getContext('2d')), arch = hints.find(q => q.k === 'arch');
+    if (picture) {
+      const [sx, sy, sw, sh] = P.stampBox(w, h); tx.drawImage(picture, sx, sy, sw, sh, sx, sy, sw, sh);
+      if (arch) {
+        // an arch's frame stays where it is, in front of everything
+        tx.save(); if (arch.zoom) { const [z, k] = arch.zoom; tx.setTransform(z, 0, 0, z, -k * w * z, -k * h * z); }
+        tx.beginPath(); tx.rect(-w, -h, w * 3, h * 3); tx.moveTo(w * .1, h); tx.lineTo(w * .1, h * .4); tx.arc(w / 2, h * .4, w * .4, Math.PI, 0); tx.lineTo(w * .9, h); tx.closePath();
+        tx.setTransform(1, 0, 0, 1, 0, 0); tx.clip('evenodd'); tx.drawImage(picture, 0, 0, w, h); tx.restore();
+      }
+    }
+    return { hints, front: null, bare: null, cut, person: null, picture, depth: { planes: [...L.depth.planes, ...(near ? [{ c: near, z: 3 }] : [])], top } };
+  }
   return { hints, front, bare, cut, person, picture };
 }
 /** Where someone was moved to, in words: "further back and to the left". @param {{ x: number, s: number }} st */
@@ -718,7 +746,7 @@ export const local = {
     yield { type: 'stage', stage: 'finish' }; await gate(total * (most ? .04 : .08));
     for (let i = 0; i < n; i++) {
       const c = P.stamp(P.copy(made[i].canvas)), blob = await P.toBlob(c, made[i].alpha ? 'image/png' : 'image/jpeg');
-      yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + made[i].note, ...(made[i].scene ? { scene: made[i].scene } : {}), ...(made[i].recipe ? { recipe: made[i].recipe } : {}), ...(made[i].trip ? { trip: made[i].trip } : {}) } };
+      yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device' + (made[i].note ? ' · ' + made[i].note : ''), ...(made[i].scene ? { scene: made[i].scene } : {}), ...(made[i].recipe ? { recipe: made[i].recipe } : {}), ...(made[i].trip ? { trip: made[i].trip } : {}) } };
     }
     const handle = id => inputs[id]?.handle || 'it';
     const said = made[0]?.say ? made[0].say : made[0]?.changes?.length ? `${handle(spec.intent.subject)}, painted again: ${made[0].changes.join(', ')}.`

@@ -131,7 +131,8 @@ export async function film(story, view, look) {
     x.fillStyle = look.ground; x.fillRect(0, 0, W, H);
     if (prev?.img) cover(prev.img);
     reveal(s, ease(s.last ? Math.min(1, (t - at) / 1.3) : p / .5));
-    if (s.last && living) living.draw(x, t - at, ease(((t - at) - 1.2) / 1.2));
+    // alive at the end; once it is fully there the camera drifts a little way into it, the near moving more than the far
+    if (s.last && living) { const u = t - at, k = smooth((u - 2.4) / 2); living.draw(x, u, ease((u - 1.2) / 1.2), [k * .9, -k * .35]); }
     caption(s.label || '', p, !!s.last);
   }
   return record(view, total, draw, look.signal);

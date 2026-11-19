@@ -14,7 +14,7 @@ import * as P from '../studio/painter.js';
 import { selectAt, brush, loadSegmenter } from '../studio/segment.js';
 import { pinMark } from './cards.js';
 import { studio } from '../studio/studio.js';
-import { proofOf, standStage, standWords, makingOf, lifeOf, tripOf } from '../studio/local.js';
+import { proofOf, standStage, standWords, makingOf, lifeOf, tripOf, sunOf } from '../studio/local.js';
 import { film, travel, canFilm } from './reel.js';
 import { alive } from './life.js';
 
@@ -82,7 +82,8 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
           onclick: () => { if (p === print) return; sound.play('tap'); shut(); setTimeout(() => openFocus(p, null, { onSend, onUse }), 380); } },
           h('img', { src: urlOf(p), alt: '' }), h('b', null, p.handle)),
       ]));
-    return h('div.focus__hint.focus__hint--lineage', null, strip, h('span.lineage__tip', null, 'Hold the picture to compare with ' + (parent?.handle || 'the one before')));
+    // how to compare is said until it has been done once
+    return h('div.focus__hint.focus__hint--lineage', null, strip, localStorage.getItem('likeness:compared') ? null : h('span.lineage__tip', null, 'Hold the picture to compare with ' + (parent?.handle || 'the one before')));
   }
   function tool(ic, label, fn) { return h('button.tool', { onclick: () => { sound.play('tap'); fn(); } }, h('span', { html: icon(ic) }), h('span', null, label)); }
   function layout() {
@@ -185,9 +186,9 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     if (mode === 'pin') return pinDown(e);
     if (grab?.(e)) return;
     if (!before) return;
-    holdTimer = setTimeout(() => { before.classList.add('is-in'); hint.textContent = 'Before'; }, 160);
+    holdTimer = setTimeout(() => { before.classList.add('is-in'); pic.dataset.was = parent.handle; hint.classList.add('is-comparing'); localStorage.setItem('likeness:compared', '1'); }, 160);
   });
-  const release = () => { clearTimeout(holdTimer); if (before?.classList.contains('is-in')) { before.classList.remove('is-in'); hint.textContent = 'Hold the picture to see what it was made from'; } };
+  const release = () => { clearTimeout(holdTimer); if (before?.classList.contains('is-in')) { before.classList.remove('is-in'); delete pic.dataset.was; hint.classList.remove('is-comparing'); } };
   pic.addEventListener('pointerup', e => (mode === 'pin' ? pinUp(e) : release()));
   pic.addEventListener('pointercancel', release); pic.addEventListener('pointerleave', release);
   pic.addEventListener('pointermove', e => { if (mode === 'pin') pinMove(e); });
@@ -281,11 +282,10 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
   let living = /** @type {{ stop: () => void } | null} */ (null), lifeTicket = 0;
   let resetSun = /** @type {(() => void) | null} */ (null), resetWalk = /** @type {(() => void) | null} */ (null);
   if (studio.mode === 'showcase' && (print.provenance?.scene || (from && recipe?.scene && !recipe.profile))) holdTheSun(print.provenance?.scene || recipe?.scene);
-  function holdTheSun(kept) {
+  async function holdTheSun(kept) {
     const tall = (/** @type {number} */ w) => Math.round(w * (print.h || 4) / (print.w || 3));
-    let at = null;
-    try { const d = P.sceneAgain(kept); P.scene(d, 96, tall(96)); at = d.sunAt; } catch { at = null; }
-    if (!at) return;
+    const at = await sunOf(print, from ? { blob: from.blob, handle: from.handle } : null).catch(() => null);
+    if (!at || open !== el) return;
     const b = at.box, home = at.sun.slice(), low = Math.min(1.85, (1 - b[1]) / b[3] - .03);
     let sun = home.slice(), busy = false, moved = false, queued = /** @type {number[] | null} */ (null);
     const words = () => P.hourWords(sun), relight = () => ({ op: 'edit', subject: print.id, refs: [], look: null, n: 1, pins: [] });
@@ -295,7 +295,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     const sunDock = h('div.focus__pindock.focus__sundock', { hidden: true }, h('button.btn.btn--quiet.focus__cancel.focus__undo', { 'aria-label': 'Put the sun back', title: 'Put the sun back', html: icon('undo'), onclick: () => putBack() }), go);
     pic.insertBefore(view, layer); layer.append(knob); el.append(sunDock);
     const seen = Number(localStorage.getItem('likeness:sun') || 0);
-    if (seen < 3) { localStorage.setItem('likeness:sun', String(seen + 1)); knob.append(h('span.sun__hint', null, 'Drag the sun')); }
+    if (seen < 3) { localStorage.setItem('likeness:sun', String(seen + 1)); knob.append(h('span.sun__hint', null, sun[1] > 1 ? 'Drag the sun up' : 'Drag the sun')); }
     place();
     resetSun = () => { if (moved) { sun = home.slice(); moved = false; place(); settle(); } };
     knob.addEventListener('pointerdown', e => { resetWalk?.(); e.stopPropagation(); e.preventDefault(); try { knob.setPointerCapture(e.pointerId); } catch { /* fine */ } knob.classList.add('is-held'); el.classList.add('is-relighting'); knob.querySelector('.sun__hint')?.remove(); });
@@ -315,7 +315,8 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
       if (words() !== was) sound.play('tap');
     }
     function place() {
-      knob.style.left = (b[0] + sun[0] * b[2]) * 100 + '%'; knob.style.top = (b[1] + sun[1] * b[3]) * 100 + '%';
+      // after dark the sun waits just under the horizon, not down over whoever is standing there
+      knob.style.left = (b[0] + sun[0] * b[2]) * 100 + '%'; knob.style.top = (b[1] + Math.min(sun[1], 1.05) * b[3]) * 100 + '%';
       knob.classList.toggle('is-down', sun[1] > 1); say.textContent = words();
       knob.setAttribute('aria-label', `The sun, ${words()}. Drag it, or use the arrow keys, to change the hour.`);
     }

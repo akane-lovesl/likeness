@@ -374,8 +374,10 @@ export function scene(desc, w = 768, h = 1024) {
   // what in it can move, for a picture that lives a little while it is looked at: hints in fractions of the picture,
   // sampled from a stream of their own, so the painting comes out the same with them or without
   const life = desc.life = /** @type {any[]} */ ([]), lr = rng((desc.seed || 7) + 31337), lights = /** @type {any[]} */ ([]);
-  let inWin = false;
-  const live = (/** @type {any} */ o) => { if (inWin) o.win = true; life.push(o); };
+  // and how far off it is, for a picture looked into: 0 the sky (and all that is seen through a window), 1 the land or
+  // the room, 2 what stands in it, 3 the weather in front
+  let inWin = false, zNow = 0;
+  const live = (/** @type {any} */ o) => { if (inWin) o.win = true; if (o.z === undefined) o.z = inWin ? 0 : zNow; life.push(o); };
   const fr = (/** @type {number} */ px, /** @type {number} */ py, /** @type {number} */ pw, /** @type {number} */ ph) => [px / w, py / h, pw / w, ph / h];
   const skies = { day: ['#9ccaf0', '#d8ecf7', '#fff4e2'], dawn: ['#7e9ed8', '#f2b8b0', '#ffe2bd'], dusk: ['#2a1d52', '#a8467a', '#f39a5a'], night: ['#04061a', '#15204a', '#2b3a72'] };
   let sky = skies[L];
@@ -395,7 +397,7 @@ export function scene(desc, w = 768, h = 1024) {
   const side = desc.clear?.side || (sided < .5 ? -1 : 1), at = desc.clear?.at ?? (side < 0 ? (desc.who ? .2 : .3) : (desc.who ? .8 : .7));
   /** @param {number} ox @param {number} oy @param {number} ow @param {number} oh @param {number} hz @param {string[]} sk @param {number} sunX @returns {import('./atlas.js').Brush} */
   const brush = (ox, oy, ow, oh, hz, sk, sunX) => ({ x, ox, oy, ow, oh, hz, w, h, L, sky: sk, far: mix(sk[1], sk[2], .3), near: mix(sk[0], '#101820', L === 'night' ? .55 : .7), pal, q: placeRnd, spark, lr, live, fr,
-    at, side, bare: !!desc.bare, holes: [], lights: [], sunX, skyOnly: !!desc.skyOnly, mark: () => { if (!desc.inside) mark(notes.sky); } });
+    at, side, bare: !!desc.bare, holes: [], lights: [], sunX, skyOnly: !!desc.skyOnly, mark: () => { zNow = 1; if (desc.key) { x.fillStyle = desc.key; x.fillRect(ox, oy, ow, oh); } if (!desc.inside) mark(notes.sky); } });
   /** Neon: drawn once in its colour with a glow, then again paler, for the hot core. */
   const neon = (/** @type {string} */ col, /** @type {() => void} */ draw, blur = w * .035) => {
     x.save(); x.shadowColor = col; x.shadowBlur = blur; x.fillStyle = x.strokeStyle = col; draw();
@@ -457,7 +459,8 @@ export function scene(desc, w = 768, h = 1024) {
       x.restore();
       // no air: the stars hold still, but the Earth turns, and now and then something in orbit goes over
       live({ k: 'earth', at: [ex / w, ey / h], r: er / w, sun: [sx / w, sy / h] }); live({ k: 'glide', box: fr(ox, oy, ow, (hz - oy) * .8) });
-      if (!desc.inside) mark(notes.sky);
+      zNow = 1; if (!desc.inside) mark(notes.sky);
+      if (desc.key) { x.fillStyle = desc.key; x.fillRect(ox, oy, ow, oh); }
       if (desc.skyOnly) return oy + oh;
       // the ground: bright grey under a high sun, long-shadowed under a low one, blue with earthlight after dark
       const lit = !up ? .12 : sun[1] < .5 ? 1 : sun[1] < .9 ? .75 : .45;
@@ -508,9 +511,10 @@ export function scene(desc, w = 768, h = 1024) {
     }
     // the sun, where it was put or where the words leave it (east, on the left, at first light), and after dark the moon
     // across the sky from it, rising as the sun sinks. Its place always takes one draw, so the hour can change and
-    // nothing else in the scene moves.
-    const su = rnd(), along = L === 'dawn' ? .38 - su * .2 : .62 + su * .2;
-    const sun = desc.sun || (L === 'night' ? [1 - along, 1.28] : [along, L === 'day' ? .32 : .72]);
+    // nothing else in the scene moves. With someone standing in the middle, the moon keeps clear of their head: high,
+    // across from whatever landmark stands beside them.
+    const su = rnd(), along = L === 'dawn' ? .38 - su * .2 : .62 + su * .2, stands = !!(desc.clear || desc.who === 'person');
+    const sun = desc.sun || (L === 'night' ? (stands ? [side < 0 ? .2 : .8, 1.74] : [1 - along, 1.28]) : [along, L === 'day' ? .32 : .72]);
     const body = L === 'night' ? [1 - sun[0], Math.max(.18, Math.min(.92, 2 - sun[1]))] : sun;
     const sx = ox + ow * body[0], sy = oy + (hz - oy) * body[1], sr = ow * (L === 'night' ? .07 : .1);
     desc.sunAt = { x: (ox + ow * sun[0]) / w, y: (oy + (hz - oy) * sun[1]) / h, r: ow * .1 / w, box: [ox / w, oy / h, ow / w, (hz - oy) / h], sun };
@@ -519,12 +523,16 @@ export function scene(desc, w = 768, h = 1024) {
     if (desc.weather !== 'rain') {
     const glow = x.createRadialGradient(sx, sy, sr * .4, sx, sy, sr * 4); glow.addColorStop(0, L === 'night' ? 'rgb(255 250 230 / .4)' : 'rgb(255 236 190 / .7)'); glow.addColorStop(1, 'rgb(255 236 190 / 0)');
     x.fillStyle = glow; x.fillRect(ox, oy, ow, hz - oy);
+    // after dark a crescent: the disc with its shadow cut away, so the glow shows through and nothing dark is painted
+    if (L === 'night') { x.save(); x.beginPath(); x.rect(ox, oy, ow, oh); x.arc(sx + sr * .45, sy - sr * .2, sr * .9, 0, Math.PI * 2); x.clip('evenodd'); }
     x.fillStyle = L === 'night' ? '#f4f0dc' : L === 'dusk' ? '#ffd28a' : '#fff6da'; x.beginPath(); x.arc(sx, sy, sr, 0, Math.PI * 2); x.fill();
-    if (L === 'night') { x.fillStyle = sky[1]; x.beginPath(); x.arc(sx + sr * .45, sy - sr * .2, sr * .9, 0, Math.PI * 2); x.fill(); }
+    if (L === 'night') x.restore();
     }
     for (let i = 0; i < 4; i++) { const cx = ox + rnd() * ow, cy = oy + (hz - oy) * (.15 + rnd() * .45), cw = ow * (.18 + rnd() * .2); if (L === 'night') continue; x.fillStyle = desc.weather === 'rain' ? 'rgb(120 128 142 / .55)' : 'rgb(255 255 255 / .55)'; for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(cx + (k - 2) * cw * .22, cy + Math.sin(k) * 6, cw * .22, cw * .12, 0, 0, Math.PI * 2); x.fill(); } }
     if (L !== 'night' && desc.weather !== 'rain' && desc.weather !== 'snow') live({ k: 'birds', box: fr(ox, oy + (hz - oy) * .08, ow, (hz - oy) * .5), dusk: L === 'dusk' });
-    if (!desc.inside) mark(notes.sky);
+    zNow = 1; if (!desc.inside) mark(notes.sky);
+    // painted over a flat colour instead of the sky, to find where the land is, and how solid
+    if (desc.key) { x.fillStyle = desc.key; x.fillRect(ox, oy, ow, oh); }
     if (desc.skyOnly) return oy + oh;
     const far = mix(sky[1], sky[2], .3), mid = mix(sky[0], '#203040', L === 'night' ? .3 : .45), near = mix(sky[0], '#101820', L === 'night' ? .55 : .7);
     const B = desc.place ? brush(ox, oy, ow, oh, hz, sky, sun[0]) : null;
@@ -613,7 +621,7 @@ export function scene(desc, w = 768, h = 1024) {
         x.strokeStyle = 'rgb(70 95 120 / .35)'; x.lineWidth = 1; for (let i = 0; i < 9; i++) { let cx = ox + rnd() * ow, cy = hz + rnd() * (oy + oh - hz); x.beginPath(); x.moveTo(cx, cy); for (let k = 0; k < 4; k++) { cx += (rnd() - .5) * ow * .15; cy += (rnd() - .3) * oh * .05; x.lineTo(cx, cy); } x.stroke(); }
       } else {
       x.strokeStyle = 'rgb(255 255 255 / .35)'; x.lineWidth = 1.2; for (let i = 0; i < 40; i++) { const ly = hz + Math.pow(rnd(), 1.6) * (oy + oh - hz), lw = 10 + rnd() * 40; x.globalAlpha = .2 + rnd() * .5; x.beginPath(); x.moveTo(ox + rnd() * ow, ly); x.lineTo(ox + rnd() * ow + lw, ly); x.stroke(); }
-      x.globalAlpha = .5; x.fillStyle = L === 'night' ? '#f4f0dc' : '#ffe2a0'; if (body[1] < 1) for (let ly = hz + 4; ly < oy + oh; ly += 7) { const wv = sr * (1.4 - (ly - hz) / oh) * (.5 + spark()); x.fillRect(sx - wv / 2, ly, wv, 2); }
+      x.globalAlpha = .5; x.fillStyle = L === 'night' ? '#f4f0dc' : '#ffe2a0'; if (body[1] < 1 && desc.weather !== 'rain') for (let ly = hz + 4; ly < oy + oh; ly += 7) { const wv = sr * (1.4 - (ly - hz) / oh) * (.5 + spark()); x.fillRect(sx - wv / 2, ly, wv, 2); }
       x.globalAlpha = 1;
       live({ k: 'water', box: fr(ox, hz, ow, oy + oh - hz), path: body[1] < 1 && desc.weather !== 'rain' ? [sx / w, sr / w] : null, night: L === 'night' });
       if (props.includes('neon')) for (let i = 0; i < 7; i++) {
@@ -645,6 +653,7 @@ export function scene(desc, w = 768, h = 1024) {
   };
   let hz, win = null;
   if (desc.inside) {
+    zNow = 1;
     const plain = desc.ramp ? desc.ramp[3] : pal ? (L === 'night' ? mix(pal.ground2, pal.ground, .35) : pal.ground) : (L === 'night' ? '#2b2440' : '#efe2cf');
     const wall = props.includes('wood') ? mix(plain, L === 'night' ? '#4a2c18' : '#a0703f', .55) : plain;
     const floor = desc.ramp ? desc.ramp[1] : desc.pal ? mix(desc.pal.accent2, L === 'night' ? '#0a0a12' : '#3a2a20', .5) : (L === 'night' ? '#1a1526' : '#b88a5e');
@@ -827,6 +836,7 @@ export function scene(desc, w = 768, h = 1024) {
     }
   } else { hz = drawOutdoor(0, 0, w, h); mark(notes.land); }
 
+  zNow = 2;
   if (!desc.bare) for (const thing of desc.things) drawThing(x, thing, w, h, desc.inside ? horizon + h * .06 : hz, rnd, desc);
   if (desc.who && !desc.bare) {
     // the sitter: a silhouette in front, rimmed with light after dark, wearing what the words say
@@ -843,10 +853,11 @@ export function scene(desc, w = 768, h = 1024) {
   }
   const listed = desc.things.map((/** @type {string} */ k) => THING[k]).filter(Boolean);
   if (listed.length) mark(cap(listed.join(', ')) + (desc.inside ? (desc.things.includes('glass') ? ' on the bar' : ' on the table') : ''));
-  if (['rain', 'snow', 'petals'].includes(desc.weather)) life.push({ k: desc.weather, box: win ? fr(win[0], win[1], win[2], win[3]) : [0, 0, 1, 1], night: L === 'night', win: !!win });
+  if (['rain', 'snow', 'petals'].includes(desc.weather)) life.push({ k: desc.weather, box: win ? fr(win[0], win[1], win[2], win[3]) : [0, 0, 1, 1], night: L === 'night', win: !!win, z: win ? 0 : 3 });
   x.save();
   if (win) { x.beginPath(); x.rect(win[0], win[1], win[2], win[3]); x.clip(); } // indoors, the weather stays outside the window
   if (!desc.quiet) {
+  const rnd = rng((desc.seed || 7) + 60013);
   if (desc.weather === 'rain') { x.strokeStyle = L === 'night' ? 'rgb(220 230 255 / .45)' : 'rgb(60 70 95 / .35)'; x.lineWidth = 1.2; for (let i = 0; i < 220; i++) { const rx = rnd() * w, ry = rnd() * h, rl = 14 + rnd() * 20; x.beginPath(); x.moveTo(rx, ry); x.lineTo(rx - 4, ry + rl); x.stroke(); } }
   if (desc.weather === 'snow') { x.fillStyle = 'rgb(255 255 255 / .85)'; for (let i = 0; i < 260; i++) { x.beginPath(); x.arc(rnd() * w, rnd() * h, .8 + rnd() * 2.6, 0, Math.PI * 2); x.fill(); } }
   if (desc.weather === 'petals') { for (let i = 0; i < 46; i++) { x.fillStyle = rnd() < .5 ? '#f6b6c8' : '#fbd7e1'; sticker(x, 'petal', rnd() * w, rnd() * h, 10 + rnd() * 10, rnd() * 6); } }
@@ -861,9 +872,9 @@ export function scene(desc, w = 768, h = 1024) {
     const s = desc.sunAt; if (s) desc.sunAt = { ...s, x: (s.x - k) * z, y: (s.y - k) * z, r: s.r * z, box: [(s.box[0] - k) * z, (s.box[1] - k) * z, s.box[2] * z, s.box[3] * z] };
     for (const o of life) zoomHint(o, z, k);
   }
-  if (desc.quiet) { vignette(c, .35); return c; }
-  const grainy = x.getImageData(0, 0, w, h), gd = grainy.data;
-  for (let i = 0; i < gd.length; i += 4) { const n = (rnd() - .5) * 14; gd[i] += n; gd[i + 1] += n; gd[i + 2] += n; }
+  if (desc.quiet) { if (!desc.key) vignette(c, .35); return c; }
+  const grainy = x.getImageData(0, 0, w, h), gd = grainy.data, grain = rng((desc.seed || 7) + 50021);
+  for (let i = 0; i < gd.length; i += 4) { const n = (grain() - .5) * 14; gd[i] += n; gd[i + 1] += n; gd[i + 2] += n; }
   x.putImageData(grainy, 0, 0);
   vignette(c, .35);
   return c;
@@ -890,9 +901,12 @@ function zoomHint(o, z, k) {
  * rain, steam, a lamp), in fractions of the picture, and a small mask of what was painted over the place (the things in
  * it, and the sitter), found by painting it again without them. Painted at the picture's own size, since lit windows are
  * counted by the pixel. The picture itself is not touched.
- * @param {any} desc @param {number} w @param {number} h @returns {{ hints: any[], front: HTMLCanvasElement, bare: HTMLCanvasElement | null, cut: HTMLCanvasElement | null }}
+ * With depth, the scene comes in planes as well, to be looked into (see deepIn), and no front mask is needed.
+ * @param {any} desc @param {number} w @param {number} h @param {{ depth?: boolean }} [o]
+ * @returns {{ hints: any[], front: HTMLCanvasElement, bare: HTMLCanvasElement | null, cut: HTMLCanvasElement | null, depth?: { planes: { c: HTMLCanvasElement, z: number }[] } }}
  */
-export function lifeIn(desc, w, h) {
+export function lifeIn(desc, w, h, { depth = false } = {}) {
+  if (depth) return deepIn(desc, w, h);
   const again = (/** @type {any} */ more) => ({ ...desc, things: [...(desc.things || [])], layers: null, quiet: true, ...more });
   const full = again({}), whole = scene(full, w, h);
   const sw = 160, sh = Math.max(1, Math.round(sw * h / w));
@@ -916,6 +930,90 @@ export function lifeIn(desc, w, h) {
 }
 /** Hints for things that move themselves: cut out of the picture and moved whole. */
 const MOVES = new Set(['bob', 'sway', 'beat', 'spin']);
+
+/**
+ * A scene in planes, to be looked into, with what moves in it. Painted three times (the sky alone, the place without
+ * what stands in it, the whole) and each cut where the next one differs, so every plane is whole behind the one in front
+ * of it: the sky (z 0), the land (1), what stands in it (2). Indoors the view through the window is the far plane and
+ * the room a plane over it, cut away at the glass. The weather painted in, and the grain, come from streams of their
+ * own, so the three agree everywhere but where something was added.
+ * @param {any} desc @param {number} w @param {number} h
+ */
+function deepIn(desc, w, h) {
+  const as = (/** @type {any} */ more) => ({ ...desc, things: [...(desc.things || [])], layers: null, ...more });
+  const full = as({}), F = scene(full, w, h), B = scene(as({ bare: true }), w, h), hints = full.life || [];
+  const near = differs(F, B), planes = /** @type {{ c: HTMLCanvasElement, z: number }[]} */ ([]);
+  if (desc.inside) {
+    const room = copy(B), rx = ctx2d(room), win = hints.find((/** @type {any} */ o) => o.k === 'window');
+    if (win) { rx.globalCompositeOperation = 'destination-out'; for (const [px, py, pw, ph] of panesOf(win, w, h)) rx.fillRect(px, py, pw, ph); }
+    planes.push({ c: B, z: 0 }, { c: room, z: 1 });
+  } else {
+    const S = scene(as({ bare: true, skyOnly: true }), w, h);
+    const k0 = scene(as({ bare: true, quiet: true, key: '#000000' }), w, h), k1 = scene(as({ bare: true, quiet: true, key: '#ffffff' }), w, h);
+    planes.push({ c: S, z: 0 }, { c: keyed(k0, k1, B), z: 1 });
+  }
+  planes.push({ c: matte(F, B), z: 2 });
+  // what moves whole: where it is, so it can be lifted out of its plane
+  const moving = hints.filter((/** @type {any} */ o) => MOVES.has(o.k)), cut = moving.length ? make(w, h) : null;
+  if (cut) {
+    const C = ctx2d(cut);
+    for (const o of moving) { const x0 = Math.max(0, Math.floor(o.box[0] * w)), y0 = Math.max(0, Math.floor(o.box[1] * h)), x1 = Math.min(w, Math.ceil((o.box[0] + o.box[2]) * w)), y1 = Math.min(h, Math.ceil((o.box[1] + o.box[3]) * h)); if (x1 > x0 && y1 > y0) C.drawImage(near, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0); }
+  }
+  return { hints, front: /** @type {any} */ (null), bare: null, cut, depth: { planes } };
+}
+/**
+ * The land as a layer of its own, from the land painted over a black sky and over a white one. Where the two agree it is
+ * solid, and takes the picture's own colour, grain and all; where they differ only light was laid over the sky (a
+ * tower's glow, a haze), and by how much says how clear it is.
+ * @param {HTMLCanvasElement} k0 @param {HTMLCanvasElement} k1 @param {HTMLCanvasElement} own
+ */
+function keyed(k0, k1, own) {
+  const w = own.width, h = own.height, A = ctx2d(k0).getImageData(0, 0, w, h).data, W = ctx2d(k1).getImageData(0, 0, w, h).data, O = ctx2d(own).getImageData(0, 0, w, h).data;
+  const m = make(w, h), mx = ctx2d(m), out = mx.createImageData(w, h), o = out.data;
+  for (let i = 0; i < A.length; i += 4) {
+    const a = 1 - ((W[i] - A[i]) + (W[i + 1] - A[i + 1]) + (W[i + 2] - A[i + 2])) / 765;
+    if (a < .02) continue;
+    if (a > .97) { o[i] = O[i]; o[i + 1] = O[i + 1]; o[i + 2] = O[i + 2]; o[i + 3] = 255; continue; }
+    o[i] = A[i] / a; o[i + 1] = A[i + 1] / a; o[i + 2] = A[i + 2] / a; o[i + 3] = Math.round(a * 255);
+  }
+  mx.putImageData(out, 0, 0); return m;
+}
+/** Where two paintings of the same size differ, as a mask. @param {HTMLCanvasElement} a @param {HTMLCanvasElement} b */
+function differs(a, b) {
+  const w = a.width, h = a.height, A = ctx2d(a).getImageData(0, 0, w, h).data, B = ctx2d(b).getImageData(0, 0, w, h).data, m = make(w, h), mx = ctx2d(m), out = mx.createImageData(w, h), o = out.data;
+  for (let i = 0; i < A.length; i += 4) if (Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]) > 6) o[i + 3] = 255;
+  mx.putImageData(out, 0, 0); return m;
+}
+/**
+ * What a painting adds to the one under it, as a layer to lay over it: solid where something was painted on, and where
+ * only light was (a glow, a lamp's beam, a haze) as clear as it can be while still making the painting exactly when laid
+ * over the one under it. So a glow moves with what gives it, and whatever is behind shows through it.
+ * @param {HTMLCanvasElement} top @param {HTMLCanvasElement} under
+ */
+function matte(top, under) {
+  const w = top.width, h = top.height, T = ctx2d(top).getImageData(0, 0, w, h).data, U = ctx2d(under).getImageData(0, 0, w, h).data, m = make(w, h), mx = ctx2d(m), out = mx.createImageData(w, h), o = out.data;
+  for (let i = 0; i < T.length; i += 4) {
+    let a = 0;
+    for (let k = 0; k < 3; k++) { const d = T[i + k] - U[i + k], u = U[i + k]; a = Math.max(a, Math.abs(d) / 64, d > 0 ? d / Math.max(1, 255 - u) : -d / Math.max(1, u)); }
+    if (a < .02) continue;
+    a = Math.min(1, a);
+    for (let k = 0; k < 3; k++) o[i + k] = U[i + k] + (T[i + k] - U[i + k]) / a;
+    o[i + 3] = Math.round(a * 255);
+  }
+  mx.putImageData(out, 0, 0); return m;
+}
+/** The four panes of a window, as a window hint has it, in a picture w × h. @param {any} o @param {number} w @param {number} h */
+function panesOf(o, w, h) {
+  const [wx, wy, ww, wh] = [o.box[0] * w, o.box[1] * h, o.box[2] * w, o.box[3] * h], f = o.bars[0] * w / 2, b = o.bars[1] * w / 2;
+  const l = o.inner ? wx + ww * o.inner[0] : wx + f, r = o.inner ? wx + ww * o.inner[1] : wx + ww - f, mx = wx + ww / 2, my = wy + wh / 2, t0 = wy + f, b0 = wy + wh - f;
+  return [[l, t0, mx - b - l, my - b - t0], [mx + b, t0, r - mx - b, my - b - t0], [l, my + b, mx - b - l, b0 - my - b], [mx + b, my + b, r - mx - b, b0 - my - b]];
+}
+/** Where the stamp sits on a picture w × h, a little wider. @param {number} w @param {number} h */
+export function stampBox(w, h, text = 'Sketch · drawn on this device') {
+  const size = Math.max(10, Math.round(w / 64)), pad = size * .7, x = ctx2d(make(1, 1)); x.font = `500 ${size}px "IBM Plex Mono", monospace`;
+  const tw = x.measureText(text.toUpperCase()).width;
+  return [w - tw - pad * 3 - 2, h - size - pad * 3 - 2, tw + pad * 2 + 4, size + pad * 1.6 + 4];
+}
 
 /**
  * A sitter as one flat shape, drawn in a 100-unit box (feet at the bottom) at ox, oy and size s.
@@ -1238,7 +1336,7 @@ export function partials(final, steps = [10, 24, 56]) {
 
 /** The honest mark every sketch carries, even after it is saved. */
 export function stamp(c, text = 'Sketch · drawn on this device') {
-  const x = c.getContext('2d'), size = Math.max(10, Math.round(c.width / 64)), pad = size * .7;
+  const x = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')), size = Math.max(10, Math.round(c.width / 64)), pad = size * .7;
   x.font = `500 ${size}px "IBM Plex Mono", monospace`; const tw = x.measureText(text.toUpperCase()).width;
   x.fillStyle = 'rgb(0 0 0 / .42)'; x.beginPath(); x.roundRect(c.width - tw - pad * 3, c.height - size - pad * 3, tw + pad * 2, size + pad * 1.6, size); x.fill();
   x.fillStyle = 'rgb(255 255 255 / .9)'; x.textBaseline = 'top'; x.fillText(text.toUpperCase(), c.width - tw - pad * 2, c.height - size - pad * 2.2);

@@ -251,6 +251,36 @@ test('a famous place looks like itself and lives its own way: Paris at night, th
   await expect(page.locator('.focus__life.is-in')).toHaveCount(1);
 });
 
+test('a picture you can look into: Paris behind them in planes, the sun waiting at the horizon, and holding it shows what it was made from', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').first().click();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('button.bring__opt').first().click()]);
+  await chooser.setFiles('tests/fixtures/sitters/kofi.jpg');
+  await expect(page.locator('figure.print')).toHaveCount(1);
+  await say(page, '@A in Paris at night');
+  await expect(made(page, 'Sketch')).toHaveCount(1, { timeout: 40_000 });
+  await page.locator('figure.print').last().click();
+  // the sky, the town, the things in it and them in front, each moving its own way
+  await expect(page.locator('.focus__life.is-in[data-depth]')).toHaveCount(1, { timeout: 20_000 });
+  await expect(page.locator('.focus__detail')).toHaveText('Drawn on this device');
+  // after dark the sun waits just under the horizon, not down over them
+  const pic = await page.locator('.focus__pic').boundingBox();
+  const sun = await page.locator('button.sun').boundingBox();
+  expect((sun.y + sun.height / 2 - pic.y) / pic.height).toBeLessThan(.7);
+  // hold the sky: the picture it was made from, said on it
+  await page.mouse.move(pic.x + pic.width * .9, pic.y + pic.height * .08);
+  await page.mouse.down();
+  await expect(page.locator('.focus__pic[data-was="A"]')).toHaveCount(1);
+  await page.mouse.up();
+  await expect(page.locator('.focus__pic[data-was]')).toHaveCount(0);
+  // done once, it is not explained again
+  await page.locator('.focus__close').click();
+  await expect(page.locator('section.focus')).toHaveCount(0);
+  await page.locator('figure.print').last().click();
+  await expect(page.locator('.focus__hint--lineage .lineage')).toBeVisible();
+  await expect(page.locator('.lineage__tip')).toHaveCount(0);
+});
+
 test('a trip: someone taken to four places at once, a sheet that lives, and a film where the world changes behind them', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

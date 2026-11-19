@@ -100,3 +100,8 @@
 .lineage__step::after { content: ''; position: absolute; left: 0; right: 0; bottom: .3cqw; height: 1px; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .5) 30%, rgb(255 255 255 / .5) 70%, transparent); }
 .lineage__more { color: rgb(255 255 255 / .6); font: 400 3cqw/1 var(--font-text); }
 .lineage__tip { font: italic 400 2.7cqw/1.2 var(--font-text); color: rgb(255 255 255 / .56); }
+/* holding the picture: which one is showing is said on it, and lit in the strip */
+.focus__pic[data-was]::after { content: attr(data-was) ' · before'; position: absolute; left: 3cqw; top: 3cqw; z-index: 4; padding: 1.2cqw 2.6cqw; border-radius: 99cqw; background: rgb(20 16 12 / .6); color: #fff; font: 500 2.6cqw/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; pointer-events: none; animation: rise var(--t-quick) var(--ease) both; }
+.focus__before.is-in ~ .focus__layer .sun, .focus__before.is-in ~ .focus__layer .walk__hint { opacity: 0; pointer-events: none; }
+.focus__hint--lineage.is-comparing .lineage__node[aria-current='true'] img { opacity: .45; box-shadow: 0 0 0 1px rgb(255 255 255 / .28); }
+.focus__hint--lineage.is-comparing .lineage__node:has(+ .lineage__step + .lineage__node[aria-current='true']) img { opacity: 1; box-shadow: 0 0 0 .6cqw #fff, 0 0 3cqw rgb(255 255 255 / .5); }

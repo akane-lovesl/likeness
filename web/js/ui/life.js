@@ -8,9 +8,15 @@ import { reduced } from '../core/motion.js';
 
 /**
  * @typedef {{ hints: any[], front: HTMLCanvasElement | null, bare?: HTMLCanvasElement | null, cut?: HTMLCanvasElement | null,
- *   person?: HTMLCanvasElement | null, picture?: CanvasImageSource | null }} Life
+ *   person?: HTMLCanvasElement | null, picture?: CanvasImageSource | null, depth?: Depth | null }} Life
  * front: what stands in front of the place (painted things, and whoever is in it), a small mask; person: just them. For
  * what moves whole: cut, where each such thing is in the picture; bare, the place without them; picture, the picture.
+ */
+/**
+ * A picture in planes, to be looked into: each plane the picture as it is at one depth and nothing nearer (z 0 the sky,
+ * 1 the land or the room, 2 what stands in it, 3 whoever was put there), each whole behind what stands in front of it, so
+ * nothing is missing when they slide apart; top, what stays put over all of it (the stamp, an arch's frame).
+ * @typedef {{ planes: { c: HTMLCanvasElement, z: number }[], top?: HTMLCanvasElement | null }} Depth
  */
 /** @typedef {{ draw: (x: CanvasRenderingContext2D, t: number) => void, front?: boolean, win?: boolean, pane?: any, clip?: number[] | null }} Effect */
 
@@ -404,9 +410,10 @@ function effect(o, W0, H0, seed) {
  * A scene's life, made ready to play over a picture W × H: what is behind whoever stands in it is drawn on a layer of its
  * own and cut away where they are; what is in front is drawn over all of it. Null when nothing in it moves.
  * @param {Life} life @param {number} W @param {number} H
- * @returns {{ draw: (x: CanvasRenderingContext2D, t: number, alpha?: number) => void } | null}
+ * @returns {{ draw: (x: CanvasRenderingContext2D, t: number, alpha?: number, cam?: number[]) => void } | null}
  */
 export function lifeFor(life, W, H) {
+  if (life?.depth?.planes?.length) return deepFor(life, W, H);
   if (!life?.hints?.length) return null;
   const win = life.hints.find(o => o.k === 'window'), arch = life.hints.find(o => o.k === 'arch');
   const effects = /** @type {Effect[]} */ ([]);
@@ -474,8 +481,14 @@ function spritesOf(life, W, H) {
     // the place without it, a little wider than the thing, so its edges never show twice
     const d = Math.max(1, Math.round(2 * S)); for (let dx = -d; dx <= d; dx += d) for (let dy = -d; dy <= d; dy += d) grown.x.drawImage(cut, ...src, dx, dy, cw, ch);
     patch.x.drawImage(bare, ...src, 0, 0, cw, ch); patch.x.globalCompositeOperation = 'destination-in'; patch.x.drawImage(grown.c, 0, 0);
-    const f = i * 1.7, cx = (o.box[0] + o.box[2] / 2) * W, cy = (o.box[1] + o.box[3] / 2) * H;
-    const move = o.k === 'bob'
+    out.push({ img: img.c, patch: patch.c, x: x0, y: y0, move: moveOf(o, i, W, H) });
+  });
+  return out;
+}
+/** How a thing that moves whole moves. @param {any} o @param {number} i @param {number} W @param {number} H */
+function moveOf(o, i, W, H) {
+    const S = W / 360, f = i * 1.7, cx = (o.box[0] + o.box[2] / 2) * W, cy = (o.box[1] + o.box[3] / 2) * H;
+    return o.k === 'bob'
       // riding the swell: up and down, and rocking a little after it
       ? (/** @type {CanvasRenderingContext2D} */ x, /** @type {number} */ t) => { const py = (o.box[1] + o.box[3] * .85) * H; x.translate(cx, py + Math.sin(t * 1.25 + f) * 2.2 * S); x.rotate(Math.sin(t * 1.25 + f - .9) * .035); x.translate(-cx, -py); }
       : o.k === 'spin'
@@ -486,9 +499,54 @@ function spritesOf(life, W, H) {
         ? (/** @type {CanvasRenderingContext2D} */ x, /** @type {number} */ t) => { const px = o.pivot[0] * W, py = o.pivot[1] * H; x.translate(px, py + Math.sin(t * .7 + f) * 1.6 * S); x.rotate(Math.sin(t * .9 + f) * .055); x.translate(-px, -py); }
         // a heartbeat, twice and a rest
         : (/** @type {CanvasRenderingContext2D} */ x, /** @type {number} */ t) => { const ph = (t % 1.25) / 1.25, k = 1 + .05 * (Math.exp(-(((ph - .08) / .05) ** 2)) + .65 * Math.exp(-(((ph - .27) / .05) ** 2))); x.translate(cx, cy); x.scale(k, k); x.translate(-cx, -cy); };
-    out.push({ img: img.c, patch: patch.c, x: x0, y: y0, move });
-  });
-  return out;
+}
+
+/**
+ * A picture looked into: its planes drawn each a little apart as the eye moves (the far ones least, whoever stands in
+ * front most), what lives in each plane moving with it, the weather in front moving most of all, and the stamp over all
+ * of it, still. cam is where the eye is, -1 to 1 across and down; at 0 it is the picture exactly.
+ * @param {Life} life @param {number} W @param {number} H
+ */
+function deepFor(life, W, H) {
+  const K = [.06, .34, .66, 1, 1.22], A = W * .024;
+  const layer = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return { c, x: /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')) }; };
+  const planes = (life.depth?.planes || []).map(p => { const s = layer(); s.x.drawImage(p.c, 0, 0, W, H); return { ...s, z: p.z }; });
+  const top = life.depth?.top ? layer() : null; if (top && life.depth?.top) top.x.drawImage(life.depth.top, 0, 0, W, H);
+  // what moves whole (a boat, balloons, the wheel by the river) lifted out of its plane, to be moved there
+  const near = planes.find(p => p.z === 2), sprites = /** @type {{ img: HTMLCanvasElement, x: number, y: number, move: (x: CanvasRenderingContext2D, t: number) => void }[]} */ ([]);
+  if (near && life.cut) {
+    const cut = layer(); cut.x.drawImage(life.cut, 0, 0, W, H);
+    life.hints.forEach((o, i) => {
+      if (!['bob', 'sway', 'beat', 'spin'].includes(o.k)) return;
+      const pad = 6 * W / 360, x0 = Math.max(0, Math.floor(o.box[0] * W - pad)), y0 = Math.max(0, Math.floor(o.box[1] * H - pad)), x1 = Math.min(W, Math.ceil((o.box[0] + o.box[2]) * W + pad)), y1 = Math.min(H, Math.ceil((o.box[1] + o.box[3]) * H + pad));
+      if (x1 - x0 < 2 || y1 - y0 < 2) return;
+      const img = document.createElement('canvas'); img.width = x1 - x0; img.height = y1 - y0; const ix = /** @type {CanvasRenderingContext2D} */ (img.getContext('2d'));
+      ix.drawImage(near.c, x0, y0, img.width, img.height, 0, 0, img.width, img.height); ix.globalCompositeOperation = 'destination-in'; ix.drawImage(cut.c, x0, y0, img.width, img.height, 0, 0, img.width, img.height);
+      near.x.save(); near.x.beginPath(); near.x.rect(x0, y0, img.width, img.height); near.x.clip(); near.x.globalCompositeOperation = 'destination-out'; near.x.drawImage(cut.c, 0, 0); near.x.restore();
+      sprites.push({ img, x: x0, y: y0, move: moveOf(o, i, W, H) });
+    });
+  }
+  const fx = /** @type {(Effect & { z: number })[]} */ ([]);
+  life.hints.forEach((o, i) => { const e = effect(o, W, H, 101 + i * 7919); if (e) fx.push({ ...e, z: FRONT.has(o.k) && !o.win ? 4 : Math.max(0, Math.min(3, o.z ?? 1)) }); });
+  const S = layer();
+  return { draw(/** @type {CanvasRenderingContext2D} */ x, /** @type {number} */ t, alpha = 1, cam = [0, 0]) {
+    if (alpha <= 0) return;
+    const s = S.x; s.clearRect(0, 0, W, H);
+    for (let z = 0; z <= 4; z++) {
+      const dx = -cam[0] * A * K[z], dy = -cam[1] * A * K[z] * .55;
+      for (const p of planes) if (p.z === z) slab(s, p.c, dx, dy, W, H);
+      if (z === 2) for (const sp of sprites) { s.save(); s.translate(dx, dy); sp.move(s, t); s.drawImage(sp.img, sp.x, sp.y); s.restore(); }
+      for (const e of fx) if (e.z === z) { s.save(); s.translate(dx, dy); e.draw(s, t); s.restore(); }
+    }
+    if (top) s.drawImage(top.c, 0, 0);
+    x.save(); x.globalAlpha = alpha; x.drawImage(S.c, 0, 0); x.restore();
+  } };
+}
+/** A plane drawn moved a little, the gap it leaves at the edge filled with its edge stretched. @param {CanvasRenderingContext2D} x @param {HTMLCanvasElement} c @param {number} dx @param {number} dy @param {number} W @param {number} H */
+function slab(x, c, dx, dy, W, H) {
+  x.drawImage(c, dx, dy);
+  if (dx > .01) x.drawImage(c, 0, 0, 1, H, 0, dy, dx + .5, H); else if (dx < -.01) x.drawImage(c, W - 1, 0, 1, H, W + dx - .5, dy, -dx + .5, H);
+  if (dy > .01) x.drawImage(c, 0, 0, W, 1, dx, 0, W, dy + .5); else if (dy < -.01) x.drawImage(c, 0, H - 1, W, 1, dx, H + dy - .5, W, -dy + .5);
 }
 
 /**
@@ -508,15 +566,39 @@ export function alive(host, life, before = null, cls = 'focus__life') {
   };
   size();
   if (!play) return null;
+  if (life.depth?.planes?.length) cv.dataset.depth = String(life.depth.planes.length);
   host.insertBefore(cv, before);
   const ro = new ResizeObserver(size); ro.observe(host);
   const t0 = performance.now();
+  // a picture in planes is looked into: the phone tilted, or the mouse over it; left alone, the eye drifts a little,
+  // slowly, so it can be seen to have depth. Held still while the picture is being worked on, and at rest it is exact
+  const deep = !!life.depth?.planes?.length, one = (/** @type {number} */ v) => Math.max(-1, Math.min(1, v));
+  let cam = [0, 0], aim = [0, 0], touched = -1e9, tilt0 = /** @type {number[] | null} */ (null);
+  const onMove = (/** @type {PointerEvent} */ e) => { if (e.pointerType !== 'mouse') return; const r = host.getBoundingClientRect(); aim = [one(((e.clientX - r.left) / r.width) * 2 - 1), one(((e.clientY - r.top) / r.height) * 2 - 1)]; touched = performance.now(); };
+  const onLeave = () => { touched = -1e9; };
+  const onTilt = (/** @type {DeviceOrientationEvent} */ e) => { if (e.gamma == null || e.beta == null) return; tilt0 ??= [e.gamma, e.beta]; aim = [one((e.gamma - tilt0[0]) / 14), one((e.beta - tilt0[1]) / 14)]; touched = performance.now(); };
+  if (deep) { host.addEventListener('pointermove', onMove); host.addEventListener('pointerleave', onLeave); addEventListener('deviceorientation', onTilt); }
   const tick = (/** @type {number} */ now) => {
     raf = requestAnimationFrame(tick);
     if (now - last < 32) return; // thirty times a second is plenty
-    last = now; x.clearRect(0, 0, cv.width, cv.height); play?.draw(x, (now - t0) / 1000);
+    last = now; x.clearRect(0, 0, cv.width, cv.height);
+    const t = (now - t0) / 1000;
+    if (deep) {
+      if (cv.matches(CALM)) cam = [0, 0];
+      else {
+        const idle = now - touched > 2500, k = Math.min(1, Math.max(0, (t - 1.2) / 4));
+        const goal = idle ? [Math.sin(t * TAU / 14) * .75 * k, Math.sin(t * TAU / 21 + 1.3) * .5 * k] : aim;
+        cam = [cam[0] + (goal[0] - cam[0]) * .08, cam[1] + (goal[1] - cam[1]) * .08];
+      }
+    }
+    play?.draw(x, t, 1, cam);
   };
   raf = requestAnimationFrame(tick);
   requestAnimationFrame(() => requestAnimationFrame(() => cv.classList.add('is-in')));
-  return { stop() { cancelAnimationFrame(raf); ro.disconnect(); cv.classList.remove('is-in'); setTimeout(() => cv.remove(), 450); } };
+  return { stop() {
+    cancelAnimationFrame(raf); ro.disconnect(); cv.classList.remove('is-in'); setTimeout(() => cv.remove(), 450);
+    if (deep) { host.removeEventListener('pointermove', onMove); host.removeEventListener('pointerleave', onLeave); removeEventListener('deviceorientation', onTilt); }
+  } };
 }
+/** While a picture is being worked on (pinned, relit, walked in, compared, filmed) its planes rest, exactly in place. */
+const CALM = ".focus[data-mode='pin'] .focus__life, .focus.is-walking .focus__life, .focus.is-relighting .focus__life, .focus.is-filming .focus__life, .focus__before.is-in ~ .focus__life";

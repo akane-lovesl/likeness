@@ -71,7 +71,13 @@ test('the mirror tries a look on: four takes inside the part\'s mask, one kept, 
   await expect(mirror.locator('.mr-token__shape')).toHaveText('higher arch');
   await mirror.locator('.mr-ask__go').click();
   await expect(mirror.locator('.mr-take.is-pending')).toHaveCount(4);
+  // the wait, where the eyes are: a light over the part, the studio's own words, then its previews developing in place
+  await expect(mirror).toHaveClass(/is-working/);
+  await expect(mirror.locator('.mr-words__say')).not.toHaveText('Asked', { timeout: 20_000 });
+  await expect(mirror).toHaveClass(/has-preview/, { timeout: 40_000 });
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Preview');
   await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(4, { timeout: 60_000 });
+  await expect(mirror).not.toHaveClass(/is-working/);
   await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated');
   const region = turns.find(t => t.intent.op === 'region');
   expect(region.n).toBe(4);

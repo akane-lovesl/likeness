@@ -37,7 +37,11 @@ const HINTS = /** @type {Record<string, string>} */ ({ bangs: 'a little longer, 
 /** @typedef {{ part: string, style: import('./vocab.js').Style, shape?: Record<string, number>, said?: string, heard?: Record<string, number> }} Pick a style picked for a part, shaped (see markup.js) and saying so; heard, the part of its shape the words gave it */
 /** @typedef {{ part: string, style: string, words?: string, image: string, takes?: string[], angles?: string[] }} Look */
 /** @typedef {{ id: string, name?: string, kind?: string, portrait: string, looks: Look[] }} Person */
-/** @typedef {{ url: string, label: string, kind: string, print?: any, picks?: Pick[], look?: Look, pending?: boolean, p?: number }} Take */
+/** @typedef {{ url: string, label: string, kind: string, print?: any, picks?: Pick[], look?: Look, pending?: boolean, p?: number, preview?: string }} Take */
+/** What the mirror says at each stage of a turn while the studio works, until the studio says something itself. */
+const STAGE_SAYS = /** @type {Record<string, string>} */ ({ read: 'Looking closely', plan: 'Working out how', draw: 'Making it', finish: 'Nearly there' });
+/** How long is left, as a person would say it; once past what was expected, how long it has been. @param {number} left @param {number} gone */
+const timeLeft = (left, gone) => (left > 4500 ? 'about ' + Math.ceil(left / 5000) * 5 + ' s' : left > -6000 ? 'any moment' : Math.round(gone / 1000) + ' s so far');
 
 let current = /** @type {{ close: (now?: boolean) => void } | null} */ (null);
 
@@ -106,6 +110,9 @@ export function openMirror(o) {
 
   const glow = h('div.mr-glow', { 'aria-hidden': 'true' });
   const pic = h('img.mr-pic', { alt: '', draggable: false }), over = h('img.mr-pic.mr-over', { alt: '', draggable: false });
+  // while the studio works: its previews developing in place, a light over what it is changing, its words in the frame
+  const preview = /** @type {HTMLImageElement} */ (h('img.mr-pic.mr-preview', { alt: '', draggable: false })), workEl = h('div.mr-work', { 'aria-hidden': 'true' });
+  const sayNow = h('span.mr-words__say'), etaEl = h('span.mr-words__eta'), wordsEl = h('p.mr-words', { 'aria-live': 'polite' }, sayNow, etaEl);
   const read = /** @type {HTMLCanvasElement} */ (h('canvas.mr-read', { 'aria-hidden': 'true' }));
   const turnView = /** @type {HTMLCanvasElement} */ (h('canvas.mr-turnview', { 'aria-hidden': 'true' }));
   const wash = /** @type {HTMLCanvasElement} */ (h('canvas.mr-wash', { 'aria-hidden': 'true' }));
@@ -117,8 +124,8 @@ export function openMirror(o) {
   const dial = h('div.mr-dial', { hidden: true, 'aria-hidden': 'true' }, h('i'));
   const handlesEl = h('div.mr-handles'), sayEl = h('div.mr-say', { 'aria-live': 'polite' });
   // what leans in when a part is chosen: the picture and everything drawn on it, not the notes in its margins
-  const lens = h('div.mr-lens', null, pic, over, turnView, wash, read, sk, handlesEl);
-  const frame = h('div.mr-frame', null, lens, lines, notes, sayEl, stampEl, keepBtn, turnBtn, dial);
+  const lens = h('div.mr-lens', null, pic, over, preview, turnView, wash, read, workEl, sk, handlesEl);
+  const frame = h('div.mr-frame', null, lens, lines, notes, sayEl, stampEl, keepBtn, turnBtn, dial, wordsEl);
   const takesRow = h('div.mr-takes', { role: 'listbox', 'aria-label': 'Takes' });
   const chips = PARTS.map(p => h('button.mr-part', { type: 'button', 'data-part': p.id, 'aria-pressed': 'false', onclick: () => choose(p.id) },
     h('span.mr-part__glyph', { html: plateSVG(p.id, p.styles[0].id) }), h('span.mr-part__name', null, p.name)));
@@ -350,7 +357,7 @@ export function openMirror(o) {
     // only a take that is new is dealt in; the rest stay where they are
     takesRow.replaceChildren(...all.map((t, k) => {
       const i = k - 1, b = h('button.mr-take', { type: 'button', role: 'option', 'data-i': String(i), 'aria-selected': String(i === shown), 'aria-label': i < 0 ? 'As they are' : t.look ? titleOf(t.picks || []) : 'Take ' + k, style: { '--i': k, '--n': all.length }, onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0) show(i); } },
-        t.pending ? h('span.mr-take__wait') : h('img' + (developed.has(t) ? '.is-still' : ''), { src: t.url, alt: '', draggable: false }));
+        t.pending ? (t.preview ? h('img.mr-take__preview', { src: t.preview, alt: '', draggable: false }) : h('span.mr-take__wait')) : h('img' + (developed.has(t) ? '.is-still' : ''), { src: t.url, alt: '', draggable: false }));
       b.classList.toggle('is-pending', !!t.pending); b.classList.toggle('is-origin', i < 0);
       if (dealt.has(t)) b.classList.add('is-dealt');
       dealt.add(t); if (!t.pending) developed.add(t);
@@ -648,33 +655,75 @@ export function openMirror(o) {
     const now = picks.slice(), first = takes.length;
     for (let k = 0; k < 4; k++) takes.push({ url: '', label: '', kind: '', pending: true, picks: now });
     paintTakes();
-    await follow(onItem => runTurn({ text: mask ? 'Changes to @' + s.handle : '@' + s.handle + ' ' + words, said, intent, pace: settings.get('pace', 'fine'), n: 4, onItem }), first, 4, (k, p) => { Object.assign(takes[first + k], { url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, pending: false }); });
+    await follow(onItem => runTurn({ text: mask ? 'Changes to @' + s.handle : '@' + s.handle + ' ' + words, said, intent, pace: settings.get('pace', 'fine'), n: 4, onItem }), first, 4, (k, p) => { Object.assign(takes[first + k], { url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, pending: false }); }, mask);
   }
   /**
    * Follows a turn's item as its pictures arrive: each lands in its place (the first is shown as it lands), the
    * places wait with the studio's estimate burning round them, and the ones that never come are taken away.
    * @param {(onItem: (it: any) => void) => Promise<any>} start @param {number} first @param {number} n @param {(k: number, p: any) => void} land
+   * @param {HTMLCanvasElement | null} [mask] what the studio may change (the light passes over it; over everything when null)
    * @returns {Promise<any>} the turn's item, when it is over
    */
-  async function follow(start, first, n, land) {
+  async function follow(start, first, n, land, mask = /** @type {HTMLCanvasElement | null} */ (null)) {
     let item = /** @type {any} */ (null), shownOne = false;
-    const tick = setInterval(() => { if (!item) return; const p = progressAt(Date.now() - item.startedAt, item.eta); takesRow.querySelectorAll('.mr-take.is-pending').forEach(b => /** @type {HTMLElement} */ (b).style.setProperty('--p', p.toFixed(3))); }, 200);
+    working(mask);
+    const offEv = on('turn:event', (/** @type {any} */ m) => { if (item && m?.id === item.id) heard(m.ev, first); });
+    const tick = setInterval(() => { if (!item) return; const p = progressAt(Date.now() - item.startedAt, item.eta); etaEl.textContent = timeLeft(item.eta - (Date.now() - item.startedAt), Date.now() - item.startedAt); takesRow.querySelectorAll('.mr-take.is-pending').forEach(b => /** @type {HTMLElement} */ (b).style.setProperty('--p', p.toFixed(3))); }, 200);
     const landed = new Set();
     const check = (/** @type {any} */ it) => {
       if (!item || it.id !== item.id) return;
       (it.prints || []).forEach((/** @type {string} */ id, /** @type {number} */ k) => {
         const p = id && printById(id); if (!p || landed.has(k) || k >= n) return;
         landed.add(k); land(k, p); paintTakes();
-        if (!shownOne) { shownOne = true; show(first + k); }
+        if (!shownOne) { shownOne = true; show(first + k); el.classList.remove('has-preview'); }
       });
     };
     const off = on('item:patch', check);
     try { const it = await start(it => { item = it; }); item ||= it; check(it); if (it.state === 'failed') toast(it.error || 'That did not work', 3200); return it; }
     finally {
-      off(); clearInterval(tick);
+      off(); offEv(); clearInterval(tick);
       for (let k = n - 1; k >= 0; k--) if (takes[first + k]?.pending) takes.splice(first + k, 1);
       paintTakes(); if (shown >= takes.length) show(-1);
+      rested();
     }
+  }
+  /**
+   * While the studio works: a light passes over what it is changing (all of the picture when no part is), its own words
+   * come up in the frame, with how long is left, and its previews develop in place.
+   * @param {HTMLCanvasElement | null} mask
+   */
+  function working(mask) {
+    const url = mask ? 'url(' + mask.toDataURL('image/png') + ')' : 'none';
+    // the light glows a little beyond the part, so a thin one (a brow, a lash line) still reads as lit
+    let lit = url;
+    if (mask) { const g = P.make(mask.width, mask.height), gx = ctx(g); gx.filter = 'blur(' + Math.max(4, Math.round(mask.width / 45)) + 'px)'; gx.drawImage(mask, 0, 0); gx.drawImage(mask, 0, 0); gx.drawImage(g, 0, 0); lit = 'url(' + g.toDataURL('image/png') + ')'; }
+    workEl.style.setProperty('mask-image', lit); workEl.style.setProperty('-webkit-mask-image', lit);
+    // the preview develops only where the change is: the rest of the face stays as it is meanwhile
+    preview.style.setProperty('mask-image', url); preview.style.setProperty('-webkit-mask-image', url);
+    sayNow.textContent = 'Asked'; etaEl.textContent = '';
+    el.classList.add('is-working');
+  }
+  /** The work over: the light and the words go, and a preview never followed by its picture is not left saying so. */
+  function rested() {
+    el.classList.remove('is-working', 'has-preview'); preview.removeAttribute('src');
+    for (const e of [workEl, preview]) { e.style.removeProperty('mask-image'); e.style.removeProperty('-webkit-mask-image'); }
+    if (stampEl.dataset.kind === 'preview') show(Math.min(shown, takes.length - 1), true);
+  }
+  /** One of the studio's events, while it works on this. @param {any} ev @param {number} first */
+  function heard(ev, first) {
+    const words = ev?.type === 'stage' ? STAGE_SAYS[ev.stage] : ev?.type === 'note' ? ev.text : ev?.type === 'plan' ? ev.plan?.summary : '';
+    if (words) sayIt(words);
+    if (ev?.type !== 'partial' || !(ev.blob || ev.canvas)) return;
+    // a preview: in its place among the takes, and the first in the frame, where it develops (and says it is one)
+    const url = ev.blob ? URL.createObjectURL(ev.blob) : ev.canvas.toDataURL('image/jpeg', .8), t = takes[first + ev.index];
+    if (t?.pending) { t.preview = url; paintTakes(); }
+    if (ev.index === 0) { preview.src = url; el.classList.add('has-preview'); stampEl.textContent = 'Preview'; stampEl.dataset.kind = 'preview'; }
+  }
+  /** The studio's words, one line at a time, each coming in as the last goes. @param {string} text */
+  function sayIt(text) {
+    const t = String(text).replace(/\*\*/g, '').trim(); if (!t || sayNow.textContent === t) return;
+    sayNow.textContent = t;
+    if (!reduced) sayNow.animate([{ opacity: 0, translate: '0 .6em', filter: 'blur(2px)' }, { opacity: 1, translate: '0 0', filter: 'blur(0)' }], { duration: 420, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
   /** Here, with no studio: the change sketched over the face, stamped as a sketch, kept on the desk. */
   async function sketchIt() {

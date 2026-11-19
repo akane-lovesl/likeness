@@ -186,6 +186,8 @@ async function develop(item, events, { learn }) {
   let reply = null, firstResult = true;
   try {
     for await (const ev of events) {
+      // told as it comes to whoever is following this turn (the mirror shows its wait where the eyes are)
+      emit('turn:event', { id: item.id, ev });
       if (!card) continue;
       switch (ev.type) {
         case 'accepted': await patchItem(item, { job: ev.job || item.job || null, eta: ev.eta || item.eta }); break;

@@ -6,6 +6,11 @@ test('the welcome walks you in, and the room you pick is the room you get', asyn
   await page.goto('/');
   const welcome = page.locator('section.welcome');
   await expect(welcome).toContainText('Showcase');
+  // the first picture, painted on arrival: its sun can be taken down into the night from the keyboard too
+  const sun = page.locator('.welcome__scene.is-painted button.sun');
+  await expect(sun).toBeVisible();
+  for (let i = 0; i < 10; i++) await sun.press('ArrowDown');
+  await expect(sun).toHaveAttribute('aria-label', /at night/);
   await page.locator('.welcome__next').click();
   const card = page.locator('.welcome__rooms .postcard').nth(2);
   const id = await card.getAttribute('data-room');

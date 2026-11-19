@@ -132,7 +132,20 @@
 .welcome { position: absolute; inset: 0; z-index: 90; display: flex; flex-direction: column; justify-content: center; padding: calc(env(safe-area-inset-top) + 8cqw) 7cqw calc(env(safe-area-inset-bottom) + 8cqw); background: color-mix(in srgb, var(--ground) 82%, transparent); backdrop-filter: blur(3cqw) saturate(1.2); -webkit-backdrop-filter: blur(3cqw) saturate(1.2); opacity: 0; transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease); }
 .welcome.is-in { opacity: 1; }
 .welcome.is-out { opacity: 0; transform: scale(1.04); pointer-events: none; }
-.welcome__body { display: flex; flex-direction: column; gap: 4cqw; transition: opacity 180ms, transform 180ms; }
+.welcome__body { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4cqw; transition: opacity 180ms, transform 180ms; }
+/* the first picture: painted as you arrive, fading into the page below it, alive, its sun to be held */
+.welcome[data-step='0'] { justify-content: flex-end; }
+.welcome__scene { position: absolute; inset: 0 0 auto 0; height: 58%; z-index: 0; -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent 99%); mask-image: linear-gradient(to bottom, #000 58%, transparent 99%); opacity: 0; transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease); }
+.welcome__scene.is-painted { opacity: 1; animation: scene-in 1.4s var(--ease) both; }
+.welcome[data-step]:not([data-step='0']) .welcome__scene { opacity: 0; transform: translateY(-5cqw); pointer-events: none; animation: none; }
+.welcome__paint, .welcome__life { position: absolute; inset: 0; width: 100%; height: 100%; }
+.welcome__life { pointer-events: none; opacity: 0; transition: opacity 1.2s var(--ease); }
+.welcome__life.is-in { opacity: 1; }
+.welcome__scene.is-relighting .welcome__life { opacity: 0; transition-duration: var(--t-quick); }
+.welcome__sun .sun__hint { animation: hint-stay .9s var(--ease) 1.6s both; }
+.welcome__dots { position: relative; z-index: 1; }
+@keyframes scene-in { from { opacity: 0; transform: scale(1.05); filter: blur(1.2cqw); } }
+@keyframes hint-stay { from { opacity: 0; transform: translateY(1.5cqw) rotate(-4deg); } to { opacity: 1; transform: rotate(-4deg); } }
 .welcome__body.is-turning { opacity: 0; transform: translateX(-4cqw); }
 .welcome__body > * { animation: rise var(--t-slow) var(--ease) both; }
 .welcome__body > *:nth-child(2) { animation-delay: 80ms; } .welcome__body > *:nth-child(3) { animation-delay: 160ms; } .welcome__body > *:nth-child(4) { animation-delay: 240ms; } .welcome__body > *:nth-child(5) { animation-delay: 320ms; }

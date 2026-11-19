@@ -398,12 +398,12 @@ function spritesOf(life, W, H) {
 /**
  * Brings a picture to life on the page: a layer laid over it (in host, before the given element), playing until stopped.
  * Nothing when motion is reduced.
- * @param {HTMLElement} host @param {Life} life @param {Element | null} [before]
+ * @param {HTMLElement} host @param {Life} life @param {Element | null} [before] @param {string} [cls] the layer's class
  * @returns {{ stop: () => void } | null}
  */
-export function alive(host, life, before = null) {
+export function alive(host, life, before = null, cls = 'focus__life') {
   if (reduced) return null;
-  const cv = document.createElement('canvas'); cv.className = 'focus__life'; cv.setAttribute('aria-hidden', 'true');
+  const cv = document.createElement('canvas'); cv.className = cls; cv.setAttribute('aria-hidden', 'true');
   const x = /** @type {CanvasRenderingContext2D} */ (cv.getContext('2d'));
   let play = /** @type {ReturnType<typeof lifeFor>} */ (null), raf = 0, last = -1;
   const size = () => {

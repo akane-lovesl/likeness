@@ -1,4 +1,4 @@
-/** Every side of you: the browser's fake camera plays a drawn sitter turning his head, straight on, to one side, to the other. */
+/** Every side of you: the browser's fake camera plays a drawn sitter turning their head, straight on, to one side, to the other. */
 import { resolve } from 'node:path';
 import { test, expect } from '@playwright/test';
 

@@ -123,6 +123,11 @@
 .print__partial.is-in { opacity: 1; }
 /* a layer of a sketch being painted: swept in over the last, left to right, with a soft edge */
 .print__layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; -webkit-mask-image: linear-gradient(100deg, #000 40%, transparent 60%); mask-image: linear-gradient(100deg, #000 40%, transparent 60%); -webkit-mask-size: 300% 100%; mask-size: 300% 100%; animation: layer-sweep calc(var(--tempo) * .75s) var(--ease) both; }
+/* a person found blooms out from the middle; a room taken away, or a step that replaces the last, dissolves */
+.print__layer[data-reveal='bloom'] { -webkit-mask-image: radial-gradient(closest-side, #000 70%, transparent); mask-image: radial-gradient(closest-side, #000 70%, transparent); -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: 50% 42%; mask-position: 50% 42%; animation-name: layer-bloom; animation-duration: calc(var(--tempo) * 1.1s); }
+.print__layer[data-reveal='fade'] { -webkit-mask-image: none; mask-image: none; animation-name: layer-fade; animation-duration: calc(var(--tempo) * .7s); }
+@keyframes layer-bloom { from { -webkit-mask-size: 0% 0%; mask-size: 0% 0%; } to { -webkit-mask-size: 280% 280%; mask-size: 280% 280%; } }
+@keyframes layer-fade { from { opacity: 0; } }
 @keyframes layer-sweep { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
 .print__label { position: absolute; left: 50%; bottom: 2cqw; z-index: 3; transform: translateX(-50%); padding: .9cqw 1.8cqw; border-radius: 99cqw; background: rgb(10 8 6 / .42); color: #fff; font: 500 calc(1.8cqw * var(--m-scale)) / 1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
 .fuse { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; overflow: visible; }

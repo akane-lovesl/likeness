@@ -109,10 +109,13 @@ function arrived() {
 function note(card, text, quick = false) {
   card?.notes?.replaceChildren(h(quick ? 'span.is-quick' : 'span', null, text));
 }
-/** A layer of a sketch being painted: it sweeps in over the one before, which then goes. */
-async function layOn(f, canvas) {
-  const img = h('img.print__layer', { alt: '' }); await showOn(img, canvas);
-  f.label.before(img); f.label.textContent = studio.live ? 'Painting' : 'Sketching';
+/**
+ * A layer of a sketch being painted: it sweeps in over the one before, which then goes. The picture as it was, laid
+ * down while the request is still being read, says so on the card.
+ */
+async function layOn(f, canvas, reveal = null, base = false) {
+  const img = h('img.print__layer', { alt: '' }); if (reveal) img.dataset.reveal = reveal; await showOn(img, canvas);
+  f.label.before(img); f.label.textContent = base ? 'Reading' : studio.live ? 'Painting' : 'Sketching';
   const older = [...f.frame.querySelectorAll('.print__layer')].filter(el => el !== img);
   img.addEventListener('animationend', () => older.forEach(el => el.remove()), { once: true });
   if (reduced) older.forEach(el => el.remove());
@@ -182,7 +185,7 @@ async function develop(item, events, { learn }) {
         case 'plan': if (ev.plan?.summary) note(card, ev.plan.summary); if (ev.plan?.prompt && ev.plan.prompt !== item.text) typeOut(card.prompt, ev.plan.prompt); break;
         case 'partial': {
           const f = card.frames[ev.index]; if (!f || f.done) break;
-          if (ev.layer) { await layOn(f, ev.canvas); break; }
+          if (ev.layer) { await layOn(f, ev.canvas, ev.reveal, !!ev.base); break; }
           await showOn(f.partial, ev.canvas || ev.blob); f.partial.classList.add('is-in'); f.label.textContent = 'Preview'; break;
         }
         case 'result': {

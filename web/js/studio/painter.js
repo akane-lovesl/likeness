@@ -48,10 +48,10 @@ function rampLUT(ramp) {
  * A look, sketched onto a picture.
  * @param {HTMLCanvasElement} src @param {Partial<import('./looks.js').Look>} look @param {number} [strength] @param {number} [seed]
  */
-export function grade(src, look, strength = 1, seed = 1) {
+export function grade(src, look, strength = 1, seed = 1, stages = null) {
   const w = src.width, h = src.height, out = make(w, h), c = ctx2d(out), rnd = rng(seed);
   if (look.halftone) return halftone(src, look.halftone, strength);
-  if (look.wash) return watercolour(src, look, strength, seed);
+  if (look.wash) return watercolour(src, look, strength, seed, stages);
   if (look.pixel) { const pw = look.pixel, ph = Math.round(pw * h / w), small = copy(src, pw, ph); c.imageSmoothingEnabled = false; c.drawImage(small, 0, 0, w, h); c.imageSmoothingEnabled = true; }
   else { c.filter = look.pre || 'none'; c.drawImage(src, 0, 0); c.filter = 'none'; }
   const img = c.getImageData(0, 0, w, h), d = img.data, lut = look.ramp ? rampLUT(look.ramp) : null, keep = look.keep ?? .2;
@@ -80,9 +80,10 @@ export function grade(src, look, strength = 1, seed = 1) {
  * Watercolour as a medium: the picture's own colours (or a look's ramp) laid in flat, transparent washes, pigment pooled
  * darker where one wash meets another, blooms where the water sat, granulated on cold-press paper that shows through
  * at ragged margins, over a faint pencil drawing.
- * @param {HTMLCanvasElement} src @param {any} look
+ * Pass stages (an array) to keep the painting's steps as it goes: the pencil, the washes, the finish.
+ * @param {HTMLCanvasElement} src @param {any} look @param {{ label: string, canvas: HTMLCanvasElement, reveal?: string }[] | null} [stages]
  */
-function watercolour(src, look, strength = 1, seed = 1) {
+function watercolour(src, look, strength = 1, seed = 1, stages = null) {
   const w = src.width, h = src.height, rnd = rng(seed), sw = Math.max(48, Math.round(w * .6)), sh = Math.max(48, Math.round(h * .6)), n = sw * sh;
   const soft = make(sw, sh), sc = ctx2d(soft);
   sc.filter = 'blur(1px) saturate(1.12)'; sc.drawImage(src, 0, 0, sw, sh); sc.filter = 'none';
@@ -96,6 +97,7 @@ function watercolour(src, look, strength = 1, seed = 1) {
     r = pr - (pr - r) * .84; g = pg - (pg - g) * .84; b = pb - (pb - b) * .84;            // transparent: the paper shows through every wash
     d[i] = r; d[i + 1] = g; d[i + 2] = b; L[p] = r * .299 + g * .587 + b * .114;
   }
+  const flat = stages ? make(sw, sh) : null; flat?.getContext('2d').putImageData(img, 0, 0);
   const E = new Float32Array(n);
   for (let y = 1; y < sh - 1; y++) for (let x = 1; x < sw - 1; x++) { const i = y * sw + x; E[i] = Math.min(1, Math.max(0, (Math.hypot(L[i + 1] - L[i - 1], L[i + sw] - L[i - sw]) - 6) / 40)); }
   // where the water sat: a coarse random field, smoothly enlarged
@@ -120,6 +122,12 @@ function watercolour(src, look, strength = 1, seed = 1) {
   const pencil = make(w, h), pc = ctx2d(pencil), painted = make(sw, sh); ctx2d(painted).putImageData(edge, 0, 0);
   inkEdges(pencil, src, .34, '#5e574e'); pc.globalCompositeOperation = 'destination-in'; pc.drawImage(painted, 0, 0, w, h);
   c.drawImage(pencil, 0, 0);
+  if (stages && flat) {
+    const half = (/** @type {(x: CanvasRenderingContext2D) => void} */ draw) => { const s = make(w / 2, h / 2), x = s.getContext('2d'); x.scale(.5, .5); draw(x); return s; };
+    stages.push({ label: 'A pencil drawing first', canvas: half(x => { x.fillStyle = look.paper || '#fbf6ec'; x.fillRect(0, 0, w, h); x.drawImage(pencil, 0, 0); }), reveal: 'fade' });
+    stages.push({ label: 'Washes, in its own colours', canvas: half(x => { x.drawImage(flat, 0, 0, w, h); x.drawImage(pencil, 0, 0); }) });
+    stages.push({ label: 'Pigment at the edges, paper at the margins', canvas: copy(out, w / 2, h / 2), reveal: 'fade' });
+  }
   if (strength >= 1) return out;
   const mixed = make(w, h), mc = ctx2d(mixed); mc.drawImage(src, 0, 0); mc.globalAlpha = Math.max(0, strength); mc.drawImage(out, 0, 0);
   return mixed;
@@ -909,6 +917,40 @@ export function cutout(subject, mask) {
   const cut = make(w, h), cc = cut.getContext('2d'); cc.drawImage(subject, 0, 0); cc.globalCompositeOperation = 'destination-in'; cc.drawImage(m, 0, 0);
   return cut;
 }
+/**
+ * A mask in one piece: crumbs lying apart from the main shape (a dark corner the segmenter half-believed in) are
+ * dropped, and pinholes inside it are filled. Pieces are found at a quarter of full strength, so each keeps its soft
+ * edge. Works in place and returns the mask.
+ * @param {HTMLCanvasElement} mask
+ */
+export function whole(mask) {
+  const w = mask.width, h = mask.height, x = mask.getContext('2d', { willReadFrequently: true }), img = x.getImageData(0, 0, w, h), d = img.data, n = w * h;
+  const label = new Int32Array(n).fill(-1), stack = new Int32Array(n), pieces = /** @type {{ inside: boolean, size: number, edge: boolean }[]} */ ([]);
+  const inside = (/** @type {number} */ i) => d[i * 4 + 3] > 64;
+  for (let s = 0; s < n; s++) {
+    if (label[s] !== -1) continue;
+    const want = inside(s), id = pieces.length; let top = 0, size = 0, edge = false;
+    label[s] = id; stack[top++] = s;
+    while (top) {
+      const i = stack[--top], px = i % w, py = (i - px) / w; size++;
+      if (px === 0 || py === 0 || px === w - 1 || py === h - 1) edge = true;
+      if (px > 0 && label[i - 1] === -1 && inside(i - 1) === want) { label[i - 1] = id; stack[top++] = i - 1; }
+      if (px < w - 1 && label[i + 1] === -1 && inside(i + 1) === want) { label[i + 1] = id; stack[top++] = i + 1; }
+      if (py > 0 && label[i - w] === -1 && inside(i - w) === want) { label[i - w] = id; stack[top++] = i - w; }
+      if (py < h - 1 && label[i + w] === -1 && inside(i + w) === want) { label[i + w] = id; stack[top++] = i + w; }
+    }
+    pieces.push({ inside: want, size, edge });
+  }
+  let biggest = 0; for (const p of pieces) if (p.inside && p.size > biggest) biggest = p.size;
+  if (!biggest) return mask;
+  for (let i = 0; i < n; i++) {
+    const p = pieces[label[i]];
+    if (p.inside && p.size < biggest * .04) d[i * 4 + 3] = 0;                     // a crumb
+    else if (!p.inside && !p.edge && p.size < biggest * .02) d[i * 4 + 3] = 255;  // a pinhole
+  }
+  x.putImageData(img, 0, 0);
+  return mask;
+}
 /** A plain backdrop: one colour, a little lighter in the middle, like a studio sweep. */
 export function plainBackdrop(w, h, colour) {
   const c = make(w, h), x = c.getContext('2d'), g = x.createRadialGradient(w * .5, h * .38, 0, w * .5, h * .5, Math.max(w, h) * .75);
@@ -946,6 +988,14 @@ export function adjust(src, ops) {
  * @param {HTMLCanvasElement} src @param {HTMLCanvasElement | null} mask
  */
 export function portrait(src, mask, size = 768) {
+  const { sx, sy, side } = portraitBox(src, mask), out = make(size, size), c = out.getContext('2d'), pal = paletteOf(src, 5);
+  const g = c.createRadialGradient(size * .5, size * .38, size * .05, size * .5, size * .5, size * .78);
+  g.addColorStop(0, mix(pal[4], '#ffffff', .45)); g.addColorStop(1, mix(pal[2], pal[1], .5)); c.fillStyle = g; c.fillRect(0, 0, size, size);
+  c.drawImage(cutout(src, mask), sx, sy, side, side, 0, 0, size, size);
+  return out;
+}
+/** Where a profile picture's square goes on a picture. @param {HTMLCanvasElement} src @param {HTMLCanvasElement | null} mask */
+export function portraitBox(src, mask) {
   const w = src.width, h = src.height;
   let box = { x0: w * .2, x1: w * .8, y0: h * .1, y1: h }, cx = w / 2, head = h * .3;
   if (mask) {
@@ -971,9 +1021,35 @@ export function portrait(src, mask, size = 768) {
   // head and shoulders: the head a little under half the square, with room above it
   const side = Math.min(w, h, Math.max(head * 2.2, w * .35));
   const sx = Math.max(0, Math.min(w - side, cx - side / 2)), sy = Math.max(0, Math.min(h - side, box.y0 - side * .14));
-  const out = make(size, size), c = out.getContext('2d'), pal = paletteOf(src, 5), g = c.createRadialGradient(size * .5, size * .38, size * .05, size * .5, size * .5, size * .78);
-  g.addColorStop(0, mix(pal[4], '#ffffff', .45)); g.addColorStop(1, mix(pal[2], pal[1], .5)); c.fillStyle = g; c.fillRect(0, 0, size, size);
-  c.drawImage(cutout(src, mask), sx, sy, side, side, 0, 0, size, size);
+  return { sx, sy, side };
+}
+
+/** Who the picture is of, found: the room dimmed, and a light along the outline. @param {HTMLCanvasElement} src @param {HTMLCanvasElement | null} mask */
+export function traced(src, mask, colour = '#fff3d6') {
+  const w = src.width, h = src.height, out = copy(src), c = out.getContext('2d');
+  c.fillStyle = 'rgb(12 10 8 / .5)'; c.fillRect(0, 0, w, h); c.drawImage(cutout(src, mask), 0, 0);
+  if (!mask) return out;
+  const ring = make(w, h), rc = ring.getContext('2d');
+  rc.filter = `blur(${Math.max(2, w / 150)}px)`; rc.drawImage(mask, 0, 0, w, h); rc.drawImage(mask, 0, 0, w, h); rc.filter = 'none';
+  rc.globalCompositeOperation = 'source-in'; rc.fillStyle = colour; rc.fillRect(0, 0, w, h);
+  rc.globalCompositeOperation = 'destination-out'; rc.drawImage(mask, 0, 0, w, h);
+  c.save(); c.shadowColor = colour; c.shadowBlur = w / 30; c.drawImage(ring, 0, 0); c.restore(); c.drawImage(ring, 0, 0);
+  return out;
+}
+/** A picture with nothing behind it, laid on the old checkerboard so a frame of it shows what has gone. @param {HTMLCanvasElement} src */
+export function checkered(src) {
+  const w = src.width, h = src.height, out = make(w, h), c = out.getContext('2d'), s = Math.max(8, Math.round(w / 24));
+  for (let y = 0; y < h; y += s) for (let x = 0; x < w; x += s) { c.fillStyle = Math.round((x + y) / s) % 2 ? '#d9d6d0' : '#f4f2ee'; c.fillRect(x, y, s, s); }
+  c.drawImage(src, 0, 0);
+  return out;
+}
+/** The square a profile picture will be, shown on the picture: the rest dimmed, a fine frame, a camera's thirds. */
+export function squareOn(src, { sx, sy, side }) {
+  const out = copy(src), c = out.getContext('2d');
+  c.fillStyle = 'rgb(12 10 8 / .55)'; c.beginPath(); c.rect(0, 0, out.width, out.height); c.rect(sx, sy, side, side); c.fill('evenodd');
+  c.strokeStyle = 'rgb(255 255 255 / .9)'; c.lineWidth = Math.max(2, out.width / 260); c.strokeRect(sx, sy, side, side);
+  c.strokeStyle = 'rgb(255 255 255 / .35)'; c.lineWidth = 1;
+  for (const k of [1, 2]) { c.beginPath(); c.moveTo(sx + side * k / 3, sy); c.lineTo(sx + side * k / 3, sy + side); c.moveTo(sx, sy + side * k / 3); c.lineTo(sx + side, sy + side * k / 3); c.stroke(); }
   return out;
 }
 

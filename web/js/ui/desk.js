@@ -137,7 +137,7 @@ export function deskScreen() {
     const ids = [];
     for (const f of files) {
       if (!f.type.startsWith('image/')) continue;
-      try { const c = await P.fromBlob(f, 1600), blob = await P.toBlob(c, 'image/jpeg', .92); ids.push((await addPrint({ blob, w: c.width, h: c.height, origin: 'upload', provenance: { kind: 'photo', label: 'Your picture' } })).id); }
+      try { const c = await P.fromBlob(f, 1600), blob = await P.toBlob(c, 'image/jpeg', .92), p = await addPrint({ blob, w: c.width, h: c.height, origin: 'upload', provenance: { kind: 'photo', label: 'Your picture' } }); ids.push(p.id); studio.engine.glance?.(p); }
       catch { toast('That file could not be opened'); }
     }
     if (!ids.length) return;
@@ -158,7 +158,7 @@ export function deskScreen() {
   /** A photograph from the look camera; with a look on, the studio is asked to paint it in that look at once. */
   async function took(blob, w, hh, look) {
     const p = await addPrint({ blob, w, h: hh, origin: 'camera', provenance: { kind: 'photo', label: 'Your picture' } });
-    nearEnd = true;
+    studio.engine.glance?.(p); nearEnd = true;
     await addItem({ type: 'prints', prints: [p.id], mine: true });
     sound.play('pin');
     if (look) send({ text: `@${p.handle} in ${look.name}`, intent: { op: 'restyle', subject: p.id, refs: [], look: { ...look, strength: .9 }, pins: [] }, pace: settings.get('pace', 'fine') });

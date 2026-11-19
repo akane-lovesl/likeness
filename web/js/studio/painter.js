@@ -272,6 +272,9 @@ export function describeScene(d) {
 /** A flat, poster-like scene from words. Not a render: a sketch for the idea's shape and colour. Pass desc.layers (an array) to keep each layer as it is laid down, with its note. */
 export function scene(desc, w = 768, h = 1024) {
   const c = make(w, h), x = c.getContext('2d'), rnd = rng(desc.seed || 7), L = desc.light, horizon = h * (desc.inside ? .62 : .6);
+  // lit windows, glints on water and a field's ridge are counted by the pixel: they draw from their own stream, so the
+  // composition (which takes from rnd) comes out the same at any size, and a small proof agrees with the full sketch
+  const spark = rng((desc.seed || 7) + 104729);
   const notes = notesFor(desc), mark = (/** @type {string} */ label) => { if (desc.layers && label) desc.layers.push({ label, canvas: copy(c, Math.round(w / 2), Math.round(h / 2)) }); };
   const skies = { day: ['#9ccaf0', '#d8ecf7', '#fff4e2'], dawn: ['#7e9ed8', '#f2b8b0', '#ffe2bd'], dusk: ['#2a1d52', '#a8467a', '#f39a5a'], night: ['#04061a', '#15204a', '#2b3a72'] };
   let sky = skies[L];
@@ -358,7 +361,7 @@ export function scene(desc, w = 768, h = 1024) {
         while (px < ox + ow) {
           const bw = ow * (.06 + rnd() * .09), bh = oh * (top * .5 + rnd() * top), face = row && faces ? faces[Math.floor(rnd() * faces.length)] : col;
           x.fillStyle = face; x.fillRect(px, hz - bh, bw, bh + oh);
-          if (L === 'night' || L === 'dusk') { for (let wy = hz - bh + 8; wy < hz - 6; wy += 11) for (let wx = px + 4; wx < px + bw - 5; wx += 9) if (rnd() < lit) { x.fillStyle = rnd() < .5 ? '#ffd27a' : (desc.ramp ? desc.ramp[3] : pal ? pal.accent2 : '#ff7ab8'); x.fillRect(wx, wy, 4, 5); } }
+          if (L === 'night' || L === 'dusk') { for (let wy = hz - bh + 8; wy < hz - 6; wy += 11) for (let wx = px + 4; wx < px + bw - 5; wx += 9) if (spark() < lit) { x.fillStyle = spark() < .5 ? '#ffd27a' : (desc.ramp ? desc.ramp[3] : pal ? pal.accent2 : '#ff7ab8'); x.fillRect(wx, wy, 4, 5); } }
           else if (face !== col) {
             const cw = Math.max(4, ow * .012), ch = Math.max(6, oh * .024); x.fillStyle = mix(face, '#26323f', .5);
             for (let wy = hz - bh + ch; wy < hz + oh * .3 - ch; wy += ch * 2) for (let wx = px + cw; wx < px + bw - cw * 1.5; wx += cw * 2.2) x.fillRect(wx, wy, cw, ch);
@@ -392,7 +395,7 @@ export function scene(desc, w = 768, h = 1024) {
     if (desc.land === 'fields') {
       // rows running to the horizon, flowers on every row (lavender, tulips, vines: whatever colour leads)
       const rowA = desc.pal ? desc.pal.accent : '#8e7cc3', rowB = L === 'night' ? '#16241a' : '#6b8e5a', vx = ox + ow * (.4 + rnd() * .2), n = 16;
-      x.fillStyle = mix(far, rowB, .5); x.beginPath(); x.moveTo(ox, hz); for (let px = 0; px <= ow; px += 10) x.lineTo(ox + px, hz - oh * (.02 + .015 * Math.sin(px / ow * 7 + rnd()))); x.lineTo(ox + ow, hz); x.fill();
+      x.fillStyle = mix(far, rowB, .5); x.beginPath(); x.moveTo(ox, hz); for (let px = 0; px <= ow; px += 10) x.lineTo(ox + px, hz - oh * (.02 + .015 * Math.sin(px / ow * 7 + spark()))); x.lineTo(ox + ow, hz); x.fill();
       x.fillStyle = mix(rowB, near, .35); x.fillRect(ox, hz, ow, oy + oh - hz);
       for (let i = 0; i < n; i++) {
         const a = ox - ow + (i / n) * ow * 3, b = a + ow * 3 / n * .62, top = (/** @type {number} */ v) => vx + (v - vx) * .02;
@@ -406,7 +409,7 @@ export function scene(desc, w = 768, h = 1024) {
     if (desc.land === 'sea' && desc.skyline) {
       // a town across the water, lit after dark
       const tone = mix(far, near, .45); let px = ox;
-      while (px < ox + ow) { const bw = ow * (.03 + rnd() * .06), bh = oh * (.03 + rnd() * .11); x.fillStyle = tone; x.fillRect(px, hz - bh, bw, bh + 1); if (L === 'night' || L === 'dusk') for (let wy = hz - bh + 4; wy < hz - 3; wy += 6) for (let wx = px + 2; wx < px + bw - 3; wx += 5) if (rnd() < .35) { x.fillStyle = rnd() < .5 ? '#ffd27a' : pal ? (rnd() < .5 ? pal.accent : pal.accent2) : '#ff7ab8'; x.fillRect(wx, wy, 2, 3); } px += bw + 1; }
+      while (px < ox + ow) { const bw = ow * (.03 + rnd() * .06), bh = oh * (.03 + rnd() * .11); x.fillStyle = tone; x.fillRect(px, hz - bh, bw, bh + 1); if (L === 'night' || L === 'dusk') for (let wy = hz - bh + 4; wy < hz - 3; wy += 6) for (let wx = px + 2; wx < px + bw - 3; wx += 5) if (spark() < .35) { x.fillStyle = spark() < .5 ? '#ffd27a' : pal ? (spark() < .5 ? pal.accent : pal.accent2) : '#ff7ab8'; x.fillRect(wx, wy, 2, 3); } px += bw + 1; }
     }
     if (desc.land === 'sea') {
       const sg = x.createLinearGradient(0, hz, 0, oy + oh); const aqua = pal && [pal.accent, pal.accent2].find(c => { const [hh, ss] = hsl(c); return hh > 150 && hh < 250 && ss > .25; });
@@ -417,12 +420,12 @@ export function scene(desc, w = 768, h = 1024) {
         x.strokeStyle = 'rgb(70 95 120 / .35)'; x.lineWidth = 1; for (let i = 0; i < 9; i++) { let cx = ox + rnd() * ow, cy = hz + rnd() * (oy + oh - hz); x.beginPath(); x.moveTo(cx, cy); for (let k = 0; k < 4; k++) { cx += (rnd() - .5) * ow * .15; cy += (rnd() - .3) * oh * .05; x.lineTo(cx, cy); } x.stroke(); }
       } else {
       x.strokeStyle = 'rgb(255 255 255 / .35)'; x.lineWidth = 1.2; for (let i = 0; i < 40; i++) { const ly = hz + Math.pow(rnd(), 1.6) * (oy + oh - hz), lw = 10 + rnd() * 40; x.globalAlpha = .2 + rnd() * .5; x.beginPath(); x.moveTo(ox + rnd() * ow, ly); x.lineTo(ox + rnd() * ow + lw, ly); x.stroke(); }
-      x.globalAlpha = .5; x.fillStyle = L === 'night' ? '#f4f0dc' : '#ffe2a0'; for (let ly = hz + 4; ly < oy + oh; ly += 7) { const wv = sr * (1.4 - (ly - hz) / oh) * (.5 + rnd()); x.fillRect(sx - wv / 2, ly, wv, 2); }
+      x.globalAlpha = .5; x.fillStyle = L === 'night' ? '#f4f0dc' : '#ffe2a0'; for (let ly = hz + 4; ly < oy + oh; ly += 7) { const wv = sr * (1.4 - (ly - hz) / oh) * (.5 + spark()); x.fillRect(sx - wv / 2, ly, wv, 2); }
       x.globalAlpha = 1;
       if (props.includes('neon')) for (let i = 0; i < 7; i++) {
         // neon from across the water, drawn down the surface
         const col = i % 2 ? (pal?.accent2 || '#35e8ff') : (pal?.accent || '#ff3fa4'), rx = ox + ow * (.05 + rnd() * .9), len = oh * (.08 + rnd() * .22);
-        x.globalAlpha = .5; neon(col, () => { for (let ly = hz + 3; ly < hz + len; ly += 5) x.fillRect(rx - 1 + Math.sin(ly * .3) * 2, ly, 3 + rnd() * 4, 2); }, ow * .02); x.globalAlpha = 1;
+        x.globalAlpha = .5; neon(col, () => { for (let ly = hz + 3; ly < hz + len; ly += 5) x.fillRect(rx - 1 + Math.sin(ly * .3) * 2, ly, 3 + spark() * 4, 2); }, ow * .02); x.globalAlpha = 1;
       }
       }
     }

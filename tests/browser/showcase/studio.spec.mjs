@@ -111,6 +111,22 @@ test('a painted place can be walked into: “Take me there” makes it the room'
   await expect(page.locator('button.idea--room')).toHaveCount(0);
 });
 
+test('the proof sketches the words as they are typed, and sends the arrangement it showed', async ({ page }) => {
+  await open(page);
+  const box = page.locator('.composer textarea');
+  await box.fill('Paint a rainy Tokyo jazz bar at midnight');
+  const proof = page.locator('.proof.is-in');
+  await expect(proof).toBeVisible();
+  const shown = () => proof.locator('canvas').last().evaluate(c => /** @type {HTMLCanvasElement} */ (c).toDataURL());
+  const first = await shown();
+  await proof.click();
+  await expect.poll(shown).not.toBe(first);
+  await expect(box).toBeFocused();
+  await box.press('Enter');
+  await expect(page.locator('.proof')).not.toHaveClass(/is-in/);
+  await expect(made(page, 'Sketch')).toHaveCount(1, { timeout: 30_000 });
+});
+
 test('the look camera shows the world in a look, and the shutter sends it to be painted', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

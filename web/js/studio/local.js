@@ -18,7 +18,7 @@ const seedOf = s => [...String(s)].reduce((a, c) => (Math.imul(a ^ c.charCodeAt(
  */
 export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
   const layers = !!opts.layers;
-  const it = spec.intent, seed = seedOf(spec.id) + i * 97, rnd = rng(seed);
+  const it = spec.intent, seed = (Number.isFinite(spec.seed) ? spec.seed : seedOf(spec.id)) + i * 97, rnd = rng(seed);
   const canvasOf = async id => { const inp = inputs[id]; return (inp.canvas ||= await P.fromBlob(inp.blob, size)); };
   const subject = it.subject && inputs[it.subject] ? await canvasOf(it.subject) : null;
   const styleRef = it.refs.find(r => r.role === 'style' && inputs[r.id]);
@@ -62,19 +62,15 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
       out = P.grade(subject, variant(look), .55 + rnd() * .35, seed); note = look.name; break;
     }
     case 'create': {
-      const look = it.look || lookFromWords(words, LOOKS, { moods: false }), desc = P.sceneFrom(words, look?.ramp || null, seed + i * 13);
+      const { look, desc } = freshScene(spec, words, seed + i * 13);
       if (layers) desc.layers = kept = [];
-      // words with no colours in them take the light of the room they were said in
-      if (!desc.pal && !desc.ramp && spec.room?.colors) desc.pal = spec.room.colors;
       out = P.scene(desc, 768, 1024); if (look) { out = P.grade(out, look, .6, seed); kept?.push({ label: 'All of it in ' + look.name, canvas: P.copy(out, out.width / 2, out.height / 2) }); }
       note = look ? 'scenery, ' + look.name : 'scenery from the words'; shows = P.describeScene(desc); scene = { words, seed: seed + i * 13, edits: [], look: look?.id || null };
       break;
     }
     default: {
       if (was) {
-        const desc = P.sceneAgain(was), first = was.look ? LOOKS.find(l => l.id === was.look) : null;
-        if (first?.ramp && !desc.pal) desc.ramp = first.ramp;
-        changes = P.changeScene(desc, words);
+        const edited = editedScene(was, words), desc = edited.desc, first = edited.first; changes = edited.changes;
         if (changes.length) {
           again(desc, { ...was, edits: [...(was.edits || []), words] });
           if (lookFromWords(words, LOOKS, { moods: false })) scene.look = lookFromWords(words, LOOKS, { moods: false })?.id;
@@ -89,6 +85,45 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
     }
   }
   return { canvas: out, note, layers: kept, shows, scene, changes, painted };
+}
+
+/** A new picture's scene from its words: the look they name (a medium, never a mood), and the room's light when the words bring no colours. */
+function freshScene(spec, words, seed) {
+  const look = spec.intent.look || lookFromWords(words, LOOKS, { moods: false }), desc = P.sceneFrom(words, look?.ramp || null, seed);
+  if (!desc.pal && !desc.ramp && spec.room?.colors) desc.pal = spec.room.colors;
+  return { look, desc };
+}
+/** A sketch's scene with an edit applied, as far as the painter understands it (changes lists what it did). */
+function editedScene(was, words) {
+  const desc = P.sceneAgain(was), first = was.look ? LOOKS.find(l => l.id === was.look) : null;
+  if (first?.ramp && !desc.pal) desc.ramp = first.ramp;
+  return { desc, first, changes: P.changeScene(desc, words) };
+}
+const thumbs = new WeakMap();
+const thumbOf = async (/** @type {any} */ input) => { if (!thumbs.has(input.blob)) thumbs.set(input.blob, await P.fromBlob(input.blob, 256)); return thumbs.get(input.blob); };
+
+/**
+ * A proof: what the device would paint for a request, small and at once, while it is still being typed. The same
+ * reading as the sketch it will make (a new picture from the same seed, a sketch painted again, a look, a reference's
+ * colours); null when there is nothing honest to show, such as a change it would only guess at.
+ * @param {any} spec @param {Record<string, any>} inputs
+ * @returns {Promise<HTMLCanvasElement | null>}
+ */
+export async function proofOf(spec, inputs, w = 192, h = 256) {
+  const it = spec.intent, words = spec.text || '', was = it.subject && inputs[it.subject];
+  if (!was && it.op === 'create') {
+    if (words.replace(/@[A-Za-z]{1,2}\b/g, '').replace(/[^\p{L}]/gu, '').length < 3) return null;
+    const { look, desc } = freshScene(spec, words, spec.seed), c = P.scene(desc, w, h);
+    return look ? P.grade(c, look, .6, spec.seed) : c;
+  }
+  if (was?.scene && (it.op === 'edit' || it.op === 'restyle')) {
+    const { desc, first, changes } = editedScene(was.scene, words);
+    if (changes.length) { const c = P.scene(desc, w, h), medium = lookFromWords(words, LOOKS, { moods: false }) || first; return medium ? P.grade(c, medium, .6, 1) : c; }
+  }
+  if (was?.blob && it.op === 'restyle' && it.look) return P.grade(await thumbOf(was), it.look, it.look.strength ?? .9, 1);
+  const ref = it.refs?.find((/** @type {any} */ r) => r.role === 'style' && inputs[r.id]);
+  if (was?.blob && it.op === 'reference' && ref) return P.grade(await thumbOf(was), { ramp: P.paletteOf(await thumbOf(inputs[ref.id]), 5), keep: .3, grain: .03, bloom: .15, vignette: .15 }, .92, 1);
+  return null;
 }
 
 /** The words the device knew, as a line for the card: Heard “rainy” · “Tokyo” · “jazz bar”. */

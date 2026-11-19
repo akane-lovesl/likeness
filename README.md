@@ -40,6 +40,7 @@ uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speakin
 - **Conversation, not menus.**
   - Pictures get handles (A, B, …). Type `@` to call a picture and `#` to call a look.
   - While you type, the app reads what you mean (change, restyle, use as a reference, blend, pin, backdrop, variations) and shows it with a time estimate before you send.
+  - In the showcase, a small proof rises behind the composer and sketches what you are asking for, painted again as the words change. Tap it for another arrangement; the picture you send for is the one it showed.
   - Every reply ends with three ideas for what to say next.
   - A sketch the device made can be talked to: *make it night*, *add a rabbit in a crown* or *two more like this* paints the same scene again, with just that changed.
 - **The look camera.** Point the camera and see the world in any look, sketched live on the device. Take the picture, and the studio paints it in that look.

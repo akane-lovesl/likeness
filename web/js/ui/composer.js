@@ -14,6 +14,8 @@ import { PACES } from './turn.js';
 import { sound } from '../core/sound.js';
 import { roomFromWords } from '../room/maker.js';
 import { roomCalled } from '../room/atmosphere.js';
+import { proofOf } from '../studio/local.js';
+import { reduced } from '../core/motion.js';
 
 const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 const ORDER = ['quick', 'fine', 'deep'];
@@ -30,7 +32,13 @@ export function composer({ onSend, onAttach }) {
   const add = h('button.icon-btn', { 'aria-label': 'Add a picture', html: icon('plus'), onclick: () => { sound.play('tap'); onAttach(); } });
   const ideas = h('div.ideas', { role: 'list' });
   const box = h('div.box', null, trayEl, readingEl, h('div.row', null, add, h('div.field', null, mirror, textarea), paceBtn, send));
-  const el = h('footer.composer', null, ideas, box);
+  // the proof: a small sketch of what is being asked for, tucked behind the composer and painted again as the words change
+  const freshSeed = () => Math.floor(Math.random() * 1e6);
+  let proofSeed = freshSeed(), proofKey = '', proofTimer = 0, proofTicket = 0;
+  const proofPic = h('span.proof__pic');
+  const proof = h('button.proof', { type: 'button', 'aria-label': 'A quick sketch of what you are asking for. Tap it for another arrangement.', onmousedown: e => e.preventDefault(), onclick: () => { reshuffle(); textarea.focus({ preventScroll: true }); } }, proofPic, h('span.proof__cap', null, 'Sketch'));
+  proof.setAttribute('inert', '');
+  const el = h('footer.composer', null, ideas, proof, box);
 
   const lastBatch = () => { for (let i = app.thread.items.length - 1; i >= 0; i--) { const it = app.thread.items[i]; if (it.prints?.length) return it.prints; } return []; };
   function paintSend() { const room = atmosphere.room; send.innerHTML = room?.type === 'romance' ? glyph('heart') : icon('send'); send.setAttribute('aria-label', room?.voice?.send || 'Send'); textarea.placeholder = (room?.voice?.placeholder || 'Say what you want') + '…'; }
@@ -45,13 +53,35 @@ export function composer({ onSend, onAttach }) {
     const text = textarea.value, has = text.trim() || tray.length;
     send.disabled = !text.trim();
     ideas.hidden = !!text.trim() || !ideaList.length;
-    if (!has) { readingEl.replaceChildren(); reading = null; return; }
+    if (!has) { readingEl.replaceChildren(); reading = null; hideProof(); return; }
     reading = readIntent(text, { prints: threadPrints().map(p => ({ id: p.id, handle: p.handle })), tray, batch: lastBatch(), looks: [...LOOKS, ...app.looks], look });
-    if (reading.op === 'room') { readingEl.replaceChildren(...roomReading(reading.vibe)); return; }
+    if (reading.op === 'room') { readingEl.replaceChildren(...roomReading(reading.vibe)); hideProof(); return; }
     const pills = describeIntent(reading, handleOf), est = estimate(studio.mode, reading.op, reading.pace || pace, reading.n);
     if (settings.get('taste', '').trim()) pills.push({ k: 'taste', text: 'your taste' });
     readingEl.replaceChildren(...pills.map((s, i) => h('span.plan-pill', { data: { k: s.k }, style: { '--i': i } }, s.text)), h('span.reading__eta', null, '≈ ' + eta(est.ms).replace('about ', '')));
+    clearTimeout(proofTimer); proofTimer = setTimeout(drawProof, 180);
   }
+  /** Paints the proof for what the words say now: the very sketch a new picture will get (it carries the seed), or a change shown on its picture. */
+  async function drawProof() {
+    const r = reading, text = textarea.value.trim();
+    if (!r || !text || picker || r.op === 'room' || studio.mode !== 'showcase') { hideProof(); return; }
+    const key = [r.op, r.subject, r.refs.map(x => x.id + x.role).join(','), r.look?.id || '', text, proofSeed, atmosphere.room.id].join('|');
+    if (key === proofKey) return;
+    proofKey = key; const ticket = ++proofTicket, inputs = {};
+    for (const id of [r.subject, ...r.refs.map(x => x.id)].filter(Boolean)) { const p = printById(id); if (p) inputs[id] = { blob: p.blob, handle: p.handle, scene: p.provenance?.scene || null }; }
+    let c = null;
+    try { c = await proofOf({ text, intent: r, seed: proofSeed, room: atmosphere.room }, inputs); } catch { c = null; }
+    if (ticket !== proofTicket) return;
+    if (!c) { hideProof(); return; }
+    c.className = 'proof__layer'; proofPic.append(c);
+    const older = [...proofPic.children].filter(n => n !== c);
+    if (reduced) older.forEach(n => n.remove()); else c.addEventListener('animationend', () => older.forEach(n => n.remove()), { once: true });
+    proof.dataset.kind = r.op === 'create' && !r.subject ? 'new' : 'change';
+    proof.classList.add('is-in'); proof.removeAttribute('inert');
+  }
+  function hideProof() { clearTimeout(proofTimer); proofTicket++; proofKey = ''; proof.classList.remove('is-in'); proof.setAttribute('inert', ''); }
+  /** Another arrangement of a new picture, before it is asked for. */
+  function reshuffle() { if (proof.dataset.kind !== 'new') return; proofSeed = freshSeed(); proofKey = ''; sound.play('tap'); drawProof(); }
   /** "Take me to …": the room you would step into, previewed in its own colours as you describe it. */
   function roomReading(vibe) {
     const known = roomCalled(vibe), room = known || roomFromWords(vibe), c = room.colors;
@@ -65,7 +95,7 @@ export function composer({ onSend, onAttach }) {
   }
   function closePicker() { picker?.remove(); picker = null; }
   function openPicker(kind) {
-    closePicker();
+    closePicker(); hideProof();
     if (kind === '@') {
       const prints = threadPrints().slice().reverse();
       if (!prints.length) return;
@@ -82,7 +112,10 @@ export function composer({ onSend, onAttach }) {
     const text = textarea.value.trim(); if (!text) return;
     read();
     const intent = reading, flight = textarea.closest('.field')?.getBoundingClientRect() || null;
-    onSend({ text, intent, pace: intent.pace || pace, n: intent.n, flight });
+    onSend({ text, intent, pace: intent.pace || pace, n: intent.n, flight, seed: proofSeed });
+    // the proof goes up with the words; the next picture gets a fresh arrangement
+    if (proof.classList.contains('is-in')) { proof.classList.add('is-sent'); setTimeout(() => proof.classList.remove('is-sent'), reduced ? 0 : 520); }
+    proofSeed = freshSeed();
     textarea.value = ''; tray = []; look = null; closePicker(); paintTray(); sync();
   }
 

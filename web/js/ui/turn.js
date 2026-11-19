@@ -124,7 +124,7 @@ async function showOn(img, src) {
 
 /**
  * Runs a turn end to end.
- * @param {{ text: string, intent: any, pace: string, n?: number, backdrop?: any, subjectMask?: HTMLCanvasElement|null }} t
+ * @param {{ text: string, intent: any, pace: string, n?: number, seed?: number, backdrop?: any, subjectMask?: HTMLCanvasElement|null }} t
  */
 export async function runTurn(t) {
   const room = atmosphere.room, n = t.n || t.intent.n || 1, id = uid('j-');
@@ -135,7 +135,7 @@ export async function runTurn(t) {
   const subject = t.intent.subject && printById(t.intent.subject);
   const ar = subject?.w ? `${subject.w} / ${subject.h}` : '3 / 4';
   const est = estimate(studio.mode, t.intent.op, t.pace, n);
-  const spec = { id, text: t.text, intent: t.intent, pace: t.pace, n, room, mood: skyFor().mood?.id || null, backdrop: t.backdrop || null, subjectMask: t.subjectMask || null, taste: settings.get('taste', '').trim() };
+  const spec = { id, seed: Number.isFinite(t.seed) ? t.seed : null, text: t.text, intent: t.intent, pace: t.pace, n, room, mood: skyFor().mood?.id || null, backdrop: t.backdrop || null, subjectMask: t.subjectMask || null, taste: settings.get('taste', '').trim() };
   if (t.subjectMask) spec.subjectMaskBlob = await new Promise(r => t.subjectMask.toBlob(r, 'image/png'));
   for (const pin of spec.intent.pins || []) if (pin.mask && !pin.maskBlob) pin.maskBlob = await new Promise(r => pin.mask.toBlob(r, 'image/png'));
 

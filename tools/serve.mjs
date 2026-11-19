@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('../web', import.meta.url)));
 const port = Number(process.env.PORT || process.argv[2] || 4173);
+const serveExamples = process.env.LIKENESS_HIDE_EXAMPLES !== '1';
 const types = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
@@ -14,6 +15,7 @@ const types = {
 
 createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  if (!serveExamples && path === '/examples/manifest.json') { res.writeHead(404).end(); return; }
   let file = normalize(join(root, path));
   if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
   try {

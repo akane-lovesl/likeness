@@ -39,10 +39,11 @@ export default defineConfig({
     ...(hasUv ? [{ name: 'live', testMatch: /live[\\/].*\.spec\.mjs$/, use: { baseURL: LIVE } }] : []),
   ],
   webServer: [
-    { command: 'node tools/serve.mjs 4183', url: SHOWCASE + '/index.html', reuseExistingServer: false, timeout: 30_000 },
+    { command: 'node tools/serve.mjs 4183', url: SHOWCASE + '/index.html', reuseExistingServer: false, timeout: 30_000,
+      env: { LIKENESS_HIDE_EXAMPLES: '1' } },
     ...(hasUv ? [{
       command: 'uv run likeness serve --engine simulator --host 127.0.0.1 --port 8797', url: LIVE + '/api/health', reuseExistingServer: false, timeout: 120_000,
-      env: { ...env, LIKENESS_HOME: join(tmpdir(), 'likeness-test-studio'), LIKENESS_SIM_SPEED: '0.6' },   // the suite never touches private/
+      env: { ...env, LIKENESS_HOME: join(tmpdir(), 'likeness-test-studio'), LIKENESS_SIM_SPEED: '0.6', LIKENESS_HIDE_EXAMPLES: '1' },
     }] : []),
   ],
 });

@@ -83,6 +83,10 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
 
     app.get("/studio.json")(describe)
     app.get("/api/health")(describe)
+    if os.environ.get("LIKENESS_HIDE_EXAMPLES") == "1":
+        @app.get("/examples/manifest.json", include_in_schema=False)
+        def no_examples() -> None:
+            raise HTTPException(404)
 
     @app.post("/api/assets")
     async def upload(file: UploadFile = File(...), kind: Literal["image", "mask"] = Form("image")):

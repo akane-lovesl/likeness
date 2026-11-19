@@ -260,6 +260,8 @@ export async function hairFollower() {
       const w = m.width, h = m.height, data = m.getAsFloat32Array(), out = mask && mask.width === w && mask.height === h ? mask : make(w, h), x = /** @type {CanvasRenderingContext2D} */ (out.getContext('2d')), img = x.createImageData(w, h);
       for (let i = 0; i < data.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = Math.max(0, Math.min(1, (data[i] - .45) / .22)) * 255; }
       x.putImageData(img, 0, 0); mask = out;
+      // when it was read, so it can be moved with the face until the next reading
+      /** @type {any} */ (out).readAt = performance.now();
     });
     gap = Math.max(180, (performance.now() - now) * 4);
     return mask;
@@ -301,14 +303,17 @@ export function shapesOf(f) {
 /**
  * Clears from a hair mask what the hair segmenter counts as hair but a new colour never goes on: the brows, and the
  * lower face. Where there is a beard, that far all round and more (a full beard reaches past the jaw and up the
- * sideburns); where there is none, only a little past the jaw, so hair that falls beside it keeps its colour.
+ * sideburns); where there is none, only the jaw and chin from the mouth down, so hair that falls beside the face keeps
+ * its colour.
  * @param {CanvasRenderingContext2D} x the mask, at k times the size of the face's own picture @param {Face} f @param {boolean} beard @param {number} [k]
  */
 export function clearNotHair(x, f, beard, k = 1) {
   const s = shapesOf(f), path = (/** @type {Pt[]} */ pts) => { x.beginPath(); pts.forEach((p, i) => (i ? x.lineTo(p.x * k, p.y * k) : x.moveTo(p.x * k, p.y * k))); x.closePath(); };
   x.save(); x.globalCompositeOperation = 'destination-out'; x.fillStyle = x.strokeStyle = '#fff'; x.lineJoin = 'round';
-  for (const b of s.beard) { path(beard ? b : grow(b, .1, .08)); x.fill(); if (beard) { x.lineWidth = f.box[2] * k * .36; x.stroke(); } }
-  for (const b of s.brows) { path(b); x.fill(); }
+  // without a beard, only the jaw and the chin (from the mouth's level down): hair that falls beside the cheeks is hair
+  for (const b of s.beard) { path(beard ? b : [...b.slice(2, 19), ...b.slice(21)]); x.fill(); if (beard) { x.lineWidth = f.box[2] * k * .36; x.stroke(); } }
+  // the brows themselves, not the hair round their ends at the temples
+  for (const b of BROWS.map(i => grow(at(f, i), .12, .55))) { path(b); x.fill(); }
   x.restore();
 }
 

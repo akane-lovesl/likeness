@@ -13,7 +13,7 @@ import { PARTS, partById, styleOf, plateSVG, tintOf, lookName } from './vocab.js
 import { faceFrom, shapesOf, faceOf, hairOf, maskOf, LIPS, MOUTH } from '../studio/face.js';
 import * as P from '../studio/painter.js';
 import { app, printById } from '../state.js';
-import { on } from '../core/bus.js';
+import { on, emit } from '../core/bus.js';
 import { markup, controlsOf } from './markup.js';
 import { paintLook, coloursOf, PAINTED } from './paint.js';
 import { hear } from './words.js';
@@ -104,7 +104,7 @@ function lookbook() {
   const photoBtn = h('button.lb-ask__photo', { type: 'button', 'aria-label': 'Your face: the camera, or a photo', title: 'Your face: the camera, or a photo', html: icon('camera'), onclick: () => pickPhoto() });
   const tokens = h('div.lb-ask__tokens');
   const input = h('input.lb-ask__input', { type: 'text', 'aria-label': 'Describe a change', autocomplete: 'off', enterkeyhint: 'go' });
-  const go = h('button.lb-ask__go', { type: 'submit', 'aria-label': 'Try it on', html: icon('arrow') });
+  const go = h('button.lb-ask__go', { type: 'submit', 'aria-label': 'Try it on', html: icon('arrow') + '<span class="lb-ask__paint">Paint it</span>' });
   const ask = h('form.lb-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); submit(); } }, photoBtn, h('div.lb-ask__field', null, tokens, input), go);
   const el = h('section.book', { 'aria-label': 'Lookbook' }, h('div.lb-light', { 'aria-hidden': 'true' }), bar, orbit, caption, h('div.lb-dock', null, hint, parts, styles, ask));
 
@@ -337,6 +337,8 @@ function lookbook() {
   }
   function submit() {
     if (!picks.length && !input.value.trim()) { input.focus(); return; }
+    // words that ask for a picture, not a look, are painted: the desk takes them, from here
+    if (picture(input.value)) { toDesk(input.value); return; }
     // whose face: yours (the camera, or a photo of it), with what was said already on it
     const mine = photo || (onYou ? youOf : null);
     if (!mine) { pickPhoto(); return; }
@@ -410,8 +412,27 @@ function lookbook() {
     const i = cards.findIndex(c => c.kind === 'photo' && c.look.part === x.part && c.look.style === x.style);
     if (i >= 0 && i !== front) turnTo(i);
   }
-  /** Typed: heard at once, and the ring holds still for whoever is typing. */
-  function listen() { touched = Date.now(); wear(input.value); }
+  /** Typed: heard at once, and the ring holds still for whoever is typing; words that are no look say they will be painted. */
+  function listen() {
+    touched = Date.now(); wear(input.value);
+    const p = picture(input.value);
+    if (p !== ask.classList.contains('is-picture')) { ask.classList.toggle('is-picture', p); go.setAttribute('aria-label', p ? 'Paint it' : 'Try it on'); }
+  }
+  /**
+   * Whether words ask for a picture rather than a look: a few words, none of them a part of a face or a look, with no
+   * look picked to say more about ("a lighthouse inside a teacup", "take me to the seaside").
+   * @param {string} text
+   */
+  function picture(text) { const t = text.trim(); return !picks.length && t.split(/\s+/).length >= 3 && !hear(t, '').length; }
+  /**
+   * Words for a picture, sent on: they rise from this line into the desk, which paints them (or, for "take me to …",
+   * moves the whole place and leaves the Lookbook where it is). @param {string} text
+   */
+  function toDesk(text) {
+    const flight = ask.getBoundingClientRect();
+    input.value = ''; ask.classList.remove('is-picture'); go.setAttribute('aria-label', 'Try it on'); wear(''); input.blur();
+    emit('desk-ask', { text: text.trim(), flight, away });
+  }
   input.addEventListener('input', listen);
   function away() { el.classList.add('is-away'); el.setAttribute('inert', ''); }
 

@@ -152,6 +152,61 @@ test('on a photograph a look is painted from the picture itself, not drawn over 
   await expect(book.locator('.lb-card.is-front .lb-card__paint')).toHaveCount(1);
 });
 
+test('a fringe is the person\'s own hair brought forward: its colour and grain are theirs, and a dye takes it with the rest', async ({ page }) => {
+  await realPeople(page);
+  await page.goto('/');
+  const got = await page.evaluate(async () => {
+    const { faceOf, hairOf } = await import('/js/studio/face.js');
+    const { paintLook, coloursOf } = await import('/js/looks/paint.js');
+    const load = async (/** @type {string} */ src) => { const i = new Image(); i.src = src; await i.decode(); const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; c.getContext('2d').drawImage(i, 0, 0); return c; };
+    const mean = (/** @type {HTMLCanvasElement | null} */ l) => { if (!l) return null; const d = l.getContext('2d').getImageData(0, 0, l.width, l.height).data; let r = 0, g = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } return n ? [r / n, g / n, b / n, n] : null; };
+    /** @type {Record<string, any>} */ const out = {};
+    for (const id of ['sofia', 'maeve']) {
+      const c = await load('/examples/' + id + '/portrait.webp'), f = await faceOf(c), m = await hairOf(c);
+      if (!f) continue;
+      const t = coloursOf(c, f, m), [bx, by, bw, bh] = f.box, box = [bx - bw * .3, by - bh * .4, bw * 1.6, bh * 1.4], k = 300 / box[2];
+      out[id] = { own: mean(paintLook(c, f, [{ part: 'bangs', style: 'blunt' }], box, k, t)), dyed: mean(paintLook(c, f, [{ part: 'bangs', style: 'blunt' }], box, k, { ...t, dye: '#efe6d6' })), hair: t.hair.mid };
+    }
+    return out;
+  });
+  const lum = (/** @type {number[]} */ c) => .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+  for (const id of ['sofia', 'maeve']) {
+    const { own, dyed, hair } = got[id];
+    // a fringe of some size, in the colour of the hair it came from (not a fill in a colour of its own)
+    expect(own?.[3]).toBeGreaterThan(500);
+    expect(Math.hypot(own[0] - hair[0], own[1] - hair[1], own[2] - hair[2])).toBeLessThan(48);
+    // dyed, it goes the way the rest of the hair would
+    expect(lum(dyed)).toBeGreaterThan(lum(own) + 50);
+  }
+  // copper stays copper, dark stays dark
+  expect(got.maeve.own[0] - got.maeve.own[2]).toBeGreaterThan(25);
+  expect(lum(got.sofia.own)).toBeLessThan(95);
+});
+
+test('the line takes anything: words that are no look say they will be painted, and the desk paints them', async ({ page }) => {
+  await page.goto('/');
+  const book = page.locator('section.book'), ask = book.locator('.lb-ask'), input = ask.locator('.lb-ask__input');
+  await input.fill('a lighthouse inside a teacup, at dusk');
+  await expect(ask).toHaveClass(/is-picture/);
+  await expect(ask.locator('.lb-ask__go')).toHaveAttribute('aria-label', 'Paint it');
+  await expect(ask.locator('.lb-ask__paint')).toBeVisible();
+  // words for a look are a look again
+  await input.fill('curtain bangs, a little longer');
+  await expect(ask).not.toHaveClass(/is-picture/);
+  await expect(ask.locator('.lb-ask__go')).toHaveAttribute('aria-label', 'Try it on');
+  // sent: the Lookbook steps aside, the words are on the desk, and the picture is painted (here, a sketch)
+  await input.fill('a lighthouse inside a teacup, at dusk');
+  await ask.locator('.lb-ask__go').click();
+  await expect(book).toHaveClass(/is-away/);
+  await expect(page.locator('section.desk .thread')).toContainText('a lighthouse inside a teacup', { timeout: 10_000 });
+  await expect(page.locator('figure.print .print__stamp', { hasText: 'Sketch' })).toHaveCount(1, { timeout: 30_000 });
+  // and back on the Lookbook, the line is clear for the next thing
+  await page.locator('.desk__bar button[aria-label="Looks"]').click();
+  await expect(book).not.toHaveClass(/is-away/);
+  await expect(input).toHaveValue('');
+  await expect(ask).not.toHaveClass(/is-picture/);
+});
+
 test('in the mirror the parts stay put, and a change can be drawn on the picture or borrowed from a reference', async ({ page }) => {
   await page.goto('/');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');

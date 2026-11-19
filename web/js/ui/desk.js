@@ -47,6 +47,14 @@ export function deskScreen() {
   const handlers = { onOpen: open, onIdea: (text, item) => sendIdea(text, item.prints), onRetry: item => send({ text: item.retry?.text || '', intent: readIntent(item.retry?.text || '', ctx()), pace: item.retry?.pace || 'fine' }) };
   const ctx = () => ({ prints: threadPrints().map(p => ({ id: p.id, handle: p.handle })), tray: [], looks: [...LOOKS, ...app.looks] });
 
+  // words from the Lookbook's line that were not a look: a picture, painted here (the Lookbook steps aside to show it),
+  // or "take me to …", which moves the whole place and leaves the Lookbook where it was
+  on('desk-ask', (/** @type {any} */ s) => {
+    if (!s?.text) return;
+    const intent = readIntent(s.text, ctx());
+    if (intent.op !== 'room') s.away?.();
+    send({ text: s.text, intent, pace: intent.pace || settings.get('pace', 'fine'), n: intent.n, flight: s.flight || null });
+  });
   let flight = null;
   async function send(t) {
     if (!t.text && !t.intent?.pins?.length) return;

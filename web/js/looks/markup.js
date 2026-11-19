@@ -107,7 +107,7 @@ function draw(f, part, style, shape) {
     }
     else {
       // fringes that fall straight: how far down, how many strands, how loose
-      const look = /** @type {Record<string, { to: number, n: number, line: boolean, loose: number }>} */ ({ blunt: { to: .86, n: 11, line: true, loose: .15 }, micro: { to: .42, n: 11, line: true, loose: .1 }, wispy: { to: .82, n: 9, line: false, loose: .9 }, birkin: { to: 1.22, n: 13, line: false, loose: .5 } })[style] || { to: .86, n: 11, line: true, loose: .2 };
+      const look = /** @type {Record<string, { to: number, n: number, line: boolean, loose: number }>} */ ({ blunt: { to: .86, n: 11, line: true, loose: .15 }, micro: { to: .42, n: 11, line: true, loose: .1 }, wispy: { to: .95, n: 9, line: false, loose: .9 }, birkin: { to: 1.36, n: 13, line: false, loose: .5 } })[style] || { to: .86, n: 11, line: true, loose: .2 };
       const to = Math.max(.25, Math.min(1.45, look.to + v('length') * .38));
       const L = side(-1).temple, R = side(1).temple, w = R.x - L.x + bw * .08, x0 = L.x - bw * .04, end = (/** @type {number} */ t) => hair + F * to + Math.sin(t * Math.PI) * F * .08;
       for (let k = 0; k < look.n; k++) {

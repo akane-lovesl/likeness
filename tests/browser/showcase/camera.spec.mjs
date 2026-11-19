@@ -13,6 +13,8 @@ test('the camera is a mirror: the look sketched live on the face, and the shutte
   await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
   await expect(live.locator('.mr-stamp')).toHaveText('Live sketch · on this device');
   await expect(live.locator('.lv-parts .mr-part[data-part="brows"]')).toHaveAttribute('data-style', 'arched');
+  // brows are painted on the face as it moves (as on a photograph), painted again as often as the device keeps up with
+  await expect(live).toHaveAttribute('data-paint', /^\d+$/, { timeout: 20_000 });
   // a part touched: every style of it on you at once, a tile each, the one to keep touched
   await live.locator('.lv-parts .mr-part[data-part="lips"]').click();
   await expect(live.locator('.lv-frame')).toHaveClass(/is-grid/);

@@ -27,8 +27,10 @@ export function coat(x, tint, part) {
  * the hair is is read from the mask (or, without one, from the picture's own alpha); the whole canvas is dyed, so
  * mask it after. For video, coat is quicker.
  * @param {CanvasRenderingContext2D} x @param {string} tint @param {CanvasImageSource | null} [mask] the hair, white, at the canvas's size
+ * @param {number} [given] the hair's middle lightness, where it is known from more of the hair than this canvas holds (a
+ * fringe brought forward is dyed as the hair it came from is)
  */
-export function dyeHair(x, tint, mask = null) {
+export function dyeHair(x, tint, mask = null, given = NaN) {
   const w = x.canvas.width, hh = x.canvas.height; if (!w || !hh) return;
   const img = x.getImageData(0, 0, w, hh), d = img.data;
   let m = null;
@@ -38,15 +40,22 @@ export function dyeHair(x, tint, mask = null) {
   let n = 0, sum = 0;
   for (let i = 0; i < d.length; i += 16) { if ((m ? m[i] * m[i + 3] / 255 : d[i + 3]) < 128) continue; sum += L(i); n++; }
   if (!n) return;
-  const mean = sum / n, v = parseInt(tint.slice(1), 16), t = [v >> 16, (v >> 8) & 255, v & 255], tl = .2126 * t[0] + .7152 * t[1] + .0722 * t[2];
+  const mean = Number.isFinite(given) ? given : sum / n, v = parseInt(tint.slice(1), 16), t = [v >> 16, (v >> 8) & 255, v & 255], tl = .2126 * t[0] + .7152 * t[1] + .0722 * t[2];
   // a dye takes the hair most of the way to its own lightness; the strands keep their differences, a little stronger when lifted
-  const target = mean + (tl - mean) * .82, keep = tl > mean ? 1.2 : .95;
+  // (lifted a long way, as dark hair taken light, its strands show more, as they do in life)
+  // a colour lifts dark hair only part of the way (it shows as a warm tint over it), where a bleach (platinum, silver: a
+  // light colour with little hue) takes it all the way
+  const hue = (Math.max(...t) - Math.min(...t)) / Math.max(1, Math.max(...t)), far = Math.max(0, Math.min(1, (tl - mean - 50) / 110));
+  const lift = .82 - (hue > .25 ? .3 * far : 0), held = (.82 - lift) / .3;
+  const target = mean + (tl - mean) * lift, keep = tl > mean ? 1.2 * Math.max(1, Math.min(2, Math.sqrt(target / Math.max(12, mean)))) : .95;
   for (let i = 0; i < d.length; i += 4) {
-    const l = Math.max(0, Math.min(255, target + (L(i) - mean) * keep));
+    // (far lighter than the hair is not hair: a wall or skin at its edge, which would otherwise come out white)
+    const l = Math.max(0, Math.min(255, target + Math.min(56, L(i) - mean) * keep));
     // the colour at that lightness: darker by scaling it, lighter toward a warm white
     const c = l <= tl ? t.map(q => q * l / Math.max(1, tl)) : t.map(q => q + (255 - q) * (l - tl) / Math.max(1, 255 - tl) * .85);
     // hair is never as loud as its swatch: some of the colour's strength given back to grey at that lightness, a little of its own kept
-    const g = l * .22; d[i] = c[0] * .66 + g + d[i] * .12; d[i + 1] = c[1] * .66 + g + d[i + 1] * .12; d[i + 2] = c[2] * .66 + g + d[i + 2] * .12;
+    // (a colour over dark hair it could not lift far keeps more of its warmth: less of it given back to grey)
+    const g = l * (.22 - .14 * held), s = .66 + .14 * held; d[i] = c[0] * s + g + d[i] * .12; d[i + 1] = c[1] * s + g + d[i + 1] * .12; d[i + 2] = c[2] * s + g + d[i + 2] * .12;
   }
   x.putImageData(img, 0, 0);
 }

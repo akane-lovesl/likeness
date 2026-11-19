@@ -7,7 +7,7 @@
  *   npm run tour -- [--url http://127.0.0.1:8787] [--out relay/0004-lookbook/out/tour] [--only ring,words,...]
  *
  * The app must already be running at --url (uv run likeness serve, or npm run serve for the showcase). Scenes, in
- * order: welcome, ring, words, mix, mirror, tryon, show, marks, you, rooms, live, sides, desk. Every camera in the tour is Chrome's fake one,
+ * order: welcome, ring, words, mix, mirror, tryon, show, marks, you, rooms, live, sides, desk (the Lookbook's line, painted on the desk). Every camera in the tour is Chrome's fake one,
  * playing a drawn sitter, and every photo of "you" is a drawn sitter: the tour never sees a real face, the person
  * running it included.
  */
@@ -216,7 +216,7 @@ await scene('rooms', 'Rooms: the whole app dressed, the Lookbook and the mirror 
   await to('arcade'); await shot('Night Arcade');
   await to('salon'); await shot('back in the Salon');
 });
-await scene('live', 'The live mirror (the camera plays a drawn sitter)', page, async ({ shot, note }) => {
+await scene('live', 'The live mirror, painted as you move (the camera plays a drawn sitter)', page, async ({ shot, note }) => {
   await page.goto(URL_ + '/'); await sleep(800);
   await page.locator('.lb-ask__photo').click();
   const live = page.locator('section.lv');
@@ -247,10 +247,13 @@ if (!ONLY.length || ONLY.includes('sides')) {
 if (!ONLY.length || ONLY.includes('desk')) {
   const b3 = await chromium.launch({ channel, args: camera('kofi.mjpeg') });
   const p3 = await (await b3.newContext(PHONE)).newPage();
-  await scene('desk', 'The desk: a picture from words', p3, async ({ shot, note }) => {
-    await p3.goto(URL_ + '/?desk'); await p3.locator('.desk__bar .edition').waitFor({ timeout: 30000 }); await sleep(800); await shot('the desk');
+  await scene('desk', 'A picture from words: the same line, the desk paints it', p3, async ({ shot, note }) => {
+    // the Lookbook's line takes anything: words that are no look say they will be painted, and go to the desk
+    await p3.goto(URL_ + '/'); await p3.locator('section.book .lb-ask__input').waitFor({ timeout: 30000 }); await sleep(800);
+    const wl = p3.locator('.wl'); if (await wl.count()) { await p3.keyboard.press('Escape'); await sleep(700); }
     const before = await p3.locator('figure.print').count();
-    await p3.locator('.composer textarea, textarea').first().fill('A lighthouse inside a teacup, at dusk'); await p3.locator('button.send').click();
+    await p3.locator('section.book .lb-ask__input').fill('A lighthouse inside a teacup, at dusk'); await sleep(700); await shot('words that are no look: "Paint it"');
+    await p3.locator('section.book .lb-ask__go').click();
     const t0 = Date.now();
     while (Date.now() - t0 < 240000 && (await p3.locator('figure.print .print__stamp').count()) <= before) { await shot('working ' + secs(Date.now() - t0)); await sleep(3000); }
     note('a picture from words: ' + secs(Date.now() - t0));

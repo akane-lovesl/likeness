@@ -141,7 +141,13 @@ div.lb-card__after { position: absolute; inset: 0; }
 .lb-ask__field, .mr-ask__field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 1.4cqw; overflow-x: auto; scrollbar-width: none; }
 .lb-ask__input, .mr-ask__input { flex: 1; min-width: 16cqw; text-overflow: ellipsis; background: none; border: 0; outline: none; color: var(--lk-ink); font: 400 3.7cqw/1.2 var(--font-text); padding: 2cqw 1.4cqw; }
 .lb-ask__input::placeholder, .mr-ask__input::placeholder { color: var(--lk-faint); font-style: italic; }
-.lb-ask__go { flex: none; width: 11cqw; height: 11cqw; border-radius: 50%; padding: 0; border: 0; display: grid; place-items: center; background: var(--lk-accent); color: var(--lk-on-accent) !important; }
+.lb-ask__go { flex: none; width: 11cqw; height: 11cqw; border-radius: 99cqw; padding: 0; border: 0; display: flex; align-items: center; justify-content: center; gap: 1.2cqw; background: var(--lk-accent); color: var(--lk-on-accent) !important; transition: width .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1); overflow: hidden; white-space: nowrap; }
+.lb-ask__go svg { flex: none; transition: rotate .42s cubic-bezier(.2,.8,.2,1); }
+/* words that ask for a picture, not a look: the arrow says it will paint them */
+.lb-ask__paint { font: 500 3.4cqw/1 var(--font-text); font-style: italic; max-width: 0; opacity: 0; transition: max-width .42s cubic-bezier(.2,.8,.2,1), opacity .3s; }
+.lb-ask.is-picture .lb-ask__go { width: 26cqw; padding: 0 3cqw 0 2.4cqw; }
+.lb-ask.is-picture .lb-ask__go svg { rotate: -45deg; }
+.lb-ask.is-picture .lb-ask__paint { max-width: 20cqw; opacity: 1; }
 .mr-ask__go { flex: none; display: flex; align-items: center; gap: 1.4cqw; height: 11cqw; padding: 0 4.6cqw 0 3.8cqw; border-radius: 99cqw; border: 0; background: var(--lk-accent); color: var(--lk-on-accent) !important;
   font: 500 2.5cqw/1 var(--font-mono) !important; letter-spacing: .14em; text-transform: uppercase; transition: opacity .25s, scale .25s var(--lk-pop); }
 .mr-ask__go[disabled] { opacity: .35; cursor: default; }

@@ -7,6 +7,7 @@
   "scripts": {
     "serve": "node tools/serve.mjs",
     "sitters": "node tools/sitters.mjs",
+    "tour": "node tools/tour.mjs",
     "check": "tsc -p web/jsconfig.json",
     "test": "playwright test"
   },

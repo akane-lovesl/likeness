@@ -219,6 +219,8 @@ div.lb-card__after { position: absolute; inset: 0; }
   -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; mix-blend-mode: screen;
   background: linear-gradient(105deg, transparent 34%, rgb(255 236 204 / .85) 50%, transparent 66%) 100% 0 / 300% 100% no-repeat, rgb(255 226 180 / .22); }
 .mr.is-working .mr-work { opacity: 1; animation: mr-work 2.4s cubic-bezier(.45, 0, .25, 1) infinite; }
+/* no one part (a cut, every angle): only the light passing, lighter, so the face is not fogged while it waits */
+.mr-work.is-whole { background: linear-gradient(105deg, transparent 42%, rgb(255 236 204 / .3) 50%, transparent 58%) 100% 0 / 300% 100% no-repeat; }
 @keyframes mr-work { from { background-position: 100% 0, 0 0; } to { background-position: 0% 0, 0 0; } }
 .mr.is-working :is(.mr-handles, .mr-keep, .mr-turn, .mr-dial) { opacity: 0 !important; pointer-events: none !important; transition: opacity .3s; }
 .mr-preview { -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; opacity: 0; filter: blur(1.4cqw) saturate(.7); transition: opacity .9s var(--lk-ease), filter 1.6s var(--lk-ease); }

@@ -39,7 +39,7 @@ You may change the cast's words, the portrait direction (`[style]` in `cast.toml
 
 ## Then try it as the user will
 
-1. `uv run likeness serve`, and open it in Chrome at a phone size.
+1. `uv run likeness serve`, and open it in Chrome at a phone size. Run `npm run tour` as well (`relay/START.md`, Part 5): it films every flow into storyboards, so they can all be seen at once. Run it again after changes.
 2. The Lookbook: the ring turns, each look sweeps across its face, the names read well. A second or two in, the faces are read on the device and each card closes on the head and leans in on its part: the look must read at a glance there. Turn it with a finger. Touch a part (Bangs, Brows…) and the ring deals only those looks.
 3. Touch a face: the mirror opens on it, with its looks as takes and every angle of the first. Drag across the frame to turn it.
 4. **On me**, with a drawn sitter from `tests/fixtures/sitters/` (never a photograph of a real person; where there is a camera, *On me* opens the live mirror, and the picture button beside its shutter chooses a photo instead): the face is read (a line of light, its points, its outlines, then the parts named in the margins). Pick *Bangs → Curtain*, add a few words, **Try on**. Four takes come back as GPT Image renders, inside the bangs' mask (`op: region`, one pin, the mask from `web/js/studio/face.js`). While they are made, the frame shows the wait: a light over the bangs, Codex's notes as they arrive, the time left, and previews developing inside the mask if the image tool streams partial images. Say whether it does, and whether the notes read well to someone waiting. Scrub them, keep one, then **Every angle**: three more, and the frame turns.

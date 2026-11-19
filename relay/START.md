@@ -133,6 +133,13 @@ Now be someone opening Likeness for the first time:
 - in Chrome at a phone's size (F12, then a phone in the device bar);
 - with the people you have just made.
 
+**Start with the tour.** With the studio running, `npm run tour` uses the whole product end to end at a phone's size and films it into storyboards in `relay/0004-lookbook/out/tour/`:
+- `00-tour.jpg` is all of it on one sheet;
+- there is a sheet for each scene, every frame captioned with what the picture in front says it is;
+- `tour.md` has the timings: a Try on, every angle, a picture from words, and how fast the live mirror reads a face.
+
+Its cameras play drawn sitters and its photos are drawn sitters; it never sees you. Look at every sheet before you judge the rows below, and run it again after each fix.
+
 Every row below must hold. Where one does not, fix it: the code, the words or the briefs. The packets cover most rows in detail; here, check that each still holds now that real pictures are in place.
 
 | | What must hold |
@@ -179,7 +186,7 @@ Then go through Part 5 again on the phone, quickly. Pay the most attention to wh
 
 1. The three checks are green. If one cannot run here, say why.
 2. Everything is committed and pushed to `studio`.
-3. The two reports the packets ask for are written, with the contact sheets: `relay/0003-codex-studio/REPORT.md` and `relay/0004-lookbook/REPORT.md`. They stay on this computer (git ignores them).
+3. The two reports the packets ask for are written, with the contact sheets: `relay/0003-codex-studio/REPORT.md` and `relay/0004-lookbook/REPORT.md`. The tour's last run stays beside them (`relay/0004-lookbook/out/tour/`). All of it stays on this computer (git ignores it).
 4. Then tell the user, in a few plain lines:
    - what works now;
    - what still is not right;

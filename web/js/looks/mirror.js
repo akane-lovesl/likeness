@@ -697,7 +697,7 @@ export function openMirror(o) {
     // the light glows a little beyond the part, so a thin one (a brow, a lash line) still reads as lit
     let lit = url;
     if (mask) { const g = P.make(mask.width, mask.height), gx = ctx(g); gx.filter = 'blur(' + Math.max(4, Math.round(mask.width / 45)) + 'px)'; gx.drawImage(mask, 0, 0); gx.drawImage(mask, 0, 0); gx.drawImage(g, 0, 0); lit = 'url(' + g.toDataURL('image/png') + ')'; }
-    workEl.style.setProperty('mask-image', lit); workEl.style.setProperty('-webkit-mask-image', lit);
+    workEl.style.setProperty('mask-image', lit); workEl.style.setProperty('-webkit-mask-image', lit); workEl.classList.toggle('is-whole', !mask);
     // the preview develops only where the change is: the rest of the face stays as it is meanwhile
     preview.style.setProperty('mask-image', url); preview.style.setProperty('-webkit-mask-image', url);
     sayNow.textContent = 'Asked'; etaEl.textContent = '';

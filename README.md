@@ -34,6 +34,7 @@ uv run likeness serve                    # Codex when the codex command answers 
 uv run likeness serve --engine simulator
 uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speaking every flag the studio uses?
 uv run likeness examples                 # make the Lookbook's people through the engine (relay packet 0004)
+npm run tour -- --url http://127.0.0.1:8787   # the whole product used end to end at a phone's size, filmed into storyboards
 ```
 
 `serve` prints a link for this machine and a pairing QR code for a phone on the same network. Scan it once and the phone stays paired.

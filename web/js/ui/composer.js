@@ -68,7 +68,9 @@ export function composer({ onSend, onAttach }) {
     const key = [r.op, r.subject, r.refs.map(x => x.id + x.role).join(','), r.look?.id || '', text, proofSeed, atmosphere.room.id].join('|');
     if (key === proofKey) return;
     proofKey = key; const ticket = ++proofTicket, inputs = {};
-    for (const id of [r.subject, ...r.refs.map(x => x.id)].filter(Boolean)) { const p = printById(id); if (p) inputs[id] = { blob: p.blob, handle: p.handle, scene: p.provenance?.scene || null }; }
+    for (const id of [r.subject, ...r.refs.map(x => x.id)].filter(Boolean)) { const p = printById(id); if (p) inputs[id] = { blob: p.blob, handle: p.handle, scene: p.provenance?.scene || null, recipe: p.provenance?.recipe || null }; }
+    // a picture made from a photo is shown made again from that photo, as it will be
+    for (const v of Object.values(inputs)) { const from = v.recipe?.from, s = from && !inputs[from] && printById(from); if (s) inputs[from] = { blob: s.blob, handle: s.handle, scene: null, recipe: null }; }
     let c = null;
     try { c = await proofOf({ text, intent: r, seed: proofSeed, room: atmosphere.room }, inputs); } catch { c = null; }
     if (ticket !== proofTicket) return;

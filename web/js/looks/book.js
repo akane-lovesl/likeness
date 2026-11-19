@@ -4,11 +4,12 @@
  * Pick a face or bring your own, and the mirror opens on it. Until the studio's portraits are in, the ring holds the
  * drawn plates instead: one part redrawn style after style.
  */
-import { h, icon, toast, stage } from '../core/dom.js';
+import { h, icon, toast, stage, fitting } from '../core/dom.js';
 import { spring, drag, reduced } from '../core/motion.js';
 import { studio } from '../studio/studio.js';
 import { PARTS, partById, styleOf, plateSVG } from './vocab.js';
 import { openMirror, bringPhoto } from './mirror.js';
+import { openLive, canLive } from './live.js';
 
 /** @typedef {{ part: string, style: string, words?: string, image: string, takes?: string[], angles?: string[] }} Look */
 /** @typedef {{ id: string, name?: string, kind?: string, portrait: string, looks: Look[] }} Person */
@@ -29,7 +30,7 @@ export function examples() {
 const at = (/** @type {string} */ path) => new URL(path, BASE).href;
 
 const PLATES = /** @type {[string, string][]} */ ([['bangs', 'curtain'], ['brows', 'feathered'], ['colour', 'copper'], ['cut', 'bob'], ['lashes', 'wing'], ['lips', 'red'], ['beard', 'trimmed'], ['bangs', 'birkin']]);
-const SAYINGS = ['Curtain bangs, a little longer', 'Softer, straighter brows', 'Copper, with a few lowlights', 'A sleek chin-length bob', 'A fine winged liner', 'Feathered brows, brushed up'];
+const SAYINGS = ['Curtain bangs, a bit longer', 'Softer, straighter brows', 'Copper, with a few lowlights', 'A sleek chin-length bob', 'A fine winged liner', 'Feathered brows, brushed up'];
 
 /** The name a card goes by. @param {Card} c */
 const titleOf = (c) => { const part = c.kind === 'photo' ? c.look.part : c.part, s = styleOf(part, c.kind === 'photo' ? c.look.style : c.style); return s ? (['bangs', 'brows'].includes(part) ? s.name + ' ' + (partById(part)?.name || '').toLowerCase() : s.name) : ''; };
@@ -53,7 +54,7 @@ function lookbook() {
   const parts = h('div.lb-parts', { role: 'toolbar', 'aria-label': 'What to change' }, ...PARTS.map(p => h('button.lb-part', { type: 'button', 'data-part': p.id, 'aria-pressed': 'false', onclick: () => choosePart(p.id) },
     h('span.lb-part__glyph', { html: plateSVG(p.id, p.styles[0].id) }), h('span.lb-part__name', null, p.name))));
   const styles = h('div.lb-styles', { hidden: true, role: 'listbox' });
-  const photoBtn = h('button.lb-ask__photo', { type: 'button', 'aria-label': 'Add your photo', title: 'Add your photo', html: icon('camera'), onclick: () => pickPhoto() });
+  const photoBtn = h('button.lb-ask__photo', { type: 'button', 'aria-label': 'Your face: the camera, or a photo', title: 'Your face: the camera, or a photo', html: icon('camera'), onclick: () => pickPhoto() });
   const tokens = h('div.lb-ask__tokens');
   const input = h('input.lb-ask__input', { type: 'text', 'aria-label': 'Describe a change', autocomplete: 'off', enterkeyhint: 'go' });
   const go = h('button.lb-ask__go', { type: 'submit', 'aria-label': 'Try it on', html: icon('arrow') });
@@ -72,7 +73,7 @@ function lookbook() {
     els = list.map((c, i) => {
       const card = h('button.lb-card', { type: 'button', role: 'option', 'aria-label': titleOf(c), style: { '--d': (60 + i * 55) + 'ms' }, onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0) tap(i); } });
       if (c.kind === 'photo') card.append(h('img.lb-card__before', { src: c.person.portrait, alt: '', draggable: false }), h('img.lb-card__after', { src: c.look.image, alt: '', draggable: false }), h('span.lb-card__glint'), h('span.lb-card__tag', null, c.person.kind === 'render' ? 'GPT Image' : 'Simulated'));
-      else card.append(h('div.lb-card__plate', { html: plateSVG(c.part, c.style) }), h('span.lb-card__tag', null, 'Drawn'));
+      else card.append(h('div.lb-card__plate', { html: plateSVG(c.part, c.style) }), h('span.lb-card__tag', null, 'Drawn'), h('span.lb-card__me', { 'aria-hidden': 'true' }, h('span', { html: icon('camera') }), 'On me'));
       card.classList.add('lb-card--' + c.kind);
       return card;
     });
@@ -160,7 +161,7 @@ function lookbook() {
     const s = styleOf(p, id); if (!s) return;
     const had = picks.find(q => q.part === p);
     picks = had && had.style.id === id ? picks.filter(q => q !== had) : [...picks.filter(q => q.part !== p), { part: p, style: s }];
-    tokens.replaceChildren(...picks.map(q => h('button.lb-token', { type: 'button', 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span', { html: plateSVG(q.part, q.style.id) }), q.style.name)));
+    tokens.replaceChildren(...picks.map(q => h('button.lb-token', { type: 'button', 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.lb-token__plate', { html: plateSVG(q.part, q.style.id) }), h('span.lb-token__name', null, q.style.name))));
     styles.querySelectorAll('.lb-style').forEach(b => b.setAttribute('aria-selected', String(picks.some(q => q.part === p && q.style.id === b.getAttribute('data-style')))));
     const i = cards.findIndex(c => (c.kind === 'photo' ? c.look.part === p && c.look.style === id : c.part === p && c.style === id));
     if (i >= 0 && i !== front) turnTo(i);
@@ -169,10 +170,19 @@ function lookbook() {
     photoBtn.classList.remove('is-asking'); void photoBtn.offsetWidth; photoBtn.classList.add('is-asking');
     toast('Whose face? Add a photo, or pick a face above.');
   }
+  /** Your face, for the look: the live mirror where there is a camera (a photo can be chosen from it), else a photo. */
   async function pickPhoto(/** @type {HTMLElement} */ from = photoBtn) {
-    const p = await bringPhoto(); if (!p) return;
-    photo = p; photoBtn.replaceChildren(h('img', { src: URL.createObjectURL(p.blob), alt: '' })); photoBtn.classList.add('has-photo');
-    open({ print: photo, picks, words: input.value, from });
+    const got = /** @type {{ print: any, picks: any[], from?: Element, face?: any } | null} */ ((await canLive()) ? await openLive({ picks: livePicks(), keep: picks, fallback: bringPhoto, from }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
+    if (!got) return;
+    photo = got.print; photoBtn.replaceChildren(h('img', { src: URL.createObjectURL(photo.blob), alt: '' })); photoBtn.classList.add('has-photo');
+    open({ print: photo, picks: got.picks, words: input.value, from: got.from || from, face: got.face });
+  }
+  /** The look the live mirror opens on: what was picked here, or the one at the front of the ring. */
+  function livePicks() {
+    if (picks.length) return picks;
+    const c = cards[front]; if (!c) return [];
+    const p = c.kind === 'photo' ? c.look.part : c.part, s = styleOf(p, c.kind === 'photo' ? c.look.style : c.style);
+    return s ? [{ part: p, style: s }] : [];
   }
   function submit() {
     if (!picks.length && !input.value.trim()) { input.focus(); return; }
@@ -184,6 +194,8 @@ function lookbook() {
   // the line, saying what could be asked, one thing after another
   let say = 0, typed = 0;
   const typing = setInterval(() => {
+    // beside picks, only that more can be said
+    if (picks.length) { if (!input.value) input.placeholder = fitting(input, ['Say more…', 'More…']); typed = 0; return; }
     if (document.activeElement === input || input.value || reduced) { input.placeholder = reduced ? SAYINGS[0] : input.placeholder; return; }
     const s = SAYINGS[say % SAYINGS.length]; typed++;
     if (typed <= s.length) input.placeholder = s.slice(0, typed);

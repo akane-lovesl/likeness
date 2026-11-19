@@ -82,6 +82,21 @@ export const seconds = ms => (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + ' s';
 
 let toastTimer = 0;
 /** A short line of confirmation near the top of the stage. */
+let ruler = /** @type {CanvasRenderingContext2D | null} */ (null);
+/**
+ * Of some ways to say a thing, longest first, the first that fits a text field as its placeholder (else the last):
+ * a hint cut off halfway looks broken, a shorter one does not.
+ * @param {HTMLInputElement} input @param {string[]} words @returns {string}
+ */
+export function fitting(input, words) {
+  const st = getComputedStyle(input), room = input.clientWidth - parseFloat(st.paddingLeft) - parseFloat(st.paddingRight), last = words[words.length - 1] || '';
+  ruler ||= document.createElement('canvas').getContext('2d');
+  if (!ruler || !(room > 0)) return last;
+  ruler.font = 'italic ' + st.fontWeight + ' ' + st.fontSize + ' ' + st.fontFamily;
+  const r = ruler;
+  return words.find(w => r.measureText(w).width <= room) ?? last;
+}
+
 /** A short note at the top of the stage; with an action, a button to act on it (e.g. undo) while it shows. @param {string} text @param {number} [ms] @param {{ label: string, run: () => void } | null} [action] */
 export function toast(text, ms = 2200, action = null) {
   let el = stage().querySelector('.toast');

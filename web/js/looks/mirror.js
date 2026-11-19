@@ -5,18 +5,20 @@
  * A live studio sends back four takes to scrub through and keep, and then every angle of the one kept. In the
  * showcase the change is sketched over the face instead, and says so.
  */
-import { h, icon, toast, chooseFiles, stage, clamp } from '../core/dom.js';
+import { h, icon, toast, chooseFiles, stage, clamp, fitting } from '../core/dom.js';
 import { drag, flip, spring, reduced } from '../core/motion.js';
 import { on } from '../core/bus.js';
 import { progressAt } from '../core/estimate.js';
 import { studio } from '../studio/studio.js';
 import * as P from '../studio/painter.js';
-import { faceOf, contoursOf, shapesOf, maskOf, partAt, hairOf } from '../studio/face.js';
+import { faceOf, reframed, contoursOf, shapesOf, maskOf, partAt, hairOf } from '../studio/face.js';
+/** @typedef {import('../studio/face.js').Face} Face */
 import { addPrint, addItem, setKept, printById, urlOf, settings } from '../state.js';
 import { runTurn } from '../ui/turn.js';
 import { PARTS, partById, styleOf, wordsFor, titleOf, plateSVG, partsIn, tintOf } from './vocab.js';
 import { markup, controlsOf } from './markup.js';
 import { turner } from './turn.js';
+import { openLive, canLive } from './live.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const INK = '#fff4e0';
@@ -66,6 +68,7 @@ async function washOf(pic, f, picks) {
     const layer = P.copy(pic), lx = /** @type {CanvasRenderingContext2D} */ (layer.getContext('2d')), light = lightness(tint);
     const coat = (/** @type {GlobalCompositeOperation} */ op, /** @type {number} */ a) => { lx.globalCompositeOperation = op; lx.globalAlpha = a; lx.fillStyle = tint; lx.fillRect(0, 0, c.width, c.height); };
     coat('color', q.part === 'lips' ? .75 : .9);
+    if (q.part === 'colour') coat('soft-light', .6);   // so dark hair takes the colour too, not only its hue
     if (light > .62) coat('screen', .38); else if (light < .2) coat('multiply', .55); else if (q.part === 'lips') coat('multiply', .3);
     lx.globalCompositeOperation = 'destination-in'; lx.globalAlpha = 1; lx.drawImage(m, 0, 0);
     x.drawImage(layer, 0, 0); any = true;
@@ -75,7 +78,7 @@ async function washOf(pic, f, picks) {
 
 /**
  * Opens the mirror on a photo (a print) or on one of the studio's example people.
- * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean }} o
+ * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null }} o
  */
 export function openMirror(o) {
   current?.close(true);
@@ -115,7 +118,7 @@ export function openMirror(o) {
   const partsRow = h('div.mr-parts', { role: 'toolbar', 'aria-label': 'What to change' }, ...chips);
   const stylesRow = h('div.mr-styles', { role: 'listbox', hidden: true });
   const tokens = h('div.mr-ask__tokens');
-  const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => paintGo() }));
+  const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => paintGo(), onfocus: () => hint(), onblur: () => hint() }));
   const goBtn = h('button.mr-ask__go', { type: 'submit' }, h('span', { html: icon('sparkle') }), h('span.mr-ask__label', null, 'Try on'));
   const ask = h('form.mr-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); tryOn(); } }, h('div.mr-ask__field', null, tokens, input), goBtn);
   const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => close() });
@@ -195,7 +198,11 @@ export function openMirror(o) {
     spotsUp = true; notes.replaceChildren(); lines.replaceChildren(); if (!face) return;
     const f = face, q = f.pts, [bx, by, bw, bh] = f.box, mid = (/** @type {number} */ a, /** @type {number} */ b) => ({ x: (q[a].x + q[b].x) / 2, y: (q[a].y + q[b].y) / 2 });
     const z = (/** @type {number} */ i) => turn ? turn.depth(i) : 0;
-    const at = /** @type {Record<string, { x: number, y: number, z?: number }>} */ ({ bangs: { x: q[109].x, y: (q[109].y + q[105].y) / 2, z: z(109) }, brows: { ...q[70], z: z(70) }, cut: { x: bx - bw * .1, y: by + bh * .7 }, colour: { x: bx + bw * .78, y: by - bh * .12 }, lashes: { x: q[263].x + bw * .01, y: q[263].y, z: z(263) }, lips: { ...q[291], z: z(291) }, beard: { x: q[397].x - bw * .02, y: q[397].y, z: z(397) } });
+    // the names on the left point to the left of the face, those on the right to its right; a mirrored face (the front
+    // camera's, as you saw yourself) has the names of its sides the other way round, so the points are found by where they are
+    const flip = q[263].x < q[33].x, k = (/** @type {number} */ i, /** @type {number} */ j) => (flip ? j : i);
+    const fh = k(109, 338), br = k(70, 300), ey = k(263, 33), li = k(291, 61), ja = k(397, 172);
+    const at = /** @type {Record<string, { x: number, y: number, z?: number }>} */ ({ bangs: { x: q[fh].x, y: (q[fh].y + q[k(105, 334)].y) / 2, z: z(fh) }, brows: { ...q[br], z: z(br) }, cut: { x: bx - bw * .1, y: by + bh * .7 }, colour: { x: bx + bw * .78, y: by - bh * .12 }, lashes: { x: q[ey].x + bw * .01, y: q[ey].y, z: z(ey) }, lips: { ...q[li], z: z(li) }, beard: { x: q[ja].x - bw * .02, y: q[ja].y, z: z(ja) } });
     anchors = [];
     const fr = frame.getBoundingClientRect(), W = fr.width, H = fr.height, gap = 30 / H;
     lines.setAttribute('viewBox', '0 0 ' + W.toFixed(1) + ' ' + H.toFixed(1));
@@ -241,13 +248,12 @@ export function openMirror(o) {
         h('span.mr-style__plate', { html: plateSVG(id, s.id) }), h('span.mr-style__name', null, s.name))));
     menu();
     if (!reduced) stylesRow.animate([{ opacity: 0, translate: '6% 0' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
-    input.placeholder = HINTS[id] || '';
     mark(id); focus(id); paintHandles();
   }
   /** What the dock offers: a part's styles once one is chosen; the parts themselves only where no face was read. */
-  function menu() { partsRow.hidden = !!part || !!face; stylesRow.hidden = !part; el.classList.toggle('has-menu', !!part || !face); }
+  function menu() { partsRow.hidden = !!part || !!face; stylesRow.hidden = !part; el.classList.toggle('has-menu', !!part || !face); hint(); }
   function unchoose() {
-    part = ''; menu(); input.placeholder = face ? 'Touch a part of the face, or say it' : 'Pick a part, or say it';
+    part = ''; menu();
     chips.forEach(c => c.setAttribute('aria-pressed', 'false')); lit();
     ctx(read).clearRect(0, 0, read.width, read.height); focus(''); paintHandles();
     if (!reduced) partsRow.animate([{ opacity: 0, translate: '-6% 0' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
@@ -277,7 +283,7 @@ export function openMirror(o) {
   function paintPicks() {
     // each pick saying how it was shaped: shortly on the line, fully to the studio
     picks = picks.map(q => { const cs = sayOf(q), said = cs.map(c => c.phrase).filter(Boolean).join(', '); return said === (q.said || '') ? q : { ...q, said }; });
-    tokens.replaceChildren(...picks.map(q => { const shorts = sayOf(q).map(c => c.short).filter(Boolean).join(' · '); return h('button.mr-token', { type: 'button', 'data-part': q.part, 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.mr-token__plate', { html: plateSVG(q.part, q.style.id) }), q.style.name, shorts ? h('em.mr-token__shape', null, shorts) : null); }));
+    tokens.replaceChildren(...picks.map(q => { const shorts = sayOf(q).map(c => c.short).filter(Boolean).join(' · '); return h('button.mr-token', { type: 'button', 'data-part': q.part, 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.mr-token__plate', { html: plateSVG(q.part, q.style.id) }), h('span.mr-token__name', null, q.style.name), shorts ? h('em.mr-token__shape', null, shorts) : null); }));
     stylesRow.querySelectorAll('.mr-style').forEach(b => b.setAttribute('aria-selected', String(picks.some(q => q.part === part && q.style.id === /** @type {HTMLElement} */ (b).dataset.style))));
     chips.forEach(c => c.classList.toggle('is-picked', picks.some(q => q.part === c.dataset.part)));
     paintGo(); drawSketch(); paintWash(); paintHandles();
@@ -398,7 +404,11 @@ export function openMirror(o) {
     for (const [id, b] of handleEls) if (!seen.has(id)) { b.remove(); handleEls.delete(id); }
     el.classList.toggle('has-handles', cs.length > 0);
     if (cs.length && !taught) { taught = true; setTimeout(() => handleEls.forEach(b => b.classList.remove('is-new')), 3600); }
-    if (part) input.placeholder = cs.length ? 'Drag the marks, or say it' : HINTS[part] || '';
+    hint();
+  }
+  /** What the line asks for: how to begin, then a part's marks or words for it; beside the picks there is only room to say that more can be said. */
+  function hint() {
+    input.placeholder = fitting(input, picks.length ? ['Say more…', 'More…'] : part ? (handleEls.size ? ['Drag the marks, or say it', 'Drag the marks'] : [HINTS[part] || '']) : face ? ['Touch a part of the face, or say it', 'Touch the face, or say it'] : ['Pick a part, or say it', 'Or say it']);
   }
   /** A handle, dragged along its way (or moved by the arrow keys; a double tap puts it back). @param {HTMLButtonElement} b @param {string} id */
   function grab(b, id) {
@@ -660,7 +670,11 @@ export function openMirror(o) {
     dial.style.setProperty('--a', ((v - 2) * 30).toFixed(1) + 'deg');
   }
 
-  async function onMe() { const p = await bringPhoto(); if (p) openMirror({ print: p, picks, words: input.value }); }
+  /** The look on your own face: the live mirror where there is a camera, else a photo. */
+  async function onMe() {
+    const got = /** @type {{ print: any, picks: Pick[], from?: Element, face?: any } | null} */ ((await canLive()) ? await openLive({ picks, fallback: bringPhoto, from: frame }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
+    if (got) openMirror({ print: got.print, picks: got.picks, words: input.value, from: got.from || null, face: got.face });
+  }
 
   function close(now = false) {
     if (current !== self) return; current = null;
@@ -682,20 +696,22 @@ export function openMirror(o) {
     frame.classList.add('is-reading');
     try { base = await canvasOf(person ? person.portrait : print.blob); } catch { base = null; }
     fit();
-    face = base ? await faceOf(base) : null;
+    // a face read as the picture was taken (the live mirror's) is this picture's already: no second reading, no wait
+    const known = o.face && base && Math.abs(o.face.w / o.face.h - base.width / base.height) < .01 ? reframed(o.face, base.width, base.height) : null;
+    face = base ? known || await faceOf(base) : null;
     frame.classList.remove('is-reading');
     if (!el.isConnected) return;
     if (!face) { el.classList.add('no-face'); toast(base ? 'No face found: a change goes over the whole picture' : 'That picture could not be read', 2800); }
     else {
       try { turn = turner(turnView, face); } catch { turn = null; }
       if (turn && base) { const f = face; hairOf(base).then(m => { if (m) turn?.hair(m, f); }); }
-      await reading();
+      if (!known) await reading();
     }
     placeNotes(); drawSketch(); menu();
     turnBtn.hidden = !(live || person?.looks.some(l => l.angles?.length));
     const look = o.look && takes.findIndex(t => t.look === o.look);
     if (typeof look === 'number' && look >= 0) show(look);
-    else if (picks[0]) choose(picks[0].part);
+    else if (picks[0] && !face) choose(picks[0].part);
     // then, unless they came asking for something already, the face looks this way and that as its notes come in
     if (o.go) tryOn(); else if (face && shown < 0) hello();
   })();

@@ -72,7 +72,9 @@ function draw(f, part, style, shape) {
   const out = /** @type {Stroke[]} */ ([]), controls = /** @type {Mark[]} */ ([]), r = jitter(part.length * 31 + style.length);
   const v = (/** @type {string} */ id) => Math.max(-1, Math.min(1, shape[id] || 0));
   const control = (/** @type {string} */ id, /** @type {Pt} */ at, /** @type {'x' | 'y'} */ axis, /** @type {{ short: string, phrase: string }} */ words) => { controls.push({ id, x: at.x, y: at.y, axis, v: v(id), ...words }); };
-  const side = (/** @type {number} */ s) => (s < 0 ? { temple: P(54), edge: P(127), cheek: P(234), corner: P(33), browOut: P(70) } : { temple: P(284), edge: P(356), cheek: P(454), corner: P(263), browOut: P(300) });
+  // which way round the face is: a front camera's picture is mirrored, its points with it, so sides are found by where they are
+  const m = P(263).x >= P(33).x ? 1 : -1;
+  const side = (/** @type {number} */ s) => (s * m < 0 ? { temple: P(54), edge: P(127), cheek: P(234), corner: P(33), browOut: P(70) } : { temple: P(284), edge: P(356), cheek: P(454), corner: P(263), browOut: P(300) });
 
   if (part === 'bangs') {
     if (style === 'curtain') {
@@ -122,7 +124,7 @@ function draw(f, part, style, shape) {
   }
 
   if (part === 'brows') for (const [i, b] of BROW.entries()) {
-    const s = i ? 1 : -1, arch = v('arch'), full = v('full'), tail = v('tail');
+    const s = (i ? 1 : -1) * m, arch = v('arch'), full = v('full'), tail = v('tail');
     const up0 = b.up.map(P), low0 = b.low.map(P), thick0 = up0.reduce((a, p, k) => a + Math.hypot(p.x - low0[k].x, p.y - low0[k].y), 0) / up0.length;
     // the arch lifts the brow most near its peak; fullness spreads it both ways; the tail is drawn out (or in) along it
     const lift = [.3, 1, .75, .25, 0], body = [1, 1, 1, 1, .5];
@@ -142,20 +144,20 @@ function draw(f, part, style, shape) {
         : style === 'thin' ? mid.map(p => ({ x: p.x, y: p.y - thick * .2 })) : mid;
       out.push({ d: through(line), w: thick * ({ bold: 1.15, thin: .3, soft: .7, straight: .75, arched: .6 }[style] || .7) });
     }
-    // the handles sit on one brow each, so they have room: the arch and the tail on one, the fullness on the other
-    if (i === 1) {
+    // the handles sit on one brow each, so they have room: the arch and the tail on the right, the fullness on the left
+    if (s > 0) {
       control('arch', { x: up[1].x, y: up[1].y - thick * 2.3 }, 'y', say(arch, ['higher arch', 'with a higher, lifted arch', 'high arch', 'with a sharp, high arch'], ['softer arch', 'with a softer, flatter arch', 'almost straight', 'almost straight, barely arched']));
       control('tail', { x: outer.x + s * thick * 2.4, y: outer.y + thick * .2 }, 'x', say(tail, ['longer tails', 'with longer tails, drawn out toward the temples'], ['shorter tails', 'with shorter tails']));
     } else control('full', { x: low[2].x, y: low[2].y + thick * 1.5 }, 'y', say(full, ['fuller', 'fuller and thicker', 'much fuller', 'much fuller, thick and brushed'], ['finer', 'finer and thinner', 'very fine', 'very fine and thin']));
   }
 
   if (part === 'lashes') for (const [i, lid] of LID.entries()) {
-    const ps = lid.map(P), s = i ? 1 : -1, eh = Math.abs(P(i ? 374 : 145).y - P(i ? 386 : 159).y) || bh * .04, L = v('long');
+    const ps = lid.map(P), s = (i ? 1 : -1) * m, eh = Math.abs(P(i ? 374 : 145).y - P(i ? 386 : 159).y) || bh * .04, L = v('long');
     if (style === 'wing' || style === 'smoky') {
       const c = ps[ps.length - 1], tip = { x: c.x + s * bw * .085 * (1 + L * .6), y: c.y - eh * 1.1 * (1 + L * .35) };
       out.push({ d: through(ps.slice(2)) + ' L' + pt(tip), w: u * (style === 'wing' ? .7 : 1.6) });
       if (style === 'smoky') out.push({ d: through(ps.map(p => ({ x: p.x, y: p.y - eh * .55 }))), w: u * 1.4 });
-      if (i === 1) control('long', tip, 'x', say(L, ['longer wing', 'with a longer, more dramatic wing'], ['short flick', 'with a short, subtle flick']));
+      if (s > 0) control('long', tip, 'x', say(L, ['longer wing', 'with a longer, more dramatic wing'], ['short flick', 'with a short, subtle flick']));
       continue;
     }
     const long = (style === 'bright' ? 1.6 : 1) * (1 + L * .55);
@@ -166,13 +168,13 @@ function draw(f, part, style, shape) {
       out.push({ d: 'M' + pt(p) + ' Q' + pt({ x: p.x + Math.cos(a) * len * .4, y: p.y + Math.sin(a) * len * .7 }) + ', ' + pt(e), w: u * .32 });
       if (k === ps.length - 3) tip = e;
     }
-    if (i === 1) control('long', tip, 'y', say(L, ['longer', 'longer, fuller lashes'], ['shorter', 'shorter, more natural lashes']));
+    if (s > 0) control('long', tip, 'y', say(L, ['longer', 'longer, fuller lashes'], ['shorter', 'shorter, more natural lashes']));
   }
 
   if (part === 'beard') {
     const mid = { x: (P(234).x + P(454).x) / 2, y: (P(234).y + P(152).y) / 2 };
     const push = (/** @type {number} */ k) => JAW.map(i => { const p = P(i); return { x: mid.x + (p.x - mid.x) * (1 + k), y: mid.y + (p.y - mid.y) * (1 + k * 1.4) }; });
-    const lipTop = P(0), lip = { l: P(61), r: P(291) }, under = P(17);
+    const lipTop = P(0), lip = m > 0 ? { l: P(61), r: P(291) } : { l: P(291), r: P(61) }, under = P(17);
     const moustache = 'M' + pt({ x: lip.l.x - bw * .03, y: lip.l.y + bh * .01 }) + ' C' + pt({ x: lip.l.x, y: lipTop.y - bh * .045 }) + ', ' + pt({ x: cx - bw * .05, y: lipTop.y - bh * .05 }) + ', ' + pt({ x: cx, y: lipTop.y - bh * .03 })
       + ' C' + pt({ x: cx + bw * .05, y: lipTop.y - bh * .05 }) + ', ' + pt({ x: lip.r.x, y: lipTop.y - bh * .045 }) + ', ' + pt({ x: lip.r.x + bw * .03, y: lip.r.y + bh * .01 });
     if (style === 'moustache') out.push({ d: moustache, w: u * 1.6 });
@@ -186,7 +188,7 @@ function draw(f, part, style, shape) {
     } else if (style === 'trimmed' || style === 'full') {
       const n0 = style === 'full' ? 22 : 12, k = (style === 'full' ? .12 : .05) + v('length') * .07, edge = push(k).slice(1, -1);
       out.push({ d: through(edge), w: u * .8 });
-      const cheek = (/** @type {number} */ s) => { const c = side(s).cheek; return 'M' + pt({ x: c.x - s * bw * .02, y: c.y + bh * .02 }) + ' Q' + pt({ x: c.x - s * bw * .1, y: P(s < 0 ? 61 : 291).y - bh * .12 }) + ', ' + pt({ x: P(s < 0 ? 61 : 291).x - s * bw * .05, y: P(s < 0 ? 61 : 291).y + bh * .01 }); };
+      const cheek = (/** @type {number} */ s) => { const c = side(s).cheek, l = s < 0 ? lip.l : lip.r; return 'M' + pt({ x: c.x - s * bw * .02, y: c.y + bh * .02 }) + ' Q' + pt({ x: c.x - s * bw * .1, y: l.y - bh * .12 }) + ', ' + pt({ x: l.x - s * bw * .05, y: l.y + bh * .01 }); };
       out.push({ d: cheek(-1), w: u * .6 }, { d: cheek(1), w: u * .6 }, { d: moustache, w: u * 1.1 });
       for (let j = 0; j < n0; j++) { const a = edge[1 + Math.floor((j + .5) / n0 * (edge.length - 2))], p = lerp(a, { x: cx, y: under.y }, .25 + r() * .1); out.push({ d: 'M' + pt(lerp(a, p, .15)) + ' L' + pt(p), w: u * .3 }); }
       control('length', edge[Math.floor(edge.length / 2)], 'y', say(v('length'), ['longer', 'longer and fuller', 'much longer', 'much longer and fuller'], ['shorter', 'shorter, closer to the skin', 'very short', 'very short, close-cropped']));

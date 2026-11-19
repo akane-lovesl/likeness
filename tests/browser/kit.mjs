@@ -33,10 +33,16 @@ export async function pinAndSend(page, note) {
   await page.locator('button.focus__send').click();
 }
 
-/** From the Lookbook, a photo brought in: the mirror opens on it. */
+/**
+ * From the Lookbook, a photo brought in: the mirror opens on it. Where the browser has a camera (the suite's has a
+ * fake one), the live mirror opens first and the photo is chosen from there, as a person would.
+ */
 export async function mirrorOn(page, sitter) {
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('.lb-ask__photo').click()]);
-  await chooser.setFiles(sitter);
+  const chooser = page.waitForEvent('filechooser');
+  await page.locator('.lb-ask__photo').click();
+  const live = page.locator('section.lv');
+  if (await Promise.race([chooser.then(() => false), live.waitFor({ timeout: 15_000 }).then(() => true, () => false)])) await live.locator('.lv-gallery').click();
+  await (await chooser).setFiles(sitter);
   await expect(page.locator('section.mr')).toBeVisible();
 }
 

@@ -14,7 +14,9 @@ let loading = /** @type {Promise<any> | null} */ (null);
 export const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
 const BROWS = [[70, 63, 105, 66, 107, 55, 65, 52, 53, 46], [300, 293, 334, 296, 336, 285, 295, 282, 283, 276]];
 const EYES = [[33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7], [263, 466, 388, 387, 386, 385, 384, 398, 362, 382, 381, 380, 374, 373, 390, 249]];
-const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
+/** The mouth's opening, inside the lips. */
+export const MOUTH = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
+export const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
 /** The parts a look can change, in the order they are offered. */
 export const PARTS = ['bangs', 'brows', 'lashes', 'lips', 'beard', 'colour'];
 
@@ -82,12 +84,107 @@ export function faceOf(c) {
     try {
       const marker = await loader(), res = marker.detect(c), lm = res?.faceLandmarks?.[0];
       if (!lm?.length) return null;
-      const w = c.width, h = c.height, pts = lm.map((/** @type {any} */ p) => ({ x: p.x * w, y: p.y * h, z: (p.z || 0) * w }));
-      const xs = OVAL.map(i => pts[i].x), ys = OVAL.map(i => pts[i].y), x0 = Math.min(...xs), y0 = Math.min(...ys);
-      return { pts, w, h, box: /** @type {[number, number, number, number]} */ ([x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0]) };
+      const w = c.width, h = c.height;
+      return boxed(lm.map((/** @type {any} */ p) => ({ x: p.x * w, y: p.y * h, z: (p.z || 0) * w })), w, h);
     } catch { return null; }
   })());
   return read.get(c);
+}
+
+/**
+ * The same face in the same picture at another size, and turned round if asked (as a front camera's picture is shown,
+ * a mirror image): its points move with the picture and keep their names.
+ * @param {Face} f @param {number} w @param {number} h @param {boolean} [mirror] @returns {Face}
+ */
+export function reframed(f, w, h, mirror = false) {
+  const kx = w / f.w, ky = h / f.h;
+  return boxed(f.pts.map(p => ({ x: (mirror ? f.w - p.x : p.x) * kx, y: p.y * ky, z: (p.z || 0) * kx })), w, h);
+}
+
+/** A face from its points: with the box round its outline. @param {Pt[]} pts @param {number} w @param {number} h @returns {Face} */
+function boxed(pts, w, h) {
+  const xs = OVAL.map(i => pts[i].x), ys = OVAL.map(i => pts[i].y), x0 = Math.min(...xs), y0 = Math.min(...ys);
+  return { pts, w, h, box: [x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0] };
+}
+
+/** @typedef {{ sx: number, sy: number, sw: number, sh: number }} Crop the part of a video a viewer shows */
+
+/** Whether the graphics here are drawn in software (no chip to speak of), where the CPU reads a face faster. */
+function softwareGL() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl'), info = gl?.getExtension('WEBGL_debug_renderer_info');
+    return !gl || /swiftshader|llvmpipe|software|softpipe/i.test(info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '');
+  } catch { return true; }
+}
+
+let videoLoading = /** @type {Promise<any> | null} */ (null);
+/** The face landmarker for a moving picture, a frame at a time (on the graphics chip where it can, else the CPU). */
+function videoModel() {
+  videoLoading ||= (async () => {
+    quiet();
+    const vision = await import(VENDOR + 'vision_bundle.mjs');
+    const files = await vision.FilesetResolver.forVisionTasks(VENDOR + 'wasm');
+    const make = (/** @type {string} */ delegate) => vision.FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: VENDOR + 'face_landmarker.task', delegate }, runningMode: 'VIDEO', numFaces: 1 });
+    if (softwareGL()) return make('CPU');
+    try { return await make('GPU'); } catch { return make('CPU'); }
+  })();
+  videoLoading.catch(() => { videoLoading = null; });
+  return videoLoading;
+}
+
+/**
+ * A face followed through a video. Each call reads the frame showing now and gives its face in the pixels of a crop
+ * of it (the part the viewer shows, at the viewer's size), smoothed from one frame to the next: steady when the head
+ * is still, quick when it moves. Null where there is no face.
+ * @returns {Promise<(video: HTMLVideoElement, crop: Crop, w: number, h: number) => Face | null>}
+ */
+export async function follower() {
+  const marker = await videoModel();
+  let last = 0, prev = /** @type {Pt[] | null} */ (null);
+  return (video, crop, w, h) => {
+    const t = Math.max(last + 1, performance.now()); last = t;
+    const lm = marker.detectForVideo(video, t)?.faceLandmarks?.[0];
+    if (!lm?.length) { prev = null; return null; }
+    const vw = video.videoWidth, vh = video.videoHeight, kx = w / crop.sw, ky = h / crop.sh;
+    /** @type {Pt[]} */ let pts = lm.map((/** @type {any} */ p) => ({ x: (p.x * vw - crop.sx) * kx, y: (p.y * vh - crop.sy) * ky, z: (p.z || 0) * vw * kx }));
+    const was = prev;
+    if (was) {
+      const a = Math.min(1, .3 + Math.hypot(pts[1].x - was[1].x, pts[1].y - was[1].y) / w * 45);
+      pts = pts.map((p, i) => ({ x: was[i].x + (p.x - was[i].x) * a, y: was[i].y + (p.y - was[i].y) * a, z: (was[i].z || 0) + ((p.z || 0) - (was[i].z || 0)) * a }));
+    }
+    prev = pts;
+    return boxed(pts, w, h);
+  };
+}
+
+let hairVideoLoading = /** @type {Promise<any> | null} */ (null);
+/**
+ * The hair in a video, found a few times a second: each call hands the segmenter a small copy of the frame (when it is
+ * free) and gives the latest mask, white where there is hair, at that small size. Null until there is one.
+ * @returns {Promise<(frame: HTMLCanvasElement) => HTMLCanvasElement | null>}
+ */
+export async function hairFollower() {
+  hairVideoLoading ||= (async () => {
+    quiet();
+    const vision = await import(VENDOR + 'vision_bundle.mjs');
+    const files = await vision.FilesetResolver.forVisionTasks(VENDOR + 'wasm');
+    return vision.ImageSegmenter.createFromOptions(files, { baseOptions: { modelAssetPath: VENDOR + 'hair_segmenter.tflite', delegate: 'CPU' }, runningMode: 'VIDEO', outputCategoryMask: false, outputConfidenceMasks: true });
+  })();
+  hairVideoLoading.catch(() => { hairVideoLoading = null; });
+  const seg = await hairVideoLoading;
+  let mask = /** @type {HTMLCanvasElement | null} */ (null), at = 0, last = 0;
+  return (frame) => {
+    const now = performance.now(); if (now - at < 180) return mask;
+    at = now;
+    const t = Math.max(last + 1, now); last = t;
+    seg.segmentForVideo(frame, t, (/** @type {any} */ res) => {
+      const masks = res?.confidenceMasks, m = masks?.[masks.length - 1]; if (!m) return;
+      const w = m.width, h = m.height, data = m.getAsFloat32Array(), out = mask && mask.width === w && mask.height === h ? mask : make(w, h), x = /** @type {CanvasRenderingContext2D} */ (out.getContext('2d')), img = x.createImageData(w, h);
+      for (let i = 0; i < data.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = Math.max(0, Math.min(1, (data[i] - .45) / .22)) * 255; }
+      x.putImageData(img, 0, 0); mask = out;
+    });
+    return mask;
+  };
 }
 
 const at = (/** @type {Face} */ f, /** @type {number[]} */ ids) => ids.map(i => f.pts[i]);

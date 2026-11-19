@@ -16,7 +16,7 @@ import { faceOf, reframed, knowHair, contoursOf, shapesOf, maskOf, partAt, hairO
 /**
  * The frame turning through a ring of angles: each picture with its face where it is known; two turners (m) where
  * neighbours both have one, so the head turns between them rather than one picture fading into the next.
- * @typedef {{ ring: { src: string, face?: Face | null }[], p: number, at: number, a: HTMLImageElement, b: HTMLImageElement, imgs: (HTMLImageElement | null)[], m: null | { cs: HTMLCanvasElement[], ts: any[], on: number[] } }} Turning
+ * @typedef {{ ring: { src: string, face?: Face | null, hair?: HTMLCanvasElement | null }[], p: number, at: number, a: HTMLImageElement, b: HTMLImageElement, imgs: (HTMLImageElement | null)[], m: null | { cs: HTMLCanvasElement[], ts: any[], on: number[] } }} Turning
  */
 import { addPrint, addItem, setKept, printById, urlOf, settings } from '../state.js';
 import { runTurn } from '../ui/turn.js';
@@ -785,6 +785,13 @@ export function openMirror(o) {
     frame.append(...cs);
     s.m = { cs, ts: /** @type {any[]} */ (ts), on: [-1, -1] };
     turnTo(s.p);
+    // then each one's hair, so the hair comes round with the head and the room behind it stays where it is
+    for (const [k, r] of s.ring.entries()) {
+      const img = s.imgs[k]; if (!img || !r.face) continue;
+      const c = P.make(img.naturalWidth, img.naturalHeight); ctx(c).drawImage(img, 0, 0);
+      r.hair = await hairOf(c).catch(() => null); if (turning !== s) return;
+      const j = k % 2; if (r.hair && s.m.on[j] === k) s.m.ts[j].hair(r.hair, r.face);
+    }
   }
   /** The frame at a point between the angles: one head turning where it can, else the two nearest cross-fade and the frame leans. @param {number} v */
   function turnTo(v) {
@@ -800,7 +807,7 @@ export function openMirror(o) {
         // drawn at the size it is seen (it covers the frame as a picture would), not the picture's own: far less to draw
         const c = m.cs[j], z = Math.min(1, Math.max(frame.clientWidth / r.face.w, frame.clientHeight / r.face.h) * dpr()), cw = Math.round(r.face.w * z), ch = Math.round(r.face.h * z);
         if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
-        m.ts[j].load(r.face); m.ts[j].picture(img); m.on[j] = k;
+        m.ts[j].load(r.face); m.ts[j].picture(img); if (r.hair) m.ts[j].hair(r.hair, r.face); m.on[j] = k;
       }
       const gap = (yawOf(B.face) - yawOf(A.face)) * TURN_PER_YAW, ca = m.cs[i % 2], cb = m.cs[(i + 1) % 2];
       // a turner's yaw takes the nose the other way across the picture from its own yaw: hence the minus

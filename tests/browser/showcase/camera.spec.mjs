@@ -53,6 +53,39 @@ test('words typed first: the camera opens straight away with the look as it was 
   await expect(mirror.locator('.mr-token')).toHaveText([/^Feathered.*much fuller$/]);
 });
 
+test('the ring becomes you: a photo of you kept, every look in the ring is on you, and next time you are offered', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.lb-ask__photo').click();
+  const live = page.locator('section.lv');
+  await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
+  await live.locator('.lv-shutter').click();
+  const mirror = page.locator('section.mr');
+  await expect(mirror).toBeVisible();
+  await mirror.locator('.mr-bar__back').click();
+  await expect(mirror).toHaveCount(0);
+  // back at the ring, it is yours: each look a sketch on your photo, the switch saying whose faces they are on
+  const book = page.locator('section.book');
+  const you = book.locator('.lb-whose button[data-who="you"]'), them = book.locator('.lb-whose button[data-who="them"]');
+  await expect(you).toHaveAttribute('aria-pressed', 'true', { timeout: 20_000 });
+  await expect(book.locator('.lb-card--you')).toHaveCount(8);
+  await expect(book.locator('.lb-caption__part')).toContainText('· YOU');
+  await expect(book.locator('.lb-card.is-front .lb-card__tag')).toHaveText('Sketch');
+  await them.click();
+  await expect(book.locator('.lb-card--you')).toHaveCount(0);
+  await you.click();
+  await expect(book.locator('.lb-card--you')).toHaveCount(8);
+  // a look on you, chosen (from the keyboard: the ring turns by itself, and a pointer can meet a card on its way): your photo in the mirror, wearing it
+  await book.locator('.lb-card.is-front').press('Enter');
+  await expect(mirror).toBeVisible();
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Your photo');
+  await expect(mirror.locator('.mr-token')).toHaveCount(1);
+  // another day: you are offered, not shown
+  await page.reload();
+  await expect(you).toBeVisible({ timeout: 20_000 });
+  await expect(them).toHaveAttribute('aria-pressed', 'true');
+  await expect(book.locator('.lb-card--you')).toHaveCount(0);
+});
+
 test('On me, on a face in the ring: the camera opens with that look on', async ({ page }) => {
   await page.goto('/');
   const front = page.locator('section.book .lb-card.is-front');

@@ -32,7 +32,7 @@ This computer is where the third one comes alive.
   - `private/` is ignored by git. Jobs, uploads, this machine's settings, certificates and learned estimates live there.
   - The only faces that may be committed are the drawn sitters (`tests/fixtures/sitters/`, `web/sitters/`) and the Lookbook's invented people (`web/examples/`). Test with those.
   - If the user tries their own photograph, it stays in `private/`.
-- **Labels stay honest.** Only GPT Image's pictures are called a render. A sketch or a simulated picture never passes for one: not on a card, not on a stamp, not on the foot of a saved card.
+- **Labels stay honest.** Only GPT Image's pictures are called a render. Mark sketches and simulation where they appear. The Lookbook and the exported stylist card keep their pictures clear of model branding.
 - **The studio protocol stays stable.** That is the event names and endpoints at the top of `likeness/server.py`, and the client in `web/js/studio/remote.js`. If you must change it, change both sides and the tests in one commit.
 - **No GitHub Actions workflow files.** The push token cannot push them.
 - **Before every push**, run `npm run check`, `uv run pytest` and `npm test`. One Chrome at a time: don't run the browser suite beside other browser work.
@@ -151,7 +151,7 @@ Every row below must hold. Where one does not, fix it: the code, the words or th
 | **The live mirror** | Start the camera on the Lookbook. The look stays on a moving face. Touching a part opens every style as live tiles; a swipe changes style. *Colour* lands on hair only. The shutter carries the moment to the mirror with the look on. `section.lv` tells how the face is read: `data-reader` (`aside`, in a worker, or `page`) and `data-read` (milliseconds). |
 | **Every side of you** | Turning slowly catches the front and both sides without holding still for long. The mirror then turns through them like one head. |
 | **The ring becomes you** | With a photo of you kept, the ring deals every look on you, labelled *Sketch*, and *Them · You* switches between the people and you. A card opens your photo in the mirror wearing that look, and **Try on** from there makes renders. |
-| **Show it** | On your photo, **Show** and then **Save the card** give a 1080 × 1350 picture you would hand a stylist. Its foot says truly what each picture is. |
+| **Show it** | On your photo, **Show** and then **Save the card** give a 1080 × 1350 picture you would hand a stylist. The card identifies sketched details where present. |
 | **The desk** | 0003's step 6 walk-through still holds with the finished app: words, a picture brought in, @ and #, pins, backdrops, variations, every angle, rooms (invented, and *Take me there*), today's sky, Kept and the taste note, paces, Stop, a reload mid-turn, and a failure. |
 | **Honest labels** | The showcase (`npm run serve`) labels its sketches. The mirror identifies the example portraits as renders. The simulator stamps its stand-ins. Only pictures made with GPT Image are called renders. |
 | **Feel** | Waiting feels alive: notes, the plan, the fuse, previews. Nothing stutters or jumps. With animations turned off in Windows (*reduce motion*), the app is calm. |

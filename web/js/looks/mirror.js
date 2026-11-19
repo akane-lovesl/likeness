@@ -985,7 +985,7 @@ export function openMirror(o) {
 
 /**
  * The card a look is kept on, 1080 by 1350: the look on you, large, with every side of you beside it where they were
- * caught; under it, each part in its words; at the foot, what the pictures are, honestly, and the day.
+ * caught. Each part has its words below the pictures, with the date in the header.
  * @param {{ front: { pic: HTMLCanvasElement, face: Face | null }, sides: { pic: HTMLImageElement, face: Face | null }[], picks: Pick[], stamp: string, date: Date }} o
  */
 function card(o) {
@@ -1015,8 +1015,9 @@ function card(o) {
       lines.forEach((l, j) => x.fillText(l, cx, cy + Math.round((98 + j * 34) * k)));
     }
   });
-  // what the pictures are: never a sketch passed off as anything else
-  mono(16, 'rgba(246,239,230,.42)'); x.fillText(o.stamp.toUpperCase() + (o.sides.length ? '  ·  SIDES: LIVE SKETCH ON THIS DEVICE' : ''), 72, H - 56);
+  const stamp = o.stamp.startsWith('GPT Image') ? o.stamp.slice('GPT Image'.length).replace(/^\s*\+\s*/, '') : o.stamp;
+  const footer = [stamp.toUpperCase(), o.sides.length ? 'SIDES: LIVE SKETCH ON THIS DEVICE' : ''].filter(Boolean).join('  ·  ');
+  if (footer) { mono(16, 'rgba(246,239,230,.42)'); x.fillText(footer, 72, H - 56); }
   return c;
 }
 /**

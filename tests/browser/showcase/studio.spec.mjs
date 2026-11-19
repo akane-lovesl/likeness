@@ -53,6 +53,32 @@ test('the mirror reads a face, names its parts in the margin, and sketches a loo
   await expect(made(page, 'Sketch')).toHaveCount(1);
 });
 
+test('a chosen part brings the mirror close, and its look is shaped by hand: the words write themselves', async ({ page }) => {
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/mei.jpg');
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await mirror.locator('.mr-note[data-part="bangs"]').click();
+  await expect(mirror).toHaveClass(/is-close/);
+  await mirror.locator('.mr-style[data-style="blunt"]').click();
+  const handle = mirror.locator('.mr-handle[data-control="length"]');
+  await expect(handle).toBeVisible();
+  const before = await mirror.locator('.mr-sketch path').last().getAttribute('d');
+  const box = await handle.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 40, { steps: 8 });
+  await expect(mirror.locator('.mr-say')).toHaveClass(/is-on/);
+  await page.mouse.up();
+  await expect(mirror.locator('.mr-token__shape')).toHaveText(/brows|lashes/);
+  expect(await mirror.locator('.mr-sketch path').last().getAttribute('d')).not.toBe(before);
+  await mirror.locator('.mr-ask__go').click();
+  await expect(mirror.locator('.mr-take:not(.is-origin)')).toHaveCount(1, { timeout: 20_000 });
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Sketch');
+  await mirror.locator('.mr-styles__back').click();
+  await expect(mirror).not.toHaveClass(/is-close/);
+});
+
 test('the face turns under a finger, on the device, and says so while it is turned', async ({ page }) => {
   await page.goto('/');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');

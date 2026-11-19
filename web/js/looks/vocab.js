@@ -72,10 +72,10 @@ export function sketchFor(part, s) {
 
 /**
  * The words for the studio: the change, and that nothing else changes. A person's own words come after, as they
- * wrote them. @param {{ part: string, style: Style }[]} picks @param {string} own
+ * wrote them. @param {{ part: string, style: Style, said?: string }[]} picks @param {string} own
  */
 export function wordsFor(picks, own = '') {
-  const change = picks.map(p => p.style.words);
+  const change = picks.map(p => p.style.words + (p.said ? ' — ' + p.said : ''));
   const said = change.length ? 'Give them ' + (change.length > 1 ? change.slice(0, -1).join(', ') + ' and ' + change[change.length - 1] : change[0]) + '.' : '';
   return [said, own.trim(), change.length ? 'Keep everything else exactly as it is: the same person, face, expression, skin, light and background.' : ''].filter(Boolean).join(' ');
 }
@@ -100,9 +100,15 @@ export const partsIn = (text) => NAMED.filter(([, re]) => re.test(text.toLowerCa
 
 /** The colour a part is washed with when a change is sketched over a face: the hair's new colour, or the lips'. */
 const LIP_TINT = /** @type {Record<string, string>} */ ({ nude: '#c98b7a', red: '#c1272d', berry: '#7b1e3c', gloss: '#e8a9a0' });
-/** @param {string} part @param {string} style @returns {string | null} */
-export function tintOf(part, style) {
-  if (part === 'colour') return styleOf(part, style)?.sketch?.colour || null;
-  if (part === 'lips') return LIP_TINT[style] || null;
-  return null;
+/** @param {string} part @param {string} style @param {number} [shade] lighter above 0, deeper below @returns {string | null} */
+export function tintOf(part, style, shade = 0) {
+  const t = part === 'colour' ? styleOf(part, style)?.sketch?.colour : part === 'lips' ? LIP_TINT[style] : null;
+  return t ? shadeOf(t, shade) : null;
+}
+
+/** A colour made lighter (v above 0) or deeper (below), up to nearly half way to white or black. @param {string} hex @param {number} v */
+export function shadeOf(hex, v) {
+  if (!v) return hex;
+  const c = parseInt(hex.slice(1), 16), to = v > 0 ? 255 : 0, k = Math.min(1, Math.abs(v)) * .45;
+  return '#' + [c >> 16, (c >> 8) & 255, c & 255].map(x => Math.round(x + (to - x) * k).toString(16).padStart(2, '0')).join('');
 }

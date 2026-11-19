@@ -64,6 +64,11 @@ test('the mirror tries a look on: four takes inside the part\'s mask, one kept, 
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
   await mirror.locator('.mr-note[data-part="brows"]').click();
   await mirror.locator('.mr-style[data-style="bold"]').click();
+  // shaped by its handle (here with the keys): the arch raised, and the words for it go to the studio
+  const arch = mirror.locator('.mr-handle[data-control="arch"]');
+  await arch.focus();
+  for (let k = 0; k < 5; k++) await page.keyboard.press('ArrowUp');
+  await expect(mirror.locator('.mr-token__shape')).toHaveText('higher arch');
   await mirror.locator('.mr-ask__go').click();
   await expect(mirror.locator('.mr-take.is-pending')).toHaveCount(4);
   await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(4, { timeout: 60_000 });
@@ -71,7 +76,7 @@ test('the mirror tries a look on: four takes inside the part\'s mask, one kept, 
   const region = turns.find(t => t.intent.op === 'region');
   expect(region.n).toBe(4);
   expect(region.pins[0].mask).toBeTruthy();
-  expect(region.pins[0].note).toContain('bold, fuller, darker brows');
+  expect(region.pins[0].note).toContain('bold, fuller, darker brows — with a higher, lifted arch');
   await mirror.locator('.mr-take').nth(3).click();
   await expect(mirror.locator('.mr-take').nth(3)).toHaveAttribute('aria-selected', 'true');
   await mirror.locator('.mr-keep').click();

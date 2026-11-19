@@ -34,7 +34,7 @@ There are three editions, each always labelled honestly. Never let one pass for 
 - The briefs Codex is given (`likeness/brief.py`).
 - Settings (`studio.toml`).
 - `likeness probe codex`.
-- 41 pytest tests and a 31-test browser suite.
+- 41 pytest tests and a 32-test browser suite.
 
 **Not proven anywhere yet.** All of these are yours to settle:
 

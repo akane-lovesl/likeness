@@ -98,9 +98,12 @@
 .mr-bar__mine { margin-left: auto; display: flex; align-items: center; gap: 1.4cqw; height: 10.5cqw; padding: 0 3.8cqw 0 3cqw; border-radius: 99cqw; border: 1px solid var(--lk-line); background: var(--lk-glass); backdrop-filter: blur(10px);
   font: 500 2.4cqw/1 var(--font-mono) !important; letter-spacing: .14em; text-transform: uppercase; }
 .mr-stage { position: relative; z-index: 2; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.mr-frame { position: relative; flex: none; width: 76cqw; height: 101cqw; border-radius: 3.6cqw; overflow: hidden; background: #1a1513; touch-action: none; user-select: none; -webkit-user-select: none;
+.mr-frame { position: relative; flex: none; width: 76cqw; height: 101cqw; cursor: grab; border-radius: 3.6cqw; overflow: hidden; background: #1a1513; touch-action: none; user-select: none; -webkit-user-select: none;
   box-shadow: 0 6cqw 14cqw rgb(0 0 0 / .6), 0 0 0 1px rgb(255 255 255 / .06); transition: transform .5s var(--lk-ease); }
 .mr-pic, .mr-angle { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.mr-turnview { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; visibility: hidden; }
+.mr-frame.is-device-turn .mr-turnview { visibility: visible; }
+.mr-frame.is-device-turn :is(.mr-pic, .mr-wash, .mr-sketch, .mr-read) { visibility: hidden; }
 .mr-over { opacity: 0; }
 .mr-over.is-in { animation: lk-reveal .45s var(--lk-ease) forwards; }
 .mr-over.is-held { opacity: 1; animation: none; clip-path: none; }
@@ -145,8 +148,8 @@
 .mr.no-face .mr-notes, .mr.no-face .mr-lines, .mr.is-take .mr-notes, .mr.is-take .mr-lines, .mr.is-turning .mr-notes, .mr.is-turning .mr-lines, .mr-frame.is-comparing .mr-notes, .mr-frame.is-comparing .mr-lines { opacity: 0; }
 .mr.is-take .mr-notes .mr-note { pointer-events: none; }
 
-.mr-takes { flex: none; display: flex; align-items: flex-end; justify-content: center; gap: 1.6cqw; height: 19cqw; padding: 2.8cqw 4cqw 0; touch-action: none; transition: opacity .3s; }
-.mr-takes.is-empty { opacity: 0; pointer-events: none; }
+.mr-takes { flex: none; display: flex; align-items: flex-end; justify-content: center; gap: 1.6cqw; height: 19cqw; padding: 2.8cqw 4cqw 0; touch-action: none; transition: opacity .3s, height .45s var(--lk-ease), padding .45s var(--lk-ease); }
+.mr-takes.is-empty { opacity: 0; pointer-events: none; height: 0; padding-top: 0; }
 .mr-take { position: relative; flex: none; width: 10.6cqw; aspect-ratio: 3 / 4; padding: 0; border: 0; border-radius: 1.8cqw; overflow: hidden; background: rgb(255 255 255 / .06); box-shadow: 0 1.4cqw 3cqw rgb(0 0 0 / .45);
   rotate: calc((var(--i) - (var(--n) - 1) / 2) * 2.5deg); transition: translate .3s var(--lk-pop), scale .3s var(--lk-pop), rotate .3s var(--lk-ease), box-shadow .3s; animation: lk-deal .55s calc(var(--i) * 60ms) var(--lk-pop) backwards; }
 .mr-take.is-dealt { animation: none; }

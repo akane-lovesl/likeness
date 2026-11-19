@@ -41,7 +41,8 @@ You may change the cast's words, the portrait direction (`[style]` in `cast.toml
 2. The Lookbook: the ring turns, each look sweeps across its face, the names read well. Turn it with a finger. Touch a part (Bangs, Brows…) and the ring deals only those looks.
 3. Touch a face: the mirror opens on it, with its looks as takes and every angle of the first. Drag across the frame to turn it.
 4. **On me**, with a drawn sitter from `tests/fixtures/sitters/` (never a photograph of a real person): the face is read (a line of light, its points, its outlines, then the parts named in the margins). Pick *Bangs → Curtain*, add a few words, **Try on**. Four takes come back as GPT Image renders, inside the bangs' mask (`op: region`, one pin, the mask from `web/js/studio/face.js`). Scrub them, keep one, then **Every angle**: three more, and the frame turns.
-5. Do the same with an example portrait (the mirror brings it in as a picture when a change is asked of it): this is the closest thing to a real face that may be used.
+5. Drag a face sideways in the mirror, a portrait and one of its looks: it turns on the device (WebGL over the face's own mesh, `web/js/looks/turn.js`), the stamp reads *Turned on this device*, and it springs back to the picture itself. These photoreal faces are what it was made for, so judge it on them: the cheek's edge stays clean, the hair comes round with the head, the wall behind stays straight. Where it tears or swims, tune `meshOf` (the bands' reach and depth) or the soft limit in `mirror.js`, and say what you changed and why.
+6. Do the same with an example portrait (the mirror brings it in as a picture when a change is asked of it): this is the closest thing to a real face that may be used.
 
 Fix what you find. Change the app if it needs it; the house rules are in `AGENTS.md`.
 

@@ -53,6 +53,26 @@ test('the mirror reads a face, names its parts in the margin, and sketches a loo
   await expect(made(page, 'Sketch')).toHaveCount(1);
 });
 
+test('the face turns under a finger, on the device, and says so while it is turned', async ({ page }) => {
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
+  const mirror = page.locator('section.mr'), frame = mirror.locator('.mr-frame');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await expect(mirror.locator('.mr-parts')).toBeHidden();   // a face read is its own menu
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Your photo');
+  const box = await frame.boundingBox();
+  await page.mouse.move(box.x + box.width * .5, box.y + box.height * .45);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * .85, box.y + box.height * .45, { steps: 10 });
+  await expect(frame).toHaveClass(/is-device-turn/);
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Turned on this device');
+  expect(Number(await frame.getAttribute('data-yaw'))).toBeLessThan(-0.1);
+  await page.mouse.up();
+  await expect(frame).not.toHaveClass(/is-device-turn/);
+  await expect(frame).toHaveAttribute('data-yaw', '0.000');
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Your photo');
+});
+
 test('once the studio has made its people, the ring is their faces, and a face opens on its looks and every angle', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await stubExamples(page);

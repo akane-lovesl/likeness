@@ -11,15 +11,15 @@ const VENDOR = new URL('../../vendor/mediapipe/', import.meta.url).href;
 let loading = /** @type {Promise<any> | null} */ (null);
 
 /** The outline of the face, in order round it from the top of the forehead. */
-const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+export const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
 const BROWS = [[70, 63, 105, 66, 107, 55, 65, 52, 53, 46], [300, 293, 334, 296, 336, 285, 295, 282, 283, 276]];
 const EYES = [[33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7], [263, 466, 388, 387, 386, 385, 384, 398, 362, 382, 381, 380, 374, 373, 390, 249]];
 const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
 /** The parts a look can change, in the order they are offered. */
 export const PARTS = ['bangs', 'brows', 'lashes', 'lips', 'beard', 'colour'];
 
-/** @typedef {{ x: number, y: number }} Pt */
-/** @typedef {{ pts: Pt[], w: number, h: number, box: [number, number, number, number] }} Face points in pixels of a w × h picture; box the face's outline */
+/** @typedef {{ x: number, y: number, z?: number }} Pt */
+/** @typedef {{ pts: Pt[], w: number, h: number, box: [number, number, number, number] }} Face points in pixels of a w × h picture (z: depth in the same pixels, the head's centre at 0, nearer negative); box the face's outline */
 
 function loader() {
   loading ||= (async () => {
@@ -82,7 +82,7 @@ export function faceOf(c) {
     try {
       const marker = await loader(), res = marker.detect(c), lm = res?.faceLandmarks?.[0];
       if (!lm?.length) return null;
-      const w = c.width, h = c.height, pts = lm.map((/** @type {any} */ p) => ({ x: p.x * w, y: p.y * h }));
+      const w = c.width, h = c.height, pts = lm.map((/** @type {any} */ p) => ({ x: p.x * w, y: p.y * h, z: (p.z || 0) * w }));
       const xs = OVAL.map(i => pts[i].x), ys = OVAL.map(i => pts[i].y), x0 = Math.min(...xs), y0 = Math.min(...ys);
       return { pts, w, h, box: /** @type {[number, number, number, number]} */ ([x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0]) };
     } catch { return null; }

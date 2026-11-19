@@ -11,11 +11,12 @@ import { on } from '../core/bus.js';
 import { progressAt } from '../core/estimate.js';
 import { studio } from '../studio/studio.js';
 import * as P from '../studio/painter.js';
-import { faceOf, contoursOf, shapesOf, maskOf, partAt } from '../studio/face.js';
+import { faceOf, contoursOf, shapesOf, maskOf, partAt, hairOf } from '../studio/face.js';
 import { addPrint, addItem, setKept, printById, urlOf, settings } from '../state.js';
 import { runTurn } from '../ui/turn.js';
 import { PARTS, partById, styleOf, wordsFor, titleOf, plateSVG, partsIn, tintOf } from './vocab.js';
 import { markup } from './markup.js';
+import { turner } from './turn.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const INK = '#fff4e0';
@@ -82,6 +83,8 @@ export function openMirror(o) {
   const print = o.print || null;
   /** @type {Pick[]} */ let picks = [...(o.picks || [])];
   let part = '', shown = -1, busy = false, spotsUp = false, washing = 0, swap = 0;
+  /** @type {ReturnType<typeof turner>} */ let turn = null;
+  const surfaces = new WeakMap();
   const dealt = new WeakSet(), developed = new WeakSet();
   /** @type {Take[]} */ const takes = [];
   /** @type {import('../studio/face.js').Face | null} */ let face = null;
@@ -94,6 +97,7 @@ export function openMirror(o) {
   const glow = h('div.mr-glow', { 'aria-hidden': 'true' });
   const pic = h('img.mr-pic', { alt: '', draggable: false }), over = h('img.mr-pic.mr-over', { alt: '', draggable: false });
   const read = /** @type {HTMLCanvasElement} */ (h('canvas.mr-read', { 'aria-hidden': 'true' }));
+  const turnView = /** @type {HTMLCanvasElement} */ (h('canvas.mr-turnview', { 'aria-hidden': 'true' }));
   const wash = /** @type {HTMLCanvasElement} */ (h('canvas.mr-wash', { 'aria-hidden': 'true' }));
   const sk = document.createElementNS(SVG, 'svg'); sk.setAttribute('class', 'mr-sketch'); sk.setAttribute('aria-hidden', 'true'); sk.setAttribute('preserveAspectRatio', 'none');
   const notes = h('div.mr-notes'), lines = document.createElementNS(SVG, 'svg'); lines.setAttribute('class', 'mr-lines'); lines.setAttribute('aria-hidden', 'true');
@@ -101,14 +105,14 @@ export function openMirror(o) {
   const keepBtn = h('button.mr-keep', { type: 'button', hidden: true, 'aria-label': 'Keep this one', html: icon('heart'), onclick: () => keep() });
   const turnBtn = h('button.mr-turn', { type: 'button', hidden: true, 'aria-label': 'Every angle', title: 'Every angle', html: icon('orbit'), onclick: () => angles() });
   const dial = h('div.mr-dial', { hidden: true, 'aria-hidden': 'true' }, h('i'));
-  const frame = h('div.mr-frame', null, pic, over, wash, read, sk, lines, notes, stampEl, keepBtn, turnBtn, dial);
+  const frame = h('div.mr-frame', null, pic, over, turnView, wash, read, sk, lines, notes, stampEl, keepBtn, turnBtn, dial);
   const takesRow = h('div.mr-takes', { role: 'listbox', 'aria-label': 'Takes' });
   const chips = PARTS.map(p => h('button.mr-part', { type: 'button', 'data-part': p.id, 'aria-pressed': 'false', onclick: () => choose(p.id) },
     h('span.mr-part__glyph', { html: plateSVG(p.id, p.styles[0].id) }), h('span.mr-part__name', null, p.name)));
   const partsRow = h('div.mr-parts', { role: 'toolbar', 'aria-label': 'What to change' }, ...chips);
   const stylesRow = h('div.mr-styles', { role: 'listbox', hidden: true });
   const tokens = h('div.mr-ask__tokens');
-  const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Pick a part, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => paintGo() }));
+  const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => paintGo() }));
   const goBtn = h('button.mr-ask__go', { type: 'submit' }, h('span', { html: icon('sparkle') }), h('span.mr-ask__label', null, 'Try on'));
   const ask = h('form.mr-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); tryOn(); } }, h('div.mr-ask__field', null, tokens, input), goBtn);
   const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => close() });
@@ -120,14 +124,20 @@ export function openMirror(o) {
   const from = o.from?.getBoundingClientRect() || null;
 
 
-  /** The frame as large as the space allows, in the picture's own shape. */
-  function fit() {
+  /**
+   * The frame as large as the space allows, in the picture's own shape. Soon: the frame now (the takes' row is opening
+   * or closing under it), its canvases once that has settled.
+   */
+  let sizing = 0;
+  function fit(soon = false) {
     const r = stageEl.getBoundingClientRect(), ar = base ? base.width / base.height : 3 / 4;
     const row = takesRow.getBoundingClientRect().height, hh = Math.max(80, r.height - row - r.width * .04);
     let fw = Math.min(r.width * .84, hh * ar), fh = fw / ar; if (fh > hh) { fh = hh; fw = fh * ar; }
     frame.style.width = fw.toFixed(1) + 'px'; frame.style.height = fh.toFixed(1) + 'px';
+    clearTimeout(sizing); if (soon) { sizing = setTimeout(() => fit(), 140); return; }
     const dpr = Math.min(2, devicePixelRatio || 1);
-    for (const c of [read, wash]) { const w = Math.round(fw * dpr), hgt = Math.round(fh * dpr); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
+    for (const c of [read, wash, turnView]) { const w = Math.round(fw * dpr), hgt = Math.round(fh * dpr); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
+    turn?.draw();
     if (part) mark(part); paintWash();
   }
   const dpr = () => Math.min(2, devicePixelRatio || 1);
@@ -157,8 +167,7 @@ export function openMirror(o) {
         x.strokeStyle = INK; x.lineWidth = 1.3 * r; x.lineJoin = 'round'; x.lineCap = 'round';
         lines.forEach((ln, i) => { const p = clamp((t - 900 - i * 55) / 520), out = clamp(1 - (t - 2050) / 480); if (p > 0 && out > 0) { x.globalAlpha = .85 * out; along(x, ln, p, k); } });
         x.globalAlpha = 1;
-        if (t > 1550 && !spotsUp) placeNotes();
-        if (t < 2700) requestAnimationFrame(tick); else { x.clearRect(0, 0, read.width, read.height); done(undefined); }
+        if (t < 2560) requestAnimationFrame(tick); else { x.clearRect(0, 0, read.width, read.height); done(undefined); }
       };
       requestAnimationFrame(tick);
     });
@@ -181,7 +190,9 @@ export function openMirror(o) {
   function placeNotes() {
     spotsUp = true; notes.replaceChildren(); lines.replaceChildren(); if (!face) return;
     const f = face, q = f.pts, [bx, by, bw, bh] = f.box, mid = (/** @type {number} */ a, /** @type {number} */ b) => ({ x: (q[a].x + q[b].x) / 2, y: (q[a].y + q[b].y) / 2 });
-    const at = /** @type {Record<string, { x: number, y: number }>} */ ({ bangs: { x: q[109].x, y: (q[109].y + q[105].y) / 2 }, brows: q[70], cut: { x: bx - bw * .1, y: by + bh * .7 }, colour: { x: bx + bw * .78, y: by - bh * .12 }, lashes: { x: q[263].x + bw * .01, y: q[263].y }, lips: q[291], beard: { x: q[397].x - bw * .02, y: q[397].y } });
+    const z = (/** @type {number} */ i) => turn ? turn.depth(i) : 0;
+    const at = /** @type {Record<string, { x: number, y: number, z?: number }>} */ ({ bangs: { x: q[109].x, y: (q[109].y + q[105].y) / 2, z: z(109) }, brows: { ...q[70], z: z(70) }, cut: { x: bx - bw * .1, y: by + bh * .7 }, colour: { x: bx + bw * .78, y: by - bh * .12 }, lashes: { x: q[263].x + bw * .01, y: q[263].y, z: z(263) }, lips: { ...q[291], z: z(291) }, beard: { x: q[397].x - bw * .02, y: q[397].y, z: z(397) } });
+    anchors = [];
     const fr = frame.getBoundingClientRect(), W = fr.width, H = fr.height, gap = 30 / H;
     lines.setAttribute('viewBox', '0 0 ' + W.toFixed(1) + ' ' + H.toFixed(1));
     for (const [sideParts, left] of /** @type {[string[], boolean][]} */ ([[['bangs', 'brows', 'cut'], true], [['colour', 'lashes', 'lips', 'beard'], false]])) {
@@ -192,14 +203,26 @@ export function openMirror(o) {
       for (const m of list) {
         const i = PARTS.findIndex(p => p.id === m.id), name = partById(m.id)?.name || m.id;
         const ln = document.createElementNS(SVG, 'path');
-        ln.setAttribute('d', 'M' + (m.a.x * W).toFixed(1) + ' ' + (m.a.y * H).toFixed(1) + ' L' + ((edge + (left ? .015 : -.015)) * W).toFixed(1) + ' ' + (m.y * H).toFixed(1) + ' L' + (edge * W).toFixed(1) + ' ' + (m.y * H).toFixed(1));
         ln.setAttribute('pathLength', '1'); ln.dataset.part = m.id; ln.style.setProperty('--i', String(i));
-        const dot = document.createElementNS(SVG, 'circle'); dot.setAttribute('cx', (m.a.x * W).toFixed(1)); dot.setAttribute('cy', (m.a.y * H).toFixed(1)); dot.setAttribute('r', '2.6'); dot.dataset.part = m.id; dot.style.setProperty('--i', String(i));
+        const dot = document.createElementNS(SVG, 'circle'); dot.setAttribute('r', '2.6'); dot.dataset.part = m.id; dot.style.setProperty('--i', String(i));
+        anchors.push({ ln, dot, a: at[m.id], knee: (edge + (left ? .015 : -.015)) * W, edge: edge * W, y: m.y * H, W, H });
         lines.append(ln, dot);
         notes.append(h('button.mr-note' + (left ? '.is-left' : ''), { type: 'button', 'data-part': m.id, style: { top: (m.y * 100).toFixed(2) + '%', [left ? 'right' : 'left']: ((left ? 1 - edge : edge) * 100 + 1.2).toFixed(2) + '%', '--i': i }, onclick: (/** @type {Event} */ e) => { e.stopPropagation(); choose(m.id); } }, name));
       }
     }
-    lit();
+    lit(); follow3d();
+  }
+  /** @type {{ ln: SVGPathElement, dot: SVGCircleElement, a: { x: number, y: number, z?: number }, knee: number, edge: number, y: number, W: number, H: number }[]} */
+  let anchors = [];
+  /** Each note's line from where its part is now: on the face as it is turned, or as it is at rest. */
+  function follow3d() {
+    if (!face) return;
+    const f = face;
+    for (const n of anchors) {
+      const p = turn ? turn.project(n.a.x, n.a.y, n.a.z) : n.a, x = clamp(p.x / f.w, .02, .98) * n.W, y = clamp(p.y / f.h, .04, .96) * n.H;
+      n.ln.setAttribute('d', 'M' + x.toFixed(1) + ' ' + y.toFixed(1) + ' L' + n.knee.toFixed(1) + ' ' + n.y.toFixed(1) + ' L' + n.edge.toFixed(1) + ' ' + n.y.toFixed(1));
+      n.dot.setAttribute('cx', x.toFixed(1)); n.dot.setAttribute('cy', y.toFixed(1));
+    }
   }
   /** The chosen part's note lit, the others quieter. */
   const lit = () => { for (const n of [...notes.children, ...lines.children]) n.classList.toggle('is-on', /** @type {HTMLElement} */ (n).dataset.part === part); el.classList.toggle('has-part', !!part); };
@@ -212,13 +235,15 @@ export function openMirror(o) {
     stylesRow.replaceChildren(h('button.mr-styles__back', { type: 'button', 'aria-label': 'Every part', html: icon('back'), onclick: () => unchoose() }),
       ...p.styles.map((s, i) => h('button.mr-style', { type: 'button', role: 'option', 'data-style': s.id, style: { '--d': (i * 55) + 'ms' }, 'aria-selected': String(picks.some(q => q.part === id && q.style.id === s.id)), onclick: () => pick(id, s.id) },
         h('span.mr-style__plate', { html: plateSVG(id, s.id) }), h('span.mr-style__name', null, s.name))));
-    partsRow.hidden = true; stylesRow.hidden = false;
+    menu();
     if (!reduced) stylesRow.animate([{ opacity: 0, translate: '6% 0' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
     input.placeholder = HINTS[id] || '';
     mark(id);
   }
+  /** What the dock offers: a part's styles once one is chosen; the parts themselves only where no face was read. */
+  function menu() { partsRow.hidden = !!part || !!face; stylesRow.hidden = !part; el.classList.toggle('has-menu', !!part || !face); }
   function unchoose() {
-    part = ''; partsRow.hidden = false; stylesRow.hidden = true; input.placeholder = 'Pick a part, or say it';
+    part = ''; menu(); input.placeholder = face ? 'Touch a part of the face, or say it' : 'Pick a part, or say it';
     chips.forEach(c => c.setAttribute('aria-pressed', 'false')); lit();
     ctx(read).clearRect(0, 0, read.width, read.height);
     if (!reduced) partsRow.animate([{ opacity: 0, translate: '-6% 0' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
@@ -312,32 +337,92 @@ export function openMirror(o) {
     end: d => { takesRow.classList.remove('is-scrubbing'); if (Math.abs(d.dx) < 6) { const i = takeAt(d.x, d.y); if (i !== null && i !== shown) show(i); } },
   });
 
-  // on the frame: a tap picks the part under it, a swipe goes to the next take, and holding shows the face as it was
+  // on the frame: a drag turns the face (through its angles when the studio has made them, on the device when not),
+  // a tap picks the part under it, and holding shows the face as it was
   let hold = 0, comparing = false, turning = /** @type {null | { ring: string[], p: number, a: HTMLImageElement, b: HTMLImageElement }} */ (null), p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
+  let leaning = false, ready = false, pitchNow = 0, stampWas = /** @type {[string, string] | null} */ (null);
   drag(frame, {
     start: e => {
       if (/** @type {HTMLElement} */ (e.target).closest('button')) return false;
       anim?.stop(); if (turning) { p0 = turning.p; return; }
-      hold = setTimeout(() => { if (shown < 0 && !picks.length) return; comparing = true; frame.classList.add('is-comparing'); over.src = origin.url; over.classList.add('is-held'); }, 280);
+      if (turn && face) { ready = false; mount().then(ok => { ready = ok; }).catch(() => {}); }
+      hold = setTimeout(() => { if (leaning || (shown < 0 && !picks.length)) return; comparing = true; frame.classList.add('is-comparing'); over.src = origin.url; over.classList.add('is-held'); }, 280);
     },
     move: d => {
       if (Math.abs(d.dx) > 8 || Math.abs(d.dy) > 8) clearTimeout(hold);
       if (turning) { turnTo(clamp(p0 - d.dx / (frame.clientWidth * .45), 0, turning.ring.length - 1)); return; }
+      if (turn && ready && !comparing && (leaning || Math.abs(d.dx) > 8)) { leaning = true; lean(.3 * Math.tanh(-d.dx / (frame.clientWidth * .5) * 1.25), .1 * Math.tanh(d.dy / (frame.clientHeight * .5) * 1.2)); }
     },
     end: d => {
       clearTimeout(hold);
       if (turning) { const to = Math.round(clamp(turning.p - d.vx / (frame.clientWidth * .45) * .25, 0, turning.ring.length - 1)); anim = spring({ from: turning.p, to, velocity: -d.vx / (frame.clientWidth * .45), stiffness: 140, damping: 22, onUpdate: v => turnTo(v) }); return; }
       if (comparing) { comparing = false; frame.classList.remove('is-comparing'); over.classList.remove('is-held'); return; }
-      if (Math.abs(d.dx) > 44 && Math.abs(d.dx) > Math.abs(d.dy) && takes.some(t => !t.pending)) {
-        const ready = [-1, ...takes.map((t, i) => (t.pending ? -2 : i)).filter(i => i > -2)], at = ready.indexOf(shown);
-        show(ready[clamp(at + (d.dx < 0 ? 1 : -1), 0, ready.length - 1)]); return;
-      }
+      if (leaning) { leaning = false; const y = turn?.yaw || 0, p = pitchNow; anim = spring({ from: 1, to: 0, stiffness: 120, damping: 14, onUpdate: s => lean(y * s, p * s), onRest: () => lean(0, 0) }); return; }
       if (Math.abs(d.dx) < 8 && Math.abs(d.dy) < 8 && face) {
         const r = frame.getBoundingClientRect(), hit = partAt(face, (d.x - r.left) / r.width * face.w, (d.y - r.top) / r.height * face.h);
         if (hit) choose(hit);
       }
     },
   });
+  /**
+   * The face turned on the device: the mesh drawn in place of the picture while it is off true, and the stamp saying
+   * so; back at rest, the picture itself again. @param {number} y @param {number} p
+   */
+  function lean(y, p) {
+    if (!turn) return;
+    pitchNow = p; turn.turn(y, p); follow3d();
+    const off = Math.abs(y) > .002 || Math.abs(p) > .002;
+    frame.classList.toggle('is-device-turn', off); frame.dataset.yaw = y.toFixed(3);
+    if (off && !stampWas) { stampWas = [stampEl.textContent || '', stampEl.dataset.kind || '']; stampEl.textContent = 'Turned on this device'; stampEl.dataset.kind = 'sketch'; }
+    if (!off && stampWas) { [stampEl.textContent, stampEl.dataset.kind] = stampWas; stampWas = null; }
+  }
+  /**
+   * What the face is turned with: the picture on show (washed and marked up as the frame shows it) and the face read in
+   * that picture itself, or null where it has none to turn.
+   */
+  async function surface() {
+    if (!face) return null;
+    const t = shown >= 0 ? takes[shown] : origin, now = fresh();
+    // the picture at the face's own size, kept, so its face and its hair are read once however often it is turned
+    let pic0 = surfaces.get(t);
+    if (!pic0) {
+      const raw = shown < 0 && base ? base : await canvasOf(t.print?.blob || t.url);
+      if (raw.width === face.w && raw.height === face.h) pic0 = raw; else { pic0 = P.make(face.w, face.h); ctx(pic0).drawImage(raw, 0, 0, face.w, face.h); }
+      surfaces.set(t, pic0);
+    }
+    const own = pic0 === base ? face : await faceOf(pic0); if (!own) return null;
+    const c = P.make(face.w, face.h), x = ctx(c); x.drawImage(pic0, 0, 0);
+    if (now.length) {
+      const w = await washOf(pic0, own, now); if (w) x.drawImage(w, 0, 0);
+      x.save(); x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, c.width / 400);
+      for (const q of now) for (const s of markup(face, q.part, q.style.id)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
+      x.restore();
+    }
+    return { canvas: c, face: own, pic: pic0 };
+  }
+  /** The picture on show put on the turner, with its own face (and, when it is found, its hair). False where it cannot turn. */
+  async function mount() {
+    const s = await surface(); if (!s || !turn) return false;
+    if (turn.face !== s.face) { turn.load(s.face); const f = s.face; hairOf(s.pic).then(m => { if (m) turn?.hair(m, f); }); }
+    turn.picture(s.canvas); return true;
+  }
+  /** The mirror, once it has read you: the face turns a little one way, then the other, and comes back to you. */
+  async function hello() {
+    if (!turn || reduced || !(await mount())) return;
+    ready = true;
+    const keys = [[0, 0, 0], [640, .22, .03], [1400, -.16, -.015], [1950, 0, 0]], t0 = performance.now();
+    const ease = (/** @type {number} */ u) => u * u * (3 - 2 * u);
+    await new Promise(done => {
+      const tick = (/** @type {number} */ now) => {
+        const t = now - t0; if (!el.isConnected || leaning) { done(undefined); return; }
+        let k = 1; while (k < keys.length - 1 && t > keys[k][0]) k++;
+        const [ta, ya, pa] = keys[k - 1], [tb, yb, pb] = keys[k], u = ease(clamp((t - ta) / (tb - ta)));
+        lean(ya + (yb - ya) * u, pa + (pb - pa) * u);
+        if (t < keys[keys.length - 1][0]) requestAnimationFrame(tick); else { lean(0, 0); done(undefined); }
+      };
+      requestAnimationFrame(tick);
+    });
+  }
 
   /** Tries the picks (and any words) on: four takes from a live studio, a sketch here. */
   async function tryOn() {
@@ -478,11 +563,13 @@ export function openMirror(o) {
   if (person) for (const look of person.looks) takes.push({ url: look.image, ...made, look, picks: pickOf(look) });
   show(-1, true); paintTakes(); paintPicks();
   new ResizeObserver(() => fit()).observe(stageEl);
+  new ResizeObserver(() => fit(true)).observe(takesRow);
   requestAnimationFrame(() => { el.classList.add('is-in'); fit(); if (from) flip(frame, from, { duration: 620 }); });
   const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey); stops.push(() => document.removeEventListener('keydown', onKey));
 
   (async () => {
+    partsRow.hidden = true;   // the face is the menu once it is read: the chips come back only where no face is found
     frame.classList.add('is-reading');
     try { base = await canvasOf(person ? person.portrait : print.blob); } catch { base = null; }
     fit();
@@ -490,13 +577,18 @@ export function openMirror(o) {
     frame.classList.remove('is-reading');
     if (!el.isConnected) return;
     if (!face) { el.classList.add('no-face'); toast(base ? 'No face found: a change goes over the whole picture' : 'That picture could not be read', 2800); }
-    else await reading();
-    placeNotes(); drawSketch();
+    else {
+      try { turn = turner(turnView, face); } catch { turn = null; }
+      if (turn && base) { const f = face; hairOf(base).then(m => { if (m) turn?.hair(m, f); }); }
+      await reading();
+    }
+    placeNotes(); drawSketch(); menu();
     turnBtn.hidden = !(live || person?.looks.some(l => l.angles?.length));
     const look = o.look && takes.findIndex(t => t.look === o.look);
     if (typeof look === 'number' && look >= 0) show(look);
     else if (picks[0]) choose(picks[0].part);
-    if (o.go) tryOn();
+    // then, unless they came asking for something already, the face looks this way and that as its notes come in
+    if (o.go) tryOn(); else if (face && shown < 0) hello();
   })();
 
   const self = { close };

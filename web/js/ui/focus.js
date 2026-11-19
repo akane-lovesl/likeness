@@ -14,7 +14,7 @@ import * as P from '../studio/painter.js';
 import { selectAt, brush, loadSegmenter } from '../studio/segment.js';
 import { pinMark } from './cards.js';
 import { studio } from '../studio/studio.js';
-import { proofOf } from '../studio/local.js';
+import { proofOf, standStage, standWords } from '../studio/local.js';
 
 let open = null;
 
@@ -126,6 +126,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
   let holdTimer = 0;
   pic.addEventListener('pointerdown', e => {
     if (mode === 'pin') return pinDown(e);
+    if (grab?.(e)) return;
     if (!before) return;
     holdTimer = setTimeout(() => { before.classList.add('is-in'); hint.textContent = 'Before'; }, 160);
   });
@@ -217,9 +218,11 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
    * offers to paint it so, or to put the sun back. Only where the device does the painting: anywhere else, a preview
    * drawn here would promise a picture the studio will not make.
    */
-  // a picture put somewhere from a photo has its place in its recipe: the sun moves over that place, the person stays
-  const recipe = print.provenance?.recipe, from = recipe?.scene && printById(recipe.from);
-  if (studio.mode === 'showcase' && (print.provenance?.scene || from)) holdTheSun(print.provenance?.scene || recipe.scene);
+  // a picture put somewhere from a photo has its place in its recipe: the sun moves over that place, the person stays.
+  // Not in a profile picture's square, where the sky is mostly cut away
+  const recipe = print.provenance?.recipe, from = recipe && printById(recipe.from);
+  let resetSun = /** @type {(() => void) | null} */ (null), resetWalk = /** @type {(() => void) | null} */ (null);
+  if (studio.mode === 'showcase' && (print.provenance?.scene || (from && recipe.scene && !recipe.profile))) holdTheSun(print.provenance?.scene || recipe.scene);
   function holdTheSun(kept) {
     const tall = (/** @type {number} */ w) => Math.round(w * (print.h || 4) / (print.w || 3));
     let at = null;
@@ -236,7 +239,8 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     const seen = Number(localStorage.getItem('likeness:sun') || 0);
     if (seen < 3) { localStorage.setItem('likeness:sun', String(seen + 1)); knob.append(h('span.sun__hint', null, 'Drag the sun')); }
     place();
-    knob.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); try { knob.setPointerCapture(e.pointerId); } catch { /* fine */ } knob.classList.add('is-held'); knob.querySelector('.sun__hint')?.remove(); });
+    resetSun = () => { if (moved) { sun = home.slice(); moved = false; place(); settle(); } };
+    knob.addEventListener('pointerdown', e => { resetWalk?.(); e.stopPropagation(); e.preventDefault(); try { knob.setPointerCapture(e.pointerId); } catch { /* fine */ } knob.classList.add('is-held'); knob.querySelector('.sun__hint')?.remove(); });
     knob.addEventListener('pointermove', e => { if (!knob.classList.contains('is-held')) return; const r = pic.getBoundingClientRect(); move(((e.clientX - r.left) / r.width - b[0]) / b[2], ((e.clientY - r.top) / r.height - b[1]) / b[3]); });
     const letGo = () => { if (!knob.classList.contains('is-held')) return; knob.classList.remove('is-held'); settle(); };
     knob.addEventListener('pointerup', letGo); knob.addEventListener('pointercancel', letGo);
@@ -261,7 +265,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
       if (busy) { queued = [w, hh]; return; }
       busy = true;
       await new Promise(r => requestAnimationFrame(r));
-      const ins = from ? { [print.id]: { blob: print.blob, handle: print.handle, recipe }, [from.id]: { blob: from.blob, handle: from.handle } } : { [print.id]: { blob: print.blob, handle: print.handle, scene: kept } };
+      const ins = from && !print.provenance?.scene ? { [print.id]: { blob: print.blob, handle: print.handle, recipe }, [from.id]: { blob: from.blob, handle: from.handle } } : { [print.id]: { blob: print.blob, handle: print.handle, scene: kept } };
       const c = await proofOf({ text: `@${print.handle} ${words()}`, intent: relight(), sun }, ins, w, hh).catch(() => null);
       busy = false;
       if (c && open === el) { view.width = c.width; view.height = c.height; view.getContext('2d').drawImage(c, 0, 0); view.classList.toggle('is-in', moved); }
@@ -276,6 +280,111 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     function putBack() { sun = home.slice(); moved = false; place(); settle(); sound.play('tap'); }
     function paintIt() {
       onSend({ text: `@${print.handle} ${words()}`, intent: relight(), pace: settings.get('pace', 'fine'), sun: sun.map(n => Math.round(n * 1000) / 1000) });
+      shut();
+    }
+  }
+
+  /*
+   * Where they stand. In a picture made from a photo and put somewhere, the person can be picked up: drag across to move
+   * them, up to step back into the place, down to come closer. The picture is laid out again under the finger from its
+   * two layers, the place and the person; let go, and it shows the picture exactly and offers to keep them there.
+   */
+  let grab = /** @type {((e: PointerEvent) => boolean) | null} */ (null);
+  if (studio.mode === 'showcase' && from && (recipe.scene || recipe.plain || recipe.cut) && !recipe.profile) holdThePerson();
+  function holdThePerson() {
+    /** @type {any} */ let stage = null;
+    let at = { x: 0, s: 1 }, held = /** @type {any} */ (null), moved = false, lift = 0, liftRaf = 0, alpha = /** @type {Uint8ClampedArray | null} */ (null), ticket = 0;
+    const view = h('canvas.focus__walk'), keepIt = h('button.btn.btn--accent.focus__go', { onclick: () => keepThere() }, 'Keep them here', h('span', { html: icon('arrow') }));
+    const handle = h('button.walk', { type: 'button', hidden: true });
+    const walkDock = h('div.focus__pindock.focus__walkdock', { hidden: true }, h('button.btn.btn--quiet.focus__cancel.focus__undo', { 'aria-label': 'Put them back', title: 'Put them back', html: icon('undo'), onclick: () => putBack() }), keepIt);
+    pic.insertBefore(view, layer); layer.append(handle); el.append(walkDock);
+    const ask = () => ({ op: 'edit', subject: print.id, refs: [], look: null, n: 1, pins: [] });
+    const ins = () => ({ [print.id]: { blob: print.blob, handle: print.handle, recipe }, [from.id]: { blob: from.blob, handle: from.handle } });
+    standStage(recipe, { blob: from.blob, handle: from.handle }, 384).then(s => {
+      if (!s || open !== el) return;
+      stage = s; at = { ...s.stand }; placeHandle(); handle.hidden = false;
+      const seen = Number(localStorage.getItem('likeness:walk') || 0);
+      // one hint at a time: when the sun is being introduced, this one waits for it to finish
+      if (seen < 3) { localStorage.setItem('likeness:walk', String(seen + 1)); layer.append(h('span.walk__hint', { style: { left: (s.fx + at.x) * 100 + '%', ...(layer.querySelector('.sun__hint') ? { animationDelay: 'calc(var(--tempo) * 5.2s)' } : {}) } }, 'Drag them · up to step back')); }
+    }).catch(() => {});
+    resetWalk = () => { if (moved) putBack(true); };
+    /** Whether a point on the picture is on the person, where they stand now. */
+    function hits(/** @type {number} */ nx, /** @type {number} */ ny) {
+      if (!stage) return false;
+      const W = stage.person.width, H = stage.person.height;
+      alpha ||= stage.person.getContext('2d').getImageData(0, 0, W, H).data;
+      const ox = (nx * W - (stage.fx + at.x) * W) / at.s + stage.fx * W, oy = (ny * H - H) / at.s + H;
+      return ox >= 0 && oy >= 0 && ox < W && oy < H && /** @type {Uint8ClampedArray} */ (alpha)[(Math.floor(oy) * W + Math.floor(ox)) * 4 + 3] > 60;
+    }
+    const spot = (/** @type {PointerEvent} */ e) => { const r = pic.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, r]; };
+    grab = e => {
+      if (!stage) return false;
+      const [nx, ny] = spot(e);
+      if (!hits(/** @type {number} */ (nx), /** @type {number} */ (ny))) return false;
+      e.preventDefault(); resetSun?.();
+      try { pic.setPointerCapture(e.pointerId); } catch { /* fine */ }
+      held = { x0: e.clientX, y0: e.clientY, from: { ...at } };
+      layer.querySelector('.walk__hint')?.remove();
+      ticket++; view.classList.add('is-in'); el.classList.add('is-walking'); walkDock.hidden = true; dock.hidden = false;
+      lifting(1); sound.play('tap');
+      return true;
+    };
+    pic.addEventListener('pointermove', e => {
+      if (!stage || mode === 'pin') return;
+      if (!held) { const [nx, ny] = spot(e); pic.style.cursor = hits(/** @type {number} */ (nx), /** @type {number} */ (ny)) ? 'grab' : ''; return; }
+      const r = /** @type {DOMRect} */ (spot(e)[2]), dx = (e.clientX - held.x0) / r.width, dy = (e.clientY - held.y0) / r.height;
+      moveTo(held.from.x + dx, held.from.s * Math.exp(dy * 1.6));
+    });
+    const drop = () => { if (!held) return; held = null; el.classList.remove('is-walking'); pic.style.cursor = ''; lifting(0); settle(); };
+    pic.addEventListener('pointerup', drop); pic.addEventListener('pointercancel', drop);
+    handle.addEventListener('keydown', e => {
+      const step = /** @type {Record<string, number[]>} */ ({ ArrowLeft: [-.04, 1], ArrowRight: [.04, 1], ArrowUp: [0, .92], ArrowDown: [0, 1.08] })[e.key];
+      if (step) { e.preventDefault(); resetSun?.(); view.classList.add('is-in'); moveTo(at.x + step[0], at.s * step[1]); settle(); }
+      else if (e.key === 'Enter' && moved) { e.preventDefault(); keepThere(); }
+    });
+    function moveTo(/** @type {number} */ x, /** @type {number} */ s) {
+      const was = standWords(at);
+      at = { x: Math.max(-.45, Math.min(.45, x)), s: Math.max(.35, Math.min(1.25, s)) };
+      moved = Math.abs(at.x - stage.stand.x) > .02 || Math.abs(at.s - stage.stand.s) > .03;
+      draw(); placeHandle();
+      if (standWords(at) !== was) sound.play('tap');
+    }
+    /** Picked up, they rise a little and glow; put down, they settle. */
+    function lifting(/** @type {number} */ to) {
+      cancelAnimationFrame(liftRaf);
+      if (reduced) { lift = to; draw(); return; }
+      const from0 = lift, t0 = performance.now();
+      const step = (/** @type {number} */ now) => { const k = Math.min(1, (now - t0) / 170); lift = from0 + (to - from0) * (1 - Math.pow(1 - k, 3)); draw(); if (k < 1) liftRaf = requestAnimationFrame(step); };
+      liftRaf = requestAnimationFrame(step);
+    }
+    function draw() {
+      if (!stage) return;
+      const W = stage.back.width, H = stage.back.height, s = at.s * (1 + lift * .03);
+      if (view.width !== W || view.height !== H) { view.width = W; view.height = H; }
+      const x = /** @type {CanvasRenderingContext2D} */ (view.getContext('2d'));
+      x.clearRect(0, 0, W, H); x.drawImage(stage.back, 0, 0);
+      x.save(); x.translate((stage.fx + at.x) * W, H); x.scale(s, s); x.translate(-stage.fx * W, -H);
+      if (lift > .01) { x.shadowColor = `rgba(255, 240, 205, ${(.85 * lift).toFixed(3)})`; x.shadowBlur = 20 * lift; }
+      x.drawImage(stage.person, 0, 0); x.restore();
+    }
+    function placeHandle() {
+      if (!stage) return;
+      handle.style.left = (stage.fx + at.x) * 100 + '%'; handle.style.top = (1 - .32 * at.s) * 100 + '%';
+      handle.setAttribute('aria-label', `Where they stand: ${standWords(at)}. Use the arrow keys to move them, up to step back.`);
+    }
+    /** Put down: show the picture exactly, look and all, and offer to keep them there. */
+    function settle() {
+      walkDock.hidden = !moved; dock.hidden = moved;
+      if (!moved) { view.classList.remove('is-in'); return; }
+      const mine = ++ticket;
+      proofOf({ text: `@${print.handle}, ${standWords(at)}`, intent: ask(), stand: at }, ins(), 384, Math.round(384 * (print.h || 4) / (print.w || 3))).then(c => {
+        if (!c || mine !== ticket || open !== el) return;
+        const x = /** @type {CanvasRenderingContext2D} */ (view.getContext('2d')); view.width = c.width; view.height = c.height; x.drawImage(c, 0, 0);
+      }).catch(() => {});
+    }
+    function putBack(quiet = false) { at = { ...stage.stand }; moved = false; ticket++; draw(); placeHandle(); settle(); if (!quiet) sound.play('tap'); }
+    function keepThere() {
+      onSend({ text: `@${print.handle}, ${standWords(at)}`, intent: ask(), pace: settings.get('pace', 'fine'), stand: { x: Math.round(at.x * 1000) / 1000, s: Math.round(at.s * 1000) / 1000 } });
       shut();
     }
   }

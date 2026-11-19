@@ -183,6 +183,28 @@ test('dressing up, and a picture that remembers: on the moon in a helmet, then a
   await expect(page.locator('button.sun')).toBeVisible();
 });
 
+test('someone put somewhere can be picked up and walked back into the place', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').first().click();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('button.bring__opt').first().click()]);
+  await chooser.setFiles('tests/fixtures/sitters/kofi.jpg');
+  await expect(page.locator('figure.print')).toHaveCount(1);
+  await page.locator('button.chip.idea', { hasText: 'Put them on the moon' }).click();
+  await expect(page.getByText('A, on the moon, in a helmet: there’s no air up there.')).toBeVisible({ timeout: 30_000 });
+  await page.locator('figure.print').last().click();
+  const pic = page.locator('.focus__pic');
+  await expect(page.locator('button.walk')).toBeAttached();
+  await pic.hover();   // waits for the picture to finish flying in
+  const b = await pic.boundingBox();
+  await page.mouse.move(b.x + b.width * .5, b.y + b.height * .8);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width * .2, b.y + b.height * .5, { steps: 12 });
+  await expect(page.locator('.focus__walk.is-in')).toBeVisible();
+  await page.mouse.up();
+  await page.locator('.focus__walkdock .focus__go').click();
+  await expect(page.getByText(/B, (?:far |further )back and to the left\./)).toBeVisible({ timeout: 30_000 });
+});
+
 test('the device does what it honestly can to a photo, and says plainly when it cannot', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

@@ -167,7 +167,7 @@ function namesPlace(words) { const d = P.sceneFrom(words); return d.land !== 'hi
  * How a picture made here from a photo can be made again: the photo it came from, the place it was put (a scene, with
  * every change asked of it since), what they wear, a look over it and any adjustments. A later ask changes the recipe
  * and the picture is made again from the photo, so nothing is ever cut out of a picture that was itself cut out.
- * @typedef {{ from: string, scene: { words: string, seed: number, edits: any[] } | null, ramp: string[] | null, dress: any, bare: boolean, look: string | null, adjust: string[], cut?: boolean, plain?: string | null, profile?: boolean }} Recipe
+ * @typedef {{ from: string, scene: { words: string, seed: number, edits: any[] } | null, ramp: string[] | null, dress: any, bare: boolean, look: string | null, adjust: string[], cut?: boolean, plain?: string | null, profile?: boolean, stand?: { x: number, s: number } | null }} Recipe
  */
 /** Without a helmet, said any way. @param {string} words */
 const bareHeaded = words => /\b(?:without|no|minus|lose|take off|leave off|remove)\s+(?:a |an |the |any |his |her |their |its |my )?helmet|helmetless|bare[- ]?headed|\btake (?:the |her |his |their |its |my )?helmet off/i.test(words);
@@ -181,27 +181,57 @@ function placed(src, mask, where, words, seed, ramp = null, frames = false, from
   /** @type {Recipe} */ const recipe = { from, scene: where ? { words: where, seed, edits: [] } : null, ramp, dress: plan, bare: bareHeaded(words), look: null, adjust: [] };
   return { ...remake(recipe, src, mask, frames, seed), recipe };
 }
+/** What a recipe has them wear: what was asked, and a helmet where there is no air unless they go without. @param {Recipe} rec @param {any} desc */
+function planFor(rec, desc) {
+  const because = desc && !rec.bare ? AIRLESS[desc.land] || '' : '';
+  const plan = rec.dress || because ? { ...(rec.dress || { pieces: [], persona: null, colours: {}, place: null, glow: null, trim: false, sparkle: false, confetti: false, off: [] }) } : null;
+  if (plan) plan.pieces = [...plan.pieces, ...(because && !plan.pieces.includes('helmet') ? ['helmet'] : [])];
+  return { plan: plan?.pieces.length ? plan : null, because: plan?.pieces.includes('helmet') && because && !rec.dress?.pieces?.includes('helmet') ? because : '' };
+}
+/** A recipe's place, read again (with every change asked of it since), or null when they stay where they were. @param {Recipe} rec */
+function placeOf(rec) {
+  const desc = rec.scene ? P.sceneAgain(rec.scene) : null;
+  if (desc && rec.ramp && !desc.ramp && !desc.pal) desc.ramp = rec.ramp;
+  return desc;
+}
+/** What is behind them: the place painted, one plain colour, or nothing at all. @param {Recipe} rec @param {any} desc @param {number} w @param {number} h */
+const backOf = (rec, desc, w, h) => desc ? P.scene(desc, w, h) : rec.plain ? P.plainBackdrop(w, h, rec.plain) : rec.cut ? P.make(w, h) : null;
 /**
- * A recipe, made from its photo. Somewhere with nothing to breathe comes with a helmet, unless they go without. With
- * frames: who it is of, found; the place, layer by layer; then each piece.
+ * Someone's layer laid over a place where they stand: moved across by x (of the width), and nearer or further (s, about
+ * their feet at the bottom edge, so they never float). fx is their middle, as a fraction of the width.
+ * @param {HTMLCanvasElement} back @param {HTMLCanvasElement} overlay @param {{ x: number, s: number } | null} stand @param {number} fx
+ */
+export function placeOn(back, overlay, stand, fx) {
+  const w = back.width, h = back.height, out = P.copy(back), x = out.getContext('2d');
+  x.save();
+  if (stand) { x.translate((fx + stand.x) * w, h); x.scale(stand.s, stand.s); x.translate(-fx * w, -h); }
+  x.drawImage(overlay, 0, 0, w, h); x.restore();
+  return out;
+}
+/**
+ * A recipe, made from its photo. With frames: who it is of, found; the place, layer by layer; then each piece; then the
+ * look over all of it, and a profile picture's square.
  * @param {Recipe} rec @param {HTMLCanvasElement} src @param {HTMLCanvasElement | null} mask @param {boolean} frames @param {number} seed
  */
 function remake(rec, src, mask, frames, seed) {
-  const desc = rec.scene ? P.sceneAgain(rec.scene) : null;
-  if (desc && rec.ramp && !desc.ramp && !desc.pal) desc.ramp = rec.ramp;
-  if (desc && frames) desc.layers = [];
-  const bd = desc ? P.scene(desc, src.width, src.height) : rec.plain ? P.plainBackdrop(src.width, src.height, rec.plain) : rec.cut ? P.make(src.width, src.height) : null, because = desc && !rec.bare ? AIRLESS[desc.land] || '' : '';
-  const plan = rec.dress || because ? { ...(rec.dress || { pieces: [], persona: null, colours: {}, place: null, glow: null, trim: false, sparkle: false, confetti: false, off: [] }) } : null;
-  if (plan) plan.pieces = [...plan.pieces, ...(because && !plan.pieces.includes('helmet') ? ['helmet'] : [])];
-  const pieces = frames ? /** @type {any[]} */ ([]) : null;
-  let canvas = plan?.pieces.length ? D.dressUp(src, mask, plan, bd, pieces, seed).canvas : bd ? P.composite(src, mask, bd) : P.copy(src);
+  const desc = placeOf(rec); if (desc && frames) desc.layers = [];
+  const w = src.width, h = src.height, bd = backOf(rec, desc, w, h), { plan, because } = planFor(rec, desc), pieces = frames ? /** @type {any[]} */ ([]) : null;
+  // where they stand in the place, when they were moved there by hand
+  const stand = rec.stand && bd && mask ? rec.stand : null, fx = stand ? D.figureOf(mask, w, h).cx / w : .5;
+  let canvas, person = null;
+  if (stand) {
+    person = plan ? D.dressUp(src, mask, plan, P.make(w, h), pieces, seed).canvas : P.composite(src, mask, null);
+    canvas = placeOn(/** @type {HTMLCanvasElement} */ (bd), person, stand, fx);
+  } else canvas = plan ? D.dressUp(src, mask, plan, bd, pieces, seed).canvas : bd ? P.composite(src, mask, bd) : P.copy(src);
   if (rec.adjust?.length) canvas = P.adjust(canvas, rec.adjust);
   const look = rec.look ? LOOKS.find(l => l.id === rec.look) : null;
   if (look) canvas = P.grade(canvas, look, look.wash ? .9 : .7, seed);
   let layers = null;
   if (frames) {
-    const small = half(src);
-    layers = [found(src, mask), ...(desc?.layers || []).map((/** @type {any} */ l) => ({ label: l.label, canvas: P.composite(small, mask, l.canvas) })), ...(pieces || []).map(f => ({ ...f, reveal: 'fade' }))];
+    const small = half(src), plainHalf = stand ? half(P.composite(src, mask, null)) : null, backHalf = stand && bd ? half(bd) : null;
+    layers = [found(src, mask),
+      ...(desc?.layers || []).map((/** @type {any} */ l) => ({ label: l.label, canvas: stand && plainHalf ? placeOn(l.canvas, plainHalf, stand, fx) : P.composite(small, mask, l.canvas) })),
+      ...(pieces || []).map(f => ({ ...f, canvas: stand && backHalf ? placeOn(backHalf, f.canvas, stand, fx) : f.canvas, reveal: 'fade' }))];
     if (look || rec.adjust?.length) layers.push({ label: look ? 'All of it in ' + look.name : cap(P.adjustmentsIn(rec.adjust.join(' '))?.said.join(', ') || 'Adjusted'), canvas: half(canvas) });
   }
   // a profile picture: the square around the face, found in the photo itself, so a helmet or a crown is not taken for it
@@ -210,7 +240,26 @@ function remake(rec, src, mask, frames, seed) {
     layers?.push({ label: 'A square around the face', canvas: half(P.squareOn(canvas, box)), reveal: 'fade' });
     sq.getContext('2d').drawImage(canvas, box.sx, box.sy, box.side, box.side, 0, 0, size, size); canvas = sq;
   }
-  return { canvas, desc, plan: plan?.pieces.length ? plan : null, because: plan?.pieces.includes('helmet') && because && !rec.dress?.pieces?.includes('helmet') ? because : '', layers };
+  return { canvas, desc, plan, because, layers };
+}
+/**
+ * The two layers of a recipe's picture, for moving someone about in it by hand: the place behind, and the person in what
+ * they wear on nothing, with their middle (fx) and where they stand now. Null when there is no place to move them in.
+ * @param {Recipe} rec @param {any} input the photo it was made from @param {number} w
+ */
+export async function standStage(rec, input, w) {
+  const src = await sizedOf(input, w), mask = await subjectOf(input);
+  if (!mask) return null;
+  const desc = placeOf(rec), back = backOf(rec, desc, src.width, src.height);
+  if (!back) return null;
+  const { plan } = planFor(rec, desc), person = plan ? D.dressUp(src, mask, plan, P.make(src.width, src.height), null, 1).canvas : P.composite(src, mask, null);
+  return { back, person, fx: D.figureOf(mask, src.width, src.height).cx / src.width, stand: rec.stand || { x: 0, s: 1 } };
+}
+/** Where someone was moved to, in words: "further back and to the left". @param {{ x: number, s: number }} st */
+export function standWords(st) {
+  const depth = st.s < .62 ? 'far back' : st.s < .9 ? 'further back' : st.s > 1.1 ? 'closer' : '';
+  const side = Math.abs(st.x) < .05 ? (depth ? '' : 'in the middle') : (Math.abs(st.x) < .16 ? 'a little to the ' : 'to the ') + (st.x < 0 ? 'left' : 'right');
+  return [depth, side].filter(Boolean).join(' and ') || 'where they were';
 }
 const cap = (/** @type {string} */ s) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Somewhere to go when the words only say "somewhere else". */
@@ -223,6 +272,10 @@ const ELSEWHERE = ['on the moon', 'a beach in Lisbon at golden hour', 'a lavende
 function recipeAfter(rec, spec, it, words, seed) {
   const r = /** @type {Recipe} */ (JSON.parse(JSON.stringify(rec))), t = words.toLowerCase(), did = /** @type {Record<string, any>} */ ({});
   if (it.pins?.length) return null;
+  if (spec.stand && typeof spec.stand.x === 'number' && typeof spec.stand.s === 'number') {
+    r.stand = { x: Math.max(-.5, Math.min(.5, spec.stand.x)), s: Math.max(.3, Math.min(1.3, spec.stand.s)) }; did.stand = standWords(r.stand);
+    return { rec: r, did };
+  }
   // the background taken away, or one plain colour behind them; a profile picture, whatever is behind
   const bg = /\b(?:background|backdrop|bg)\b/.test(t), colour = bg ? Object.keys(P.COLOUR_WORDS).find(k => new RegExp('\\b' + k + '\\b').test(t)) : undefined;
   const cut = /\btransparent\b|\bcut (?:it |her |him |them |@[a-z]{1,2} )?out\b|\bsticker\b|\b(?:remove|delete|erase|lose|drop|get rid of|take away|without|no)\b[^.]*\b(?:background|backdrop|bg)\b/.test(t);
@@ -259,6 +312,7 @@ function placeSaid(words) { const m = words.match(/\b(in|at|on|by|under|inside|a
 /** What a recipe's new ask did, in a line. */
 function recipeSay(/** @type {string} */ who, /** @type {any} */ after, /** @type {any} */ made, /** @type {string} */ words) {
   const d = after.did, there = made.desc ? (/\bmars\b/i.test(after.rec.scene?.words || '') ? 'on Mars' : THERE[made.desc.land] || '') : '';
+  if (d.stand) return `${who}, ${d.stand}.`;
   if (d.cut) return `${who}, cut out: the background is gone.`;
   if (d.plain) return `${who}, on plain ${d.plain}${d.profile ? ', as a profile picture' : ''}.`;
   if (d.profile && !d.place && !d.dress) return `${who}, as a profile picture: a square around the face${made.plan ? ', ' + D.pieceList(made.plan.pieces) + ' and all' : ''}.`;

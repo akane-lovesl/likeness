@@ -63,6 +63,15 @@
 .sun.is-held .sun__say { opacity: 1; scale: 1; }
 .sun__hint { position: absolute; left: 50%; top: calc(100% + 1.8cqw); translate: -50% 0; white-space: nowrap; font-family: var(--font-hand); font-size: 5.4cqw; line-height: 1; color: #fff; text-shadow: 0 .3cqw 1.6cqw rgb(0 0 0 / .8); pointer-events: none; animation: sun-hint calc(var(--tempo) * 4.2s) var(--ease) .9s both; }
 .focus[data-mode='pin'] .sun { display: none; }
+/* where they stand: the picture laid out again as they are moved, a grip that only shows to the keyboard, and a hint */
+.focus__walk { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: var(--print-radius); opacity: 0; pointer-events: none; transition: opacity var(--t-quick) var(--ease); }
+.focus__walk.is-in { opacity: 1; }
+.focus.is-walking .focus__pic { cursor: grabbing; }
+.focus.is-walking .sun { opacity: 0; pointer-events: none; }
+.walk { position: absolute; z-index: 1; width: 22%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: none; translate: -50% -50%; pointer-events: none; }
+.walk:focus-visible { outline: .45cqw dashed rgb(255 255 255 / .85); outline-offset: .6cqw; }
+.walk__hint { position: absolute; top: 74%; translate: -50% 0; white-space: nowrap; font-family: var(--font-hand); font-size: 5cqw; line-height: 1; color: #fff; text-shadow: 0 .3cqw 1.6cqw rgb(0 0 0 / .8); pointer-events: none; animation: sun-hint calc(var(--tempo) * 4.2s) var(--ease) 1.6s both; }
+.focus[data-mode='pin'] .walk, .focus[data-mode='pin'] .walk__hint, .focus[data-mode='pin'] .focus__walk { display: none; }
 @keyframes beckon { 0% { scale: 1; opacity: .7; } 35% { scale: 1.32; opacity: 1; } 100% { scale: 1; opacity: .7; } }
 @keyframes sun-hint { 0% { opacity: 0; transform: translateY(1.5cqw) rotate(-4deg); } 15%, 80% { opacity: 1; transform: rotate(-4deg); } 100% { opacity: 0; transform: rotate(-4deg); } }
 

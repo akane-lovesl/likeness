@@ -14,7 +14,9 @@ Pace = Literal["quick", "fine", "deep"]
 
 class Ref(BaseModel):
     asset: str = Field(max_length=40)
-    role: Literal["style", "backdrop", "with"] = "with"
+    # look: a picture whose look (a cut, a colour, make-up, clothes) is borrowed for the subject; marks: the subject with
+    # the person's own marks drawn on it, showing where and how to change it
+    role: Literal["style", "backdrop", "with", "look", "marks"] = "with"
 
 
 class Intent(BaseModel):
@@ -26,7 +28,7 @@ class Intent(BaseModel):
 
 class Pin(BaseModel):
     n: int = Field(ge=1, le=9)
-    note: str = Field("", max_length=300)
+    note: str = Field("", max_length=1200)   # a look mixed from several parts, with marks and a reference, says a lot
     print: str | None = Field(None, max_length=40)
     mask: str | None = Field(None, max_length=40)
 

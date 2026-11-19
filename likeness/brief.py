@@ -15,6 +15,10 @@ ROLE = {
     "style": "a style reference: borrow its palette, light and texture, not its content",
     "backdrop": "a place: use it as the new background",
     "with": "another picture to work with",
+    "look": ("a reference for the look: take from it what the words name (a cut, a fringe, a colour, make-up, clothes) and "
+             "put it on the subject; never its face, its person or its background"),
+    "marks": ("the subject picture with the person's own rough marks drawn on it (circled, crossed out, sketched lines): they "
+              "show where and how to change it. Follow them, and never draw the marks into the result"),
 }
 OPS = {
     "create": "Paint a new picture from the words.",

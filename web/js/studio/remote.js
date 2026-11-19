@@ -6,7 +6,9 @@
 const json = async res => {
   if (res.ok) return res.json();
   const body = await res.json().catch(() => null);
-  throw Object.assign(new Error(body?.detail || `The studio answered ${res.status}`), { status: res.status, hint: body?.hint || '' });
+  // the studio's own sentence where it gave one; a request it could not read (a list of field errors) said plainly
+  const said = typeof body?.detail === 'string' ? body.detail : body?.detail ? 'The studio could not read that request.' : '';
+  throw Object.assign(new Error(said || `The studio answered ${res.status}`), { status: res.status, hint: typeof body?.hint === 'string' ? body.hint : '' });
 };
 const post = (path, body) => fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(json);
 const sent = new Map();

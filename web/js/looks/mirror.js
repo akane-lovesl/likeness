@@ -7,11 +7,12 @@
  */
 import { h, icon, toast, chooseFiles, stage, clamp, fitting } from '../core/dom.js';
 import { drag, flip, spring, reduced } from '../core/motion.js';
-import { on } from '../core/bus.js';
+import { on, emit } from '../core/bus.js';
 import { progressAt } from '../core/estimate.js';
 import { studio } from '../studio/studio.js';
 import * as P from '../studio/painter.js';
 import { faceOf, reframed, knowHair, contoursOf, shapesOf, maskOf, partAt, hairOf, yawOf } from '../studio/face.js';
+import { activityPill } from '../ui/activity.js';
 /** @typedef {import('../studio/face.js').Face} Face */
 /**
  * The frame turning through a ring of angles: each picture with its face where it is known; two turners (m) where
@@ -65,6 +66,32 @@ async function canvasOf(src) {
 /** What a picture is, in a word, for its stamp. @param {any} p */
 const labelOf = (p) => ({ simulated: 'Simulated', render: 'GPT Image', sketch: 'Sketch', photo: 'Your photo' })[p?.provenance?.kind] || 'Picture';
 
+/** Words cut to a length at a word, with an ellipsis, never part-way through one. @param {string} s @param {number} n */
+const clip = (s, n) => (s.length <= n ? s : s.slice(0, n - 1).replace(/\s+\S*$/, '') + '…');
+
+/**
+ * Marks drawn on a picture: each in its colour, round-ended, with a soft shadow so a white one reads on a pale face.
+ * @param {CanvasRenderingContext2D} x @param {number} W @param {number} H @param {{ ink: string, w: number, pts: { x: number, y: number }[] }[]} marks
+ */
+function drawMarks(x, W, H, marks) {
+  x.save(); x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.45)'; x.shadowBlur = Math.max(1, W / 300);
+  for (const m of marks) {
+    x.strokeStyle = m.ink; x.lineWidth = Math.max(2, m.w * W); x.beginPath();
+    m.pts.forEach((p, i) => (i ? x.lineTo(p.x * W, p.y * H) : x.moveTo(p.x * W, p.y * H)));
+    if (m.pts.length === 1) x.lineTo(m.pts[0].x * W + .1, m.pts[0].y * H);
+    x.stroke();
+  }
+  x.restore();
+}
+/** Whether a mark comes back round to where it began: drawn round something, so what is inside it is meant too. @param {{ pts: { x: number, y: number }[] }} m */
+function loopOf(m) {
+  if (m.pts.length < 8) return false;
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  for (const p of m.pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  const a = m.pts[0], b = m.pts[m.pts.length - 1], size = Math.hypot(x1 - x0, y1 - y0);
+  return size > .04 && Math.hypot(a.x - b.x, a.y - b.y) < size * .25;
+}
+
 /**
  * The new colours, painted where they go (the hair, the lips) and nowhere else: the picture itself recoloured inside
  * the part's mask, so the light and the strands stay its own. Transparent where nothing changes colour.
@@ -86,7 +113,7 @@ async function washOf(pic, f, picks) {
 
 /**
  * Opens the mirror on a photo (a print) or on one of the studio's example people.
- * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null, hair?: string | null, turns?: import('./live.js').Side[] }} o
+ * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null, hair?: string | null, turns?: import('./live.js').Side[], after?: any }} o (after: a turn from before, its takes brought back)
  */
 export function openMirror(o) {
   current?.close(true);
@@ -97,6 +124,15 @@ export function openMirror(o) {
   const byWords = /** @type {Set<string>} */ (new Set());
   for (const x of o.words ? hear(o.words) : []) picks = picks.map(q => (q.part === x.part ? (byWords.add(q.part), { ...q, heard: x.shape }) : q));
   let part = '', shown = -1, busy = false, spotsUp = false, washing = 0, swap = 0;
+  /** What was drawn on the picture, each mark in its colour, as shares of the picture's width and height. @type {{ ink: string, w: number, pts: { x: number, y: number }[] }[]} */
+  let marks = [];
+  let drawingNow = false, ink = '#ff3b5c';
+  /** A picture whose look to borrow. @type {{ print: any, url: string } | null} */
+  let ref = null;
+  /** A reference being read and kept, still: a Try on waits for it. @type {Promise<void> | null} */
+  let refLoading = null;
+  // how many of the studio's turns are under way here, and which is the latest (the frame shows that one's wait)
+  let making = 0, lead = -1;
   /** @type {ReturnType<typeof turner>} */ let turn = null;
   const surfaces = new WeakMap();
   const dealt = new WeakSet(), developed = new WeakSet();
@@ -105,7 +141,9 @@ export function openMirror(o) {
   /** @type {HTMLCanvasElement | null} */ let base = null;
   /** @type {any} */ let examplePrint = null;
   const made = person?.kind === 'render' ? { label: 'GPT Image', kind: 'render' } : person?.kind === 'drawn' ? { label: 'Drawn', kind: 'sketch' } : { label: 'Simulated', kind: 'simulated' };
-  const origin = /** @type {Take} */ ({ url: person ? person.portrait : urlOf(print), ...(person ? made : { label: 'Your photo', kind: 'photo' }) });
+  // the picture as it is: an example's own kind; a photo of you; or, opened again from the studio's list, whatever it was
+  const own = print?.provenance?.kind && !['photo', 'upload'].includes(print.provenance.kind) ? { label: print.provenance.label || labelOf(print), kind: print.provenance.kind } : { label: 'Your photo', kind: 'photo' };
+  const origin = /** @type {Take} */ ({ url: person ? person.portrait : urlOf(print), ...(person ? made : own) });
   const stops = /** @type {(() => void)[]} */ ([]);
 
   const glow = h('div.mr-glow', { 'aria-hidden': 'true' });
@@ -124,17 +162,29 @@ export function openMirror(o) {
   const dial = h('div.mr-dial', { hidden: true, 'aria-hidden': 'true' }, h('i'));
   const handlesEl = h('div.mr-handles'), sayEl = h('div.mr-say', { 'aria-live': 'polite' });
   // what leans in when a part is chosen: the picture and everything drawn on it, not the notes in its margins
-  const lens = h('div.mr-lens', null, pic, over, preview, turnView, wash, read, workEl, sk, handlesEl);
-  const frame = h('div.mr-frame', null, lens, lines, notes, sayEl, stampEl, keepBtn, turnBtn, dial, wordsEl);
+  const marksEl = /** @type {HTMLCanvasElement} */ (h('canvas.mr-marks', { 'aria-hidden': 'true' }));
+  const lens = h('div.mr-lens', null, pic, over, preview, turnView, wash, read, workEl, sk, marksEl, handlesEl);
+  const INKS = ['#ff3b5c', '#ffd43b', '#ffffff'];
+  const drawBar = h('div.mr-drawbar', { role: 'toolbar', 'aria-label': 'Drawing' },
+    ...INKS.map((c, i) => h('button.mr-drawbar__ink', { type: 'button', 'aria-label': ['Red', 'Yellow', 'White'][i] + ' pen', 'aria-pressed': String(i === 0), style: { '--pen': c }, onclick: (/** @type {Event} */ e) => { ink = c; drawBar.querySelectorAll('.mr-drawbar__ink').forEach(b => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } })),
+    h('button.mr-drawbar__do', { type: 'button', 'aria-label': 'Undo the last mark', html: icon('undo'), onclick: () => { marks.pop(); paintMarks(); paintPicks(); } }),
+    h('button.mr-drawbar__do', { type: 'button', 'aria-label': 'Clear the marks', html: icon('trash'), onclick: () => { marks = []; paintMarks(); paintPicks(); } }),
+    h('button.mr-drawbar__done', { type: 'button', onclick: () => drawing(false) }, 'Done'));
+  const frame = h('div.mr-frame', null, lens, lines, notes, sayEl, stampEl, keepBtn, turnBtn, dial, wordsEl, drawBar);
   const takesRow = h('div.mr-takes', { role: 'listbox', 'aria-label': 'Takes' });
   const chips = PARTS.map(p => h('button.mr-part', { type: 'button', 'data-part': p.id, 'aria-pressed': 'false', onclick: () => choose(p.id) },
     h('span.mr-part__glyph', { html: plateSVG(p.id, p.styles[0].id) }), h('span.mr-part__name', null, p.name)));
   const partsRow = h('div.mr-parts', { role: 'toolbar', 'aria-label': 'What to change' }, ...chips);
   const stylesRow = h('div.mr-styles', { role: 'listbox', hidden: true });
   const tokens = h('div.mr-ask__tokens');
+  // more ways to say it than words: draw on the picture, or bring a picture whose look to borrow
+  const trayEl = h('div.mr-tray', { role: 'menu', 'aria-label': 'More ways to ask' },
+    h('button.mr-tray__do', { type: 'button', role: 'menuitem', 'data-do': 'draw', onclick: () => { tray(false); drawing(true); } }, h('span.mr-tray__ic', { html: icon('brush') }), h('span.mr-tray__say', null, h('b', null, 'Draw on it'), h('small', null, 'Circle it, cross it out, sketch the shape'))),
+    h('button.mr-tray__do', { type: 'button', role: 'menuitem', 'data-do': 'ref', onclick: () => { tray(false); chooseRef(); } }, h('span.mr-tray__ic', { html: icon('image') }), h('span.mr-tray__say', null, h('b', null, 'A reference'), h('small', null, 'A cut, a colour, an outfit to borrow'))));
+  const addBtn = h('button.mr-ask__add', { type: 'button', 'aria-label': 'Draw on it, or add a reference picture', 'aria-expanded': 'false', html: icon('plus'), onclick: () => tray(!trayEl.classList.contains('is-open')) });
   const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => { paintGo(); listen(); }, onfocus: () => hint(), onblur: () => hint() }));
   const goBtn = h('button.mr-ask__go', { type: 'submit' }, h('span', { html: icon('sparkle') }), h('span.mr-ask__label', null, 'Try on'));
-  const ask = h('form.mr-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); tryOn(); } }, h('div.mr-ask__field', null, tokens, input), goBtn);
+  const ask = h('form.mr-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); tryOn(); } }, addBtn, h('div.mr-ask__field', null, tokens, input), goBtn);
   const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => (showingNow ? showing(false) : close()) });
   // on a drawn face, the look is tried on you next; on you, it is shown to someone (the one who will cut it)
   const mine = person ? h('button.mr-bar__mine', { type: 'button', onclick: () => onMe() }, h('span', { html: icon('camera') }), 'On me')
@@ -144,9 +194,11 @@ export function openMirror(o) {
     h('div.mr-show__row', null,
       h('button.mr-show__save', { type: 'button', onclick: () => saveCard() }, h('span', { html: icon('page') }), 'Save the card'),
       h('button.mr-show__done', { type: 'button', onclick: () => showing(false) }, 'Done')));
-  const bar = h('header.mr-bar', null, back, h('span.mr-bar__edition', { 'data-mode': studio.mode }, studio.label), mine);
-  const stageEl = h('div.mr-stage', null, frame, takesRow);
-  const el = h('section.mr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mirror', 'data-mode': studio.mode }, glow, bar, stageEl, h('div.mr-dock', null, partsRow, stylesRow, ask), showEl);
+  const bar = h('header.mr-bar', null, back, h('span.mr-bar__edition', { 'data-mode': studio.mode }, studio.label), activityPill(), mine);
+  // a reference, clipped to the mirror's corner like a photo tucked into its frame
+  const refEl = h('button.mr-ref', { type: 'button', hidden: true, 'aria-label': 'The reference: remove it', onclick: () => { ref = null; paintRef(); paintPicks(); hint(); } }, h('img', { alt: '' }), h('span.mr-ref__say', null, 'Reference'), h('i.mr-ref__x', { html: icon('close') }));
+  const stageEl = h('div.mr-stage', null, frame, refEl, takesRow);
+  const el = h('section.mr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mirror', 'data-mode': studio.mode }, glow, bar, stageEl, h('div.mr-dock', null, partsRow, stylesRow, trayEl, ask), showEl);
   stage().append(el);
   const from = o.from?.getBoundingClientRect() || null;
 
@@ -164,9 +216,9 @@ export function openMirror(o) {
     clearTimeout(sizing); if (soon) { sizing = setTimeout(() => fit(), 140); focus(part); return; }
     const dpr = Math.min(2, devicePixelRatio || 1), sharp = Math.max(1, (base?.width || 0) / (fw * dpr));
     // the outline and the wash as sharp as the picture itself, for when the mirror leans in close
-    for (const c of [read, wash, turnView]) { const k = c === turnView ? 1 : sharp, w = Math.round(fw * dpr * k), hgt = Math.round(fh * dpr * k); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
+    for (const c of [read, wash, turnView, marksEl]) { const k = c === turnView ? 1 : sharp, w = Math.round(fw * dpr * k), hgt = Math.round(fh * dpr * k); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
     turn?.draw();
-    if (part) mark(part); paintWash(); focus(part); paintHandles();
+    if (part) mark(part); paintWash(); focus(part); paintHandles(); paintMarks(); placeRef();
   }
   const dpr = () => Math.min(2, devicePixelRatio || 1);
   const ctx = (/** @type {HTMLCanvasElement} */ c) => /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
@@ -259,26 +311,39 @@ export function openMirror(o) {
   /** The chosen part's note lit, the others quieter. */
   const lit = () => { for (const n of [...notes.children, ...lines.children]) n.classList.toggle('is-on', /** @type {HTMLElement} */ (n).dataset.part === part); el.classList.toggle('has-part', !!part); };
 
-  /** A part, chosen: it is outlined on the face, and its styles come up in place of the parts. @param {string} id */
+  /** A part, chosen: it is outlined on the face and its styles come up under the parts; chosen again, it is put down. @param {string} id */
   function choose(id) {
     const p = partById(id); if (!p) return;
     stopGreeting();
+    if (part === id && !partsRow.hidden) { unchoose(); return; }
     part = id; read.classList.toggle('is-quiet', fresh().some(q => q.part === id));
     chips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.part === id))); lit();
-    stylesRow.replaceChildren(h('button.mr-styles__back', { type: 'button', 'aria-label': 'Every part', html: icon('back'), onclick: () => unchoose() }),
+    stylesRow.replaceChildren(
       ...p.styles.map((s, i) => h('button.mr-style', { type: 'button', role: 'option', 'data-style': s.id, style: { '--d': (i * 55) + 'ms' }, 'aria-selected': String(picks.some(q => q.part === id && q.style.id === s.id)), onclick: () => pick(id, s.id) },
         h('span.mr-style__plate', { html: plateSVG(id, s.id) }), h('span.mr-style__name', null, s.name))));
     menu();
     if (!reduced) stylesRow.animate([{ opacity: 0, translate: '6% 0' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
     mark(id); focus(id); paintHandles();
   }
-  /** What the dock offers: a part's styles once one is chosen; the parts themselves only where no face was read. */
-  function menu() { partsRow.hidden = !!part || !!face; stylesRow.hidden = !part; el.classList.toggle('has-menu', !!part || !face); hint(); }
+  /**
+   * What the dock offers: the parts always; a part's styles under them once one is chosen. Room is made for the styles
+   * by gliding, not jumping: the frame and the parts are moved where they land, then eased there from where they were.
+   */
+  function menu() {
+    const glide = [frame, partsRow], was = glide.map(e => e.getBoundingClientRect());
+    partsRow.hidden = false; stylesRow.hidden = !part; el.classList.toggle('has-menu', !!part); hint();
+    if (reduced || !el.isConnected) return;
+    glide.forEach((e, i) => {
+      const a = was[i], b = e.getBoundingClientRect(); if (!a.height || !b.height) return;
+      const dx = a.left + a.width / 2 - (b.left + b.width / 2), dy = a.top + a.height / 2 - (b.top + b.height / 2), sx = a.width / b.width, sy = a.height / b.height;
+      if (Math.abs(dy) < 1 && Math.abs(dx) < 1 && Math.abs(sy - 1) < .01) return;
+      e.animate([{ translate: dx.toFixed(1) + 'px ' + dy.toFixed(1) + 'px', scale: sx.toFixed(4) + ' ' + sy.toFixed(4) }, { translate: '0 0', scale: '1 1' }], { duration: 420, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    });
+  }
   function unchoose() {
     part = ''; menu();
     chips.forEach(c => c.setAttribute('aria-pressed', 'false')); lit();
     ctx(read).clearRect(0, 0, read.width, read.height); focus(''); paintHandles();
-    if (!reduced) partsRow.animate([{ opacity: 0, translate: '-6% 0' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
   /** The chosen part, outlined where it is on the face. @param {string} id */
   async function mark(id) {
@@ -305,13 +370,61 @@ export function openMirror(o) {
   function paintPicks(sketch = true) {
     // each pick saying how it was shaped: shortly on the line, fully to the studio
     picks = picks.map(q => { const cs = sayOf(q), said = cs.map(c => c.phrase).filter(Boolean).join(', '); return said === (q.said || '') ? q : { ...q, said }; });
-    tokens.replaceChildren(...picks.map(q => { const shorts = sayOf(q).map(c => c.short).filter(Boolean).join(' · '); return h('button.mr-token', { type: 'button', 'data-part': q.part, 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.mr-token__plate', { html: plateSVG(q.part, q.style.id) }), h('span.mr-token__name', null, q.style.name), shorts ? h('em.mr-token__shape', null, shorts) : null); }));
+    tokens.replaceChildren(...picks.map(q => { const shorts = sayOf(q).map(c => c.short).filter(Boolean).join(' · '); return h('button.mr-token', { type: 'button', 'data-part': q.part, 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.mr-token__plate', { html: plateSVG(q.part, q.style.id) }), h('span.mr-token__name', null, q.style.name), shorts ? h('em.mr-token__shape', null, shorts) : null); }),
+      ...(marks.length && !drawingNow ? [h('button.mr-token.mr-token--marks', { type: 'button', 'aria-label': 'Remove your marks', onclick: () => { marks = []; paintMarks(); paintPicks(); } }, h('span.mr-token__plate', { html: icon('brush') }), h('span.mr-token__name', null, 'Your marks'))] : []),
+      ...(ref ? [h('button.mr-token.mr-token--ref', { type: 'button', 'aria-label': 'Remove the reference', onclick: () => { ref = null; paintRef(); paintPicks(); hint(); } }, h('img.mr-token__plate', { src: ref.url, alt: '' }), h('span.mr-token__name', null, 'Reference'))] : []));
     stylesRow.querySelectorAll('.mr-style').forEach(b => b.setAttribute('aria-selected', String(picks.some(q => q.part === part && q.style.id === /** @type {HTMLElement} */ (b).dataset.style))));
     chips.forEach(c => c.classList.toggle('is-picked', picks.some(q => q.part === c.dataset.part)));
     paintGo(); if (sketch) drawSketch(); paintWash(); paintHandles();
     if (!person) mine.hidden = !face || !picks.length;
   }
-  function paintGo() { goBtn.toggleAttribute('disabled', !picks.length && !input.value.trim()); }
+  function paintGo() { goBtn.toggleAttribute('disabled', !picks.length && !input.value.trim() && !marks.length && !ref); }
+
+  // —— more ways to ask: drawing on the picture, and a picture whose look to borrow ——
+  /** The + tray, open or shut. @param {boolean} on */
+  function tray(on) { trayEl.classList.toggle('is-open', on); addBtn.setAttribute('aria-expanded', String(on)); }
+  /**
+   * Drawing on the picture: a finger draws instead of turning it, the pen's bar comes up in the frame, and the marks stay
+   * over the picture until they are cleared, going to the studio with whatever is asked. @param {boolean} on
+   */
+  function drawing(on) {
+    drawingNow = on; frame.classList.toggle('is-drawing', on); el.classList.toggle('is-drawing', on);
+    if (on && !marks.length) toast('Draw on the picture: circle what to change, sketch the shape', 3400);
+    paintMarks(); paintPicks(); hint();
+  }
+  /** A point under the finger, as shares of the picture's width and height. @param {number} x @param {number} y */
+  const toShare = (x, y) => { const p = toPicture(x, y); return { x: clamp(p.x / (face?.w || 1)), y: clamp(p.y / (face?.h || 1)) }; };
+  function paintMarks() {
+    const x = ctx(marksEl); x.clearRect(0, 0, marksEl.width, marksEl.height);
+    drawMarks(x, marksEl.width, marksEl.height, marks); frame.classList.toggle('has-marks', marks.length > 0);
+  }
+  /**
+   * The picture with the marks on it, for the studio to read them from: kept on the device with the turn, not shown in
+   * the album. @param {any} s the print changed @param {HTMLCanvasElement} pic2 @param {typeof marks} drawn
+   */
+  async function markedCopy(s, pic2, drawn) {
+    const c = P.copy(pic2); drawMarks(ctx(c), c.width, c.height, drawn);
+    return addPrint({ blob: await P.toBlob(c, 'image/jpeg', .9), w: c.width, h: c.height, origin: 'made', provenance: { kind: 'marks', label: 'Your marks', detail: 'The picture with your marks drawn on it, for the studio to follow' }, parents: [s.id] });
+  }
+  /** A reference chosen: a picture whose look (a cut, a colour, an outfit) the studio borrows for this face. */
+  async function chooseRef() {
+    const [file] = await chooseFiles({ multiple: false }); if (!file) return;
+    // read and kept before anything is asked with it: a Try on touched meanwhile waits for it rather than leaving it out
+    refLoading = (async () => {
+      const c = await P.fromBlob(file, 1600).catch(() => null); if (!c) { toast('That picture could not be read'); return; }
+      const p = await addPrint({ blob: await P.toBlob(c, 'image/jpeg', .9), w: c.width, h: c.height, origin: 'upload', provenance: { kind: 'reference', label: 'Reference', detail: 'A picture chosen as a reference: its look, to borrow' } });
+      ref = { print: p, url: urlOf(p) }; paintRef(); paintPicks(); hint();
+      if (!reduced) refEl.animate([{ opacity: 0, translate: '0 -8cqw', scale: .6 }, { opacity: 1, translate: '0 0', scale: 1 }], { duration: 560, easing: 'cubic-bezier(.3,1.4,.5,1)' });
+    })().finally(() => { refLoading = null; });
+    await refLoading;
+  }
+  function paintRef() { refEl.hidden = !ref; if (ref) /** @type {HTMLImageElement} */ (refEl.querySelector('img')).src = ref.url; placeRef(); }
+  /** The reference, tucked into the frame's top corner. */
+  function placeRef() {
+    if (!ref) return;
+    const s = stageEl.getBoundingClientRect(), f = frame.getBoundingClientRect();
+    refEl.style.left = (f.right - s.left - f.width * .24) + 'px'; refEl.style.top = (f.top - s.top - 8) + 'px';
+  }
 
   /** The picks not yet made on the picture on show: what the sketch draws, and what a try-on asks for anew. */
   const fresh = () => { const made = shown >= 0 ? takes[shown]?.picks || [] : []; return picks.filter(q => !made.some(d => d.part === q.part && d.style.id === q.style.id && shapeKey(d) === shapeKey(q))); };
@@ -431,7 +544,7 @@ export function openMirror(o) {
   }
   /** What the line asks for: how to begin, then a part's marks or words for it; beside the picks there is only room to say that more can be said. */
   function hint() {
-    input.placeholder = fitting(input, picks.length ? ['Say more…', 'More…'] : part ? (handleEls.size ? ['Drag the marks, or say it', 'Drag the marks'] : [HINTS[part] || '']) : face ? ['Touch a part of the face, or say it', 'Touch the face, or say it'] : ['Pick a part, or say it', 'Or say it']);
+    input.placeholder = fitting(input, ref && !picks.length ? ['What to borrow: the fringe, the colour…', 'What to borrow?'] : marks.length && !picks.length ? ['Say what the marks mean', 'What do they mean?'] : picks.length ? ['Say more…', 'More…'] : part ? (handleEls.size ? ['Drag the marks, or say it', 'Drag the marks'] : [HINTS[part] || '']) : face ? ['Touch a part of the face, or say it', 'Touch the face, or say it'] : ['Pick a part, or say it', 'Or say it']);
   }
   /** A handle, dragged along its way (or moved by the arrow keys; a double tap puts it back). @param {HTMLButtonElement} b @param {string} id */
   function grab(b, id) {
@@ -539,24 +652,51 @@ export function openMirror(o) {
   let hold = 0, comparing = false, turning = /** @type {null | Turning} */ (null), showingNow = false, sway = 0, p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
   let leaning = false, ready = false, pitchNow = 0, stampWas = /** @type {[string, string] | null} */ (null);
   let greeting = 0;
+  // a turn by hand is steered rather than set: the head goes after the finger with a little weight, so a jittery finger,
+  // a picture that is still being made ready, or a lift-off never makes it jump
+  const aim = { y: 0, p: 0 }, held = { y: 0, p: 0 };
+  let steering = 0, steerAt = 0;
+  const steer = (/** @type {number} */ now) => {
+    const dt = Math.min(64, now - (steerAt || now)); steerAt = now;
+    const k = 1 - Math.exp(-dt / 70);
+    // until the picture is ready to turn the head waits where it is, then goes after the finger from there
+    if (ready) { held.y += (aim.y - held.y) * k; held.p += (aim.p - held.p) * k; lean(held.y, held.p); }
+    steering = leaning || (ready && (Math.abs(aim.y - held.y) > 1e-4 || Math.abs(aim.p - held.p) > 1e-4)) ? requestAnimationFrame(steer) : 0;
+  };
+  const steerTo = (/** @type {number} */ y, /** @type {number} */ p) => { aim.y = y; aim.p = p; if (!steering) { steerAt = 0; steering = requestAnimationFrame(steer); } };
   drag(frame, {
     start: e => {
       if (/** @type {HTMLElement} */ (e.target).closest('button')) return false;
       stopGreeting();
+      if (drawingNow) { const at = toShare(e.clientX, e.clientY); marks.push({ ink, w: .011, pts: [at] }); paintMarks(); return; }
       anim?.stop(); if (turning) { p0 = turning.p; return; }
       if (turn && face) { ready = false; mount().then(ok => { ready = ok; }).catch(() => {}); }
       hold = setTimeout(() => { if (leaning || (shown < 0 && !picks.length)) return; comparing = true; frame.classList.add('is-comparing'); over.src = origin.url; over.classList.add('is-held'); }, 280);
     },
     move: d => {
+      if (drawingNow) { marks[marks.length - 1]?.pts.push(toShare(d.x, d.y)); paintMarks(); return; }
       if (Math.abs(d.dx) > 8 || Math.abs(d.dy) > 8) clearTimeout(hold);
       if (turning) { turnTo(clamp(p0 - d.dx / (frame.clientWidth * .45), 0, turning.ring.length - 1)); return; }
-      if (turn && ready && !comparing && (leaning || Math.abs(d.dx) > 8)) { leaning = true; lean(.3 * Math.tanh(-d.dx / (frame.clientWidth * .5) * 1.25), .1 * Math.tanh(d.dy / (frame.clientHeight * .5) * 1.2)); }
+      if (turn && !comparing && (leaning || Math.abs(d.dx) > 8)) {
+        if (!leaning) { leaning = true; held.y = turn.yaw; held.p = pitchNow; }
+        // up and down only past a little give, so a sideways drag does not nod
+        const dy = Math.sign(d.dy) * Math.max(0, Math.abs(d.dy) - 14);
+        steerTo(.3 * Math.tanh(-d.dx / (frame.clientWidth * .5) * 1.25), .08 * Math.tanh(dy / (frame.clientHeight * .5) * 1.2));
+      }
     },
     end: d => {
+      if (drawingNow) { paintPicks(); return; }
       clearTimeout(hold);
       if (turning) { const to = Math.round(clamp(turning.p - d.vx / (frame.clientWidth * .45) * .25, 0, turning.ring.length - 1)); anim = spring({ from: turning.p, to, velocity: -d.vx / (frame.clientWidth * .45), stiffness: 140, damping: 22, onUpdate: v => turnTo(v) }); return; }
       if (comparing) { comparing = false; frame.classList.remove('is-comparing'); over.classList.remove('is-held'); return; }
-      if (leaning) { leaning = false; const y = turn?.yaw || 0, p = pitchNow; anim = spring({ from: 1, to: 0, stiffness: 120, damping: 14, onUpdate: s => lean(y * s, p * s), onRest: () => lean(0, 0) }); return; }
+      if (leaning) {
+        leaning = false; cancelAnimationFrame(steering); steering = 0;
+        if (!ready) { held.y = held.p = 0; return; }
+        // back to the picture itself, settling without a wobble, carried on a little the way the finger was going
+        const y = held.y, p = held.p;
+        anim = spring({ from: 1, to: 0, velocity: Math.abs(y) > .01 ? clamp(-.75 * d.vx / frame.clientWidth / y, -2.5, 2.5) : 0, stiffness: 110, damping: 20, onUpdate: s => lean(y * s, p * s), onRest: () => { held.y = held.p = 0; lean(0, 0); } });
+        return;
+      }
       if (Math.abs(d.dx) < 8 && Math.abs(d.dy) < 8 && face) {
         const at = toPicture(d.x, d.y), hit = partAt(face, at.x, at.y);
         if (hit) choose(hit); else if (part) unchoose();
@@ -610,14 +750,14 @@ export function openMirror(o) {
     if (!turn || reduced || part) return;
     if (!(await mount()) || current !== self || part || turning || leaning || showingNow || busy) return;
     ready = true;
-    const keys = [[0, 0, 0], [640, .22, .03], [1400, -.16, -.015], [1950, 0, 0]], t0 = performance.now();
-    const ease = (/** @type {number} */ u) => u * u * (3 - 2 * u);
+    // one unbroken movement, never stopping between: out one way, through the middle, a smaller look the other way,
+    // and home, slowing into each turn the way a head does; it nods a little as it goes
+    const T = 2300, t0 = performance.now();
     const tick = (/** @type {number} */ now) => {
-      const t = now - t0;
-      if (t >= keys[keys.length - 1][0]) { stopGreeting(); return; }
-      let k = 1; while (k < keys.length - 1 && t > keys[k][0]) k++;
-      const [ta, ya, pa] = keys[k - 1], [tb, yb, pb] = keys[k], u = ease(clamp((t - ta) / (tb - ta)));
-      lean(ya + (yb - ya) * u, pa + (pb - pa) * u);
+      const u = clamp((now - t0) / T);
+      if (u >= 1) { stopGreeting(); return; }
+      const s = Math.sin(Math.PI * u), y = .27 * Math.sin(2 * Math.PI * u) * s * (1 - .38 * u);
+      lean(y, .045 * s * s * (1 - u) - .02 * Math.sin(2 * Math.PI * u) * s);
       greeting = requestAnimationFrame(tick);
     };
     greeting = requestAnimationFrame(tick);
@@ -631,13 +771,17 @@ export function openMirror(o) {
 
   /** Tries the picks (and any words) on: four takes from a live studio, a sketch here. */
   async function tryOn() {
+    if (refLoading) await refLoading;
     if (busy) return;
     const own = input.value.trim(), parts = [...new Set([...picks.map(q => q.part), ...partsIn(own)])];
-    if (!parts.length && !own) { ask.classList.remove('is-asking'); void ask.offsetWidth; ask.classList.add('is-asking'); return; }
-    busy = true; el.classList.add('is-making'); input.blur();
-    try { if (live) await render(parts, own); else await sketchIt(); }
+    if (!parts.length && !own && !marks.length && !ref) { ask.classList.remove('is-asking'); void ask.offsetWidth; ask.classList.add('is-asking'); return; }
+    if (drawingNow) drawing(false);
+    tray(false); input.blur();
+    // a sketch is made here, one at a time; the studio is asked for as many as you like, and works on them side by side
+    if (!live) { busy = true; try { await sketchIt(); } catch (e) { toast(e instanceof Error ? e.message : 'That did not work'); } finally { busy = false; } return; }
+    if (making) toast((making === 1 ? 'Making both' : 'Making ' + (making + 1) + ' at once') + ': the studio works on them side by side', 2600);
+    try { await render(parts, own); }
     catch (e) { toast(e instanceof Error ? e.message : 'That did not work'); }
-    finally { busy = false; el.classList.remove('is-making'); }
   }
   /** The print a change starts from: the take on show, or the face as it is (an example's portrait is brought in once). */
   async function subject() {
@@ -659,8 +803,29 @@ export function openMirror(o) {
       mask = P.make(pic2.width, pic2.height); const mx = ctx(mask);
       for (const p of masked) { const m = await maskOf(pic2, f, p); if (m) mx.drawImage(m, 0, 0); }
     }
-    const words = wordsFor(picks, own), said = titleOf(picks) || own;
-    const intent = mask ? { op: 'region', subject: s.id, refs: [], look: null, n: 4, pace: null, pins: [{ print: s.id, n: 1, note: words, mask }] } : { op: 'edit', subject: s.id, refs: [], look: null, n: 4, pace: null, pins: [] };
+    // what was drawn: where it may change (a loop drawn round something takes in what is inside it), and a copy of the
+    // picture with the marks on it, for the studio to read them from
+    const drawn = marks.slice(), borrowed = ref, refs = [];
+    if (drawn.length) {
+      mask ||= P.make(pic2.width, pic2.height);
+      const mx = ctx(mask), W = pic2.width, H = pic2.height;
+      mx.save(); mx.strokeStyle = mx.fillStyle = '#fff'; mx.lineCap = mx.lineJoin = 'round'; mx.filter = 'blur(' + Math.round(W / 120) + 'px)';
+      for (const m of drawn) {
+        const path = new Path2D(); m.pts.forEach((p, i) => (i ? path.lineTo(p.x * W, p.y * H) : path.moveTo(p.x * W, p.y * H)));
+        mx.lineWidth = W * .07; mx.stroke(path);
+        if (loopOf(m)) mx.fill(path);
+      }
+      mx.restore();
+      refs.push({ id: (await markedCopy(s, pic2, drawn)).id, role: 'marks' });
+    }
+    if (borrowed) refs.push({ id: borrowed.print.id, role: 'look' });
+    const extra = [];
+    if (borrowed) extra.push(masked.length ? 'Take what they ask for from the reference picture: its look, never its face' : 'Give them the look of the reference picture (its hair, colour, make-up and clothes) as far as the words ask, never its face');
+    if (drawn.length) extra.push('Follow the marks drawn on the marked copy, and never draw the marks themselves');
+    // the studio takes a long note, but not an endless one: cut at a word, never mid-way through one
+    const words = clip(wordsFor(picks, own, extra), 1200);
+    const said = titleOf(picks) || own || (drawn.length ? 'As drawn' : borrowed ? 'Like the reference' : '');
+    const intent = mask ? { op: 'region', subject: s.id, refs, look: null, n: 4, pace: null, pins: [{ print: s.id, n: 1, note: words, mask }] } : { op: 'edit', subject: s.id, refs, look: null, n: 4, pace: null, pins: [] };
     const now = picks.slice(), first = takes.length;
     for (let k = 0; k < 4; k++) takes.push({ url: '', label: '', kind: '', pending: true, picks: now });
     paintTakes();
@@ -675,9 +840,14 @@ export function openMirror(o) {
    */
   async function follow(start, first, n, land, mask = /** @type {HTMLCanvasElement | null} */ (null)) {
     let item = /** @type {any} */ (null), shownOne = false;
-    working(mask);
+    working(mask, first);
     const offEv = on('turn:event', (/** @type {any} */ m) => { if (item && m?.id === item.id) heard(m.ev, first); });
-    const tick = setInterval(() => { if (!item) return; const p = progressAt(Date.now() - item.startedAt, item.eta); etaEl.textContent = timeLeft(item.eta - (Date.now() - item.startedAt), Date.now() - item.startedAt); takesRow.querySelectorAll('.mr-take.is-pending').forEach(b => /** @type {HTMLElement} */ (b).style.setProperty('--p', p.toFixed(3))); }, 200);
+    const tick = setInterval(() => {
+      if (!item) return;
+      const p = progressAt(Date.now() - item.startedAt, item.eta);
+      if (first === lead) etaEl.textContent = timeLeft(item.eta - (Date.now() - item.startedAt), Date.now() - item.startedAt);
+      for (let k = 0; k < n; k++) takesRow.querySelector('.mr-take.is-pending[data-i="' + (first + k) + '"]')?.setAttribute('style', '--i:' + (first + k + 1) + ';--n:' + (takes.length + 1) + ';--p:' + p.toFixed(3));
+    }, 200);
     const landed = new Set();
     const check = (/** @type {any} */ it) => {
       if (!item || it.id !== item.id) return;
@@ -693,7 +863,7 @@ export function openMirror(o) {
       off(); offEv(); clearInterval(tick);
       for (let k = n - 1; k >= 0; k--) if (takes[first + k]?.pending) takes.splice(first + k, 1);
       paintTakes(); if (shown >= takes.length) show(-1);
-      rested();
+      rested(first);
     }
   }
   /**
@@ -701,7 +871,8 @@ export function openMirror(o) {
    * come up in the frame, with how long is left, and its previews develop in place.
    * @param {HTMLCanvasElement | null} mask
    */
-  function working(mask) {
+  function working(mask, first = -1) {
+    making++; lead = first; el.classList.add('is-making');
     const url = mask ? 'url(' + mask.toDataURL('image/png') + ')' : 'none';
     // the light glows a little beyond the part, so a thin one (a brow, a lash line) still reads as lit
     let lit = url;
@@ -713,7 +884,11 @@ export function openMirror(o) {
     el.classList.add('is-working');
   }
   /** The work over: the light and the words go, and a preview never followed by its picture is not left saying so. */
-  function rested() {
+  function rested(first = -1) {
+    making = Math.max(0, making - 1);
+    // another is still being made: the frame goes on showing the latest one's wait
+    if (making) { if (first === lead) { el.classList.remove('has-preview'); preview.removeAttribute('src'); } return; }
+    el.classList.remove('is-making');
     el.classList.remove('is-working', 'has-preview'); preview.removeAttribute('src');
     for (const e of [workEl, preview]) { e.style.removeProperty('mask-image'); e.style.removeProperty('-webkit-mask-image'); }
     if (stampEl.dataset.kind === 'preview') show(Math.min(shown, takes.length - 1), true);
@@ -721,12 +896,12 @@ export function openMirror(o) {
   /** One of the studio's events, while it works on this. @param {any} ev @param {number} first */
   function heard(ev, first) {
     const words = ev?.type === 'stage' ? STAGE_SAYS[ev.stage] : ev?.type === 'note' ? ev.text : ev?.type === 'plan' ? ev.plan?.summary : '';
-    if (words) sayIt(words);
+    if (words && first === lead) sayIt(words);
     if (ev?.type !== 'partial' || !(ev.blob || ev.canvas)) return;
     // a preview: in its place among the takes, and the first in the frame, where it develops (and says it is one)
     const url = ev.blob ? URL.createObjectURL(ev.blob) : ev.canvas.toDataURL('image/jpeg', .8), t = takes[first + ev.index];
     if (t?.pending) { t.preview = url; paintTakes(); }
-    if (ev.index === 0) { preview.src = url; el.classList.add('has-preview'); stampEl.textContent = 'Preview'; stampEl.dataset.kind = 'preview'; }
+    if (ev.index === 0 && first === lead) { preview.src = url; el.classList.add('has-preview'); stampEl.textContent = 'Preview'; stampEl.dataset.kind = 'preview'; }
   }
   /** The studio's words, one line at a time, each coming in as the last goes. @param {string} text */
   function sayIt(text) {
@@ -742,6 +917,8 @@ export function openMirror(o) {
     x.save(); x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, c.width / 400);
     for (const q of picks) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
     x.restore();
+    drawMarks(x, c.width, c.height, marks);
+    if (ref) { const r = await canvasOf(ref.url).catch(() => null); if (r) { const w = c.width * .26, hh = w * r.height / r.width; x.save(); x.translate(w * .66, c.height - hh - w * .42); x.rotate(-.05); x.shadowColor = 'rgba(0,0,0,.4)'; x.shadowBlur = c.width / 60; x.fillStyle = '#fbf8f2'; x.fillRect(-w * .52, 0, w * 1.04, hh + w * .2); x.shadowBlur = 0; x.drawImage(r, -w / 2, w * .02, w, hh); x.restore(); } }
     P.stamp(c);
     const blob = await P.toBlob(c, 'image/jpeg', .9), parent = print || null;
     const p = await addPrint({ blob, w: c.width, h: c.height, origin: 'made', provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + (titleOf(picks) || 'a change') }, parents: parent ? [parent.id] : [], prompt: wordsFor(picks, input.value) });
@@ -943,6 +1120,9 @@ export function openMirror(o) {
   }
   // all set: the takes: the face as it is first, then each one that comes back (or, for an example, each look they were given)
   if (person) for (const look of person.looks) takes.push({ url: look.image, ...made, look, picks: pickOf(look) });
+  // a turn from before (from the studio's list): its takes; one still being made is waited for, below
+  const after = o.after || null;
+  if (after && after.state !== 'running') for (const id of after.prints || []) { const p = printById(id); if (p) takes.push({ url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, picks: [] }); }
   show(-1, true); paintTakes(); paintPicks();
   new ResizeObserver(() => fit()).observe(stageEl);
   new ResizeObserver(() => fit(true)).observe(takesRow);
@@ -951,7 +1131,7 @@ export function openMirror(o) {
   document.addEventListener('keydown', onKey); stops.push(() => document.removeEventListener('keydown', onKey));
 
   (async () => {
-    partsRow.hidden = true;   // the face is the menu once it is read: the chips come back only where no face is found
+    // the parts stay in the dock as well as on the face: any of them, any time, as many as you like
     frame.classList.add('is-reading');
     try { base = await canvasOf(person ? person.portrait : print.blob); } catch { base = null; }
     // a drawn sitter's hair comes with it, read when it was made ready
@@ -975,6 +1155,17 @@ export function openMirror(o) {
     else if (picks[0] && !face) choose(picks[0].part);
     // then, unless they came asking for something already, the face looks this way and that as its notes come in
     // every side of you, caught by the live mirror: shown first, the frame turning through them; else the face says hello
+    if (after?.state === 'running') {
+      const first = takes.length, n = after.n || 4;
+      for (let k = 0; k < n; k++) takes.push({ url: '', label: '', kind: '', pending: true, picks: [] });
+      paintTakes();
+      follow(onItem => new Promise(done => {
+        onItem(after); queueMicrotask(() => emit('item:patch', after));
+        const off = on('item:patch', (/** @type {any} */ x) => { if (x.id === after.id && x.state !== 'running') { off(); done(x); } });
+      }), first, n, (k, p) => { Object.assign(takes[first + k], { url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, pending: false }); });
+      return;
+    }
+    if (after && takes.length) { show(0); return; }
     if (o.go) tryOn(); else if (o.turns?.length === 3 && shown < 0 && !reduced) setTimeout(() => { if (el.isConnected && !turning) startTurning(/** @type {import('./live.js').Side[]} */ (o.turns), 1, true); }, 500); else if (face && shown < 0) hello();
   })();
 

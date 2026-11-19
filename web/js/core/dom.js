@@ -117,8 +117,17 @@ export function sheet(build, { cls = '', label = '' } = {}) {
     const scrim = h('div.scrim'), body = h('div.sheet__body'), grip = h('div.sheet__grip');
     const panel = h('div.sheet' + (cls ? '.' + cls : ''), { role: 'dialog', 'aria-modal': 'true', 'aria-label': label }, grip, body);
     let done = false;
+    // Escape puts the sheet on top away (only that one), and the keys go back where they were
+    const was = /** @type {HTMLElement | null} */ (document.activeElement);
+    const onKey = (/** @type {KeyboardEvent} */ e) => {
+      if (e.key !== 'Escape' || done) return;
+      const all = stage().querySelectorAll('.sheet'); if (all[all.length - 1] !== panel) return;
+      e.preventDefault(); e.stopPropagation(); close(); was?.focus?.({ preventScroll: true });
+    };
+    window.addEventListener('keydown', onKey, true);
     const close = value => {
       if (done) return; done = true;
+      window.removeEventListener('keydown', onKey, true);
       scrim.classList.remove('is-in'); panel.classList.remove('is-in'); panel.style.transform = '';
       setTimeout(() => { scrim.remove(); panel.remove(); resolve(value); }, reduced ? 0 : 380);
     };

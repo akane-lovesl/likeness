@@ -183,3 +183,19 @@
 /* Weather from outside */
 .sky__outside { display: grid; gap: 1.6cqw; margin-top: 3.4cqw; }
 .sky__outnote { margin: 0; font-size: calc(3cqw * var(--t-scale)); line-height: 1.4; }
+
+/* In the studio: what the mirror asked for, and how far each has got */
+.acts { display: grid; gap: 2cqw; margin: 3cqw 0 4cqw; }
+.acts__row { display: grid; grid-template-columns: 12cqw minmax(0, 1fr) auto; align-items: center; gap: 3cqw; padding: 2cqw 3cqw 2cqw 2cqw; border: 0; border-radius: 3.4cqw; background: color-mix(in srgb, var(--ink) 5%, transparent); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.acts__row[disabled] { opacity: .5; cursor: default; }
+.acts__pic { position: relative; width: 12cqw; aspect-ratio: 3 / 4; border-radius: 1.6cqw; overflow: hidden; background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.acts__pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.acts__row[data-state="running"] .acts__pic::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgb(255 244 224 / .6) 50%, transparent 70%) 0 0 / 300% 100%; animation: lk-shimmer 1.6s linear infinite; }
+.acts__say { display: grid; gap: 1.1cqw; min-width: 0; }
+.acts__say b { font: 500 3.6cqw/1.2 var(--font-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acts__say small { font: 500 2.2cqw/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acts__row[data-state="running"] .acts__say small { color: var(--accent); }
+.acts__go .ic { width: 5cqw; height: 5cqw; color: var(--soft); }
+.acts__none { margin: 3cqw 0; font: italic 400 3.6cqw/1.45 var(--font-text); color: var(--soft); }
+.acts__kept { display: flex; gap: 2.4cqw; align-items: flex-start; margin: 0; padding: 3cqw; border-radius: 3cqw; background: color-mix(in srgb, var(--accent) 10%, transparent); font: 400 3.1cqw/1.4 var(--font-text); color: var(--soft); }
+.acts__kept .ic { flex: none; width: 4.6cqw; height: 4.6cqw; color: var(--accent); }

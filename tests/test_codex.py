@@ -160,3 +160,21 @@ def test_a_picture_that_arrives_inside_an_event_is_kept(tmp_path):
 def test_probe_reports_what_the_studio_needs():
     report = probe({"command": FAKE_CODEX})
     assert report["ok"] and report["version"] and all(report["flags"].values()) and report["signed_in"]
+
+
+def test_a_reference_and_the_persons_marks_are_named_for_what_they_are(engine, tmp_path):
+    """The mirror's reference (role look) and the picture with the person's marks on it (role marks) go to Codex with
+    the subject, each said for what it is, so GPT Image borrows from the one and follows the other."""
+    a, b, c, m = tmp_path / "a.png", tmp_path / "b.png", tmp_path / "c.png", tmp_path / "m.png"
+    for path, colour in ((a, (200, 150, 120)), (b, (30, 60, 140)), (c, (200, 150, 121))):
+        Image.new("RGB", (64, 96), colour).save(path)
+    mask = Image.new("L", (32, 48), 0)
+    ImageDraw.Draw(mask).rectangle((0, 0, 15, 15), fill=255)
+    mask.save(m)
+    turn = Turn(id="r", text="Changes to @A", pace="quick", n=1, handles={"A": "a", "B": "b", "C": "c"},
+                intent={"op": "region", "subject": "a", "refs": [{"asset": "c", "role": "marks"}, {"asset": "b", "role": "look"}]},
+                pins=[{"n": 1, "note": "the fringe from the reference", "print": "a", "mask": "m"}])
+    run_turn(engine, turn, Inputs(pictures={"A": a, "B": b, "C": c}, subject="A", refs=[("C", "marks"), ("B", "look")], pins=[(1, "the fringe from the reference", m)]))
+    brief = (next((engine.home / "jobs").iterdir()) / "brief.md").read_text(encoding="utf-8")
+    assert "a reference for the look" in brief and "never its face" in brief
+    assert "the person's own rough marks" in brief and "never draw the marks into the result" in brief

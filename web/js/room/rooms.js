@@ -19,6 +19,18 @@ export const TYPES = {
 
 export const ROOMS = [
   {
+    id: 'salon', name: 'Salon', line: 'Low lamps, warm brass, a mirror ringed with light.', dark: true,
+    colors: { ground: '#130f0d', ground2: '#2d231c', surface: '#1f1915', ink: '#f6efe6', soft: '#b3a596', accent: '#f2c58a', accent2: '#c98d63', onAccent: '#1d140c' },
+    type: 'editorial', frame: 'print', ornament: 'sparkle', motifs: ['sparkle', 'star'], set: 'none', texture: 'grain',
+    sky: { weather: 'motes', light: 'night' }, wipe: 'ink', sound: 'glass', motion: 'calm', radius: 2,
+    voice: {
+      hello: { morning: 'Morning. The lamps are warming up.', afternoon: 'Afternoon. Who are we today?', evening: 'Evening. The mirror is lit.', night: 'Late. Good light for a change.' },
+      placeholder: 'Ask for anything', send: 'Send',
+      stages: { read: 'Looking closely', plan: 'Working out how', draw: 'Making it', finish: 'Nearly there' },
+      done: ['There you are.', 'Have a look.', 'One to keep?'],
+    },
+  },
+  {
     id: 'atelier', name: 'Atelier', line: 'Paper, ink, and a window full of afternoon.',
     colors: { ground: '#f3eee4', ground2: '#e4d7c2', surface: '#fbf8f2', ink: '#1d1915', soft: '#776c60', accent: '#d8432b', accent2: '#c4932f', onAccent: '#fff8ee' },
     type: 'editorial', frame: 'print', ornament: 'asterisk', motifs: ['sparkle', 'asterisk'], set: 'window', texture: 'grain',

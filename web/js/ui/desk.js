@@ -100,7 +100,7 @@ export function deskScreen() {
     if (empty) box.append(h('div.starters', null,
       starter(0, 'image', 'Bring a picture', 'A photo, a screenshot, a drawing', () => attach()),
       starter(1, 'sparkle', 'Start from words', 'Describe it and watch it appear', () => comp.setText('Paint ')),
-      starter(2, 'room', 'Change the room', 'Seven rooms, or invent your own', e => openRooms(e)),
+      starter(2, 'room', 'Change the room', 'Eight rooms, or invent your own', e => openRooms(e)),
       h('button.link.t-mono.t-soft', { style: { justifySelf: 'center', marginTop: '1cqw', padding: '2cqw' }, onclick: () => samples() }, 'or play with two sample pictures')));
     else box.querySelector('.hello__sky').append(h('button.hello__new', { onclick: async () => { await newThread(); toast('A fresh page'); } }, 'New page'));
     return box;

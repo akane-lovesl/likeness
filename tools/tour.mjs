@@ -7,7 +7,7 @@
  *   npm run tour -- [--url http://127.0.0.1:8787] [--out relay/0004-lookbook/out/tour] [--only ring,words,...]
  *
  * The app must already be running at --url (uv run likeness serve, or npm run serve for the showcase). Scenes, in
- * order: ring, words, mirror, tryon, show, you, live, sides, desk. Every camera in the tour is Chrome's fake one,
+ * order: welcome, ring, words, mix, mirror, tryon, show, marks, you, rooms, live, sides, desk. Every camera in the tour is Chrome's fake one,
  * playing a drawn sitter, and every photo of "you" is a drawn sitter: the tour never sees a real face, the person
  * running it included.
  */
@@ -17,7 +17,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SCENES = ['ring', 'words', 'mirror', 'tryon', 'show', 'you', 'live', 'sides', 'desk'];
+const SCENES = ['welcome', 'ring', 'words', 'mix', 'mirror', 'tryon', 'show', 'marks', 'you', 'rooms', 'live', 'sides', 'desk'];
 const arg = (name, fallback) => { const i = process.argv.indexOf('--' + name); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback; };
 const URL_ = arg('url', 'http://127.0.0.1:8787').replace(/\/$/, '');
 const OUT = resolve(ROOT, arg('out', 'relay/0004-lookbook/out/tour'));
@@ -81,8 +81,20 @@ const browser = await chromium.launch({ channel, args: camera('kofi.mjpeg') });
 const version = browser.version();
 const ctx = await browser.newContext(PHONE);
 const page = await ctx.newPage();
-await page.goto(URL_ + '/');
+// the first time, as someone new: the welcome is asked for (a browser driven by a script is otherwise spared it)
+await page.goto(URL_ + (!ONLY.length || ONLY.includes('welcome') ? '/?welcome' : '/'));
 const edition = (await page.locator('.lb-bar__edition').textContent({ timeout: 30000 }).catch(() => '')) || '?';
+
+await scene('welcome', 'The first time: what Likeness is for, then the first screen shown', page, async ({ shot }) => {
+  await page.locator('.wl-title').waitFor({ timeout: 15000 }); await sleep(1400); await shot('the welcome');
+  await page.locator('.wl-title .wl-go').click(); await sleep(1100); await shot('1 · the ring');
+  await page.locator('.wl-card .wl-go').click(); await sleep(3800); await shot('2 · mixing a look, done on the ring');
+  await sleep(2400); await shot('every face wears both');
+  await page.locator('.wl-card .wl-go').click(); await sleep(1400); await shot('3 · then, on you (the ring put back)');
+  await page.locator('.wl-card .wl-go').click(); await sleep(1100); await shot('4 · the rooms');
+  await page.locator('.wl-card .wl-go').click(); await sleep(900);
+});
+await page.evaluate(() => document.querySelector('.wl')?.remove()).catch(() => {});
 
 await scene('ring', 'First sight: the Lookbook', page, async ({ shot, note }) => {
   await shot('it opens');
@@ -98,6 +110,21 @@ await scene('words', 'Words: a look described, drawn as it is said', page, async
   await sleep(2000); await shot('drawn as said: ' + (await page.locator('.lb-caption__shape').textContent().catch(() => '') || ''));
   await input.fill('copper, a shade deeper'); await sleep(2600); await shot('typed: copper, a shade deeper');
   await input.fill(''); await page.locator('.lb-orbit').click({ position: { x: 4, y: 4 } }).catch(() => {}); await sleep(1400); await shot('the words gone');
+});
+await scene('mix', 'A look mixed from several parts, worn by every face at once', page, async ({ shot }) => {
+  const book = page.locator('section.book');
+  await book.locator('.lb-part[data-part="bangs"]').click(); await sleep(700);
+  await book.locator('.lb-style[data-style="curtain"]').click(); await sleep(1800); await shot('curtain bangs, on every face');
+  await book.locator('.lb-part[data-part="lips"]').click(); await sleep(700);
+  await book.locator('.lb-style[data-style="red"]').click(); await sleep(2200); await shot('and a red lip: both, on every face');
+  const ring = await book.locator('.lb-orbit').boundingBox();
+  if (ring) { await page.mouse.move(ring.x + ring.width * .75, ring.y + ring.height * .5); await page.mouse.down(); await page.mouse.move(ring.x + ring.width * .3, ring.y + ring.height * .5, { steps: 8 }); await page.mouse.up(); await sleep(1600); await shot('turned: the next face wears it too'); }
+  await book.locator('.lb-card.is-front').click(); await page.locator('section.mr').waitFor({ timeout: 20000 }); await sleep(2400); await shot('opened: the mirror wears the whole look');
+  await page.locator('section.mr .mr-bar__back').click(); await sleep(900);
+  // put back as it was, for the scenes after
+  while (await book.locator('.lb-token').count()) { await book.locator('.lb-token').first().click(); await sleep(300); }
+  const open = book.locator('.lb-part[aria-pressed="true"]'); if (await open.count()) await open.click();
+  await sleep(800);
 });
 await scene('mirror', 'The mirror, on a face from the ring', page, async ({ shot }) => {
   await page.locator('.lb-card.is-front').click();
@@ -137,10 +164,46 @@ await scene('show', 'Show it, and the card', page, async ({ shot, note }) => {
   const card = join(OUT, 'card.png'); await (await download).saveAs(card); note('the card: card.png');
   await sleep(800); await shot('the card saved'); await page.keyboard.press('Escape'); await sleep(700);
 });
+let tookBoth = 0;
+await scene('marks', 'Drawn on, a reference, and two looks at once', page, async ({ shot, note }) => {
+  const mirror = page.locator('section.mr');
+  await mirror.locator('.mr-ask__add').click(); await sleep(700); await shot('+ : draw on it, or a reference');
+  await mirror.locator('.mr-tray__do[data-do="draw"]').click(); await sleep(600);
+  const box = await mirror.locator('.mr-frame').boundingBox();
+  if (box) {
+    const cx = box.x + box.width * .5, cy = box.y + box.height * .64, r = box.width * .17;
+    await page.mouse.move(cx + r, cy); await page.mouse.down();
+    for (let k = 1; k <= 22; k++) { await page.mouse.move(cx + r * Math.cos(k / 20 * 2 * Math.PI), cy + r * .75 * Math.sin(k / 20 * 2 * Math.PI)); await sleep(16); }
+    await page.mouse.up(); await sleep(500); await shot('a ring drawn round the jaw');
+  }
+  await mirror.locator('.mr-drawbar__done').click(); await sleep(500);
+  const chooser = page.waitForEvent('filechooser', { timeout: 15000 });
+  await mirror.locator('.mr-ask__add').click(); await sleep(300); await mirror.locator('.mr-tray__do[data-do="ref"]').click();
+  await (await chooser).setFiles(join(ROOT, 'tests/fixtures/sitters/lena.jpg')); await sleep(1200);
+  await mirror.locator('.mr-ask__input').fill('her fringe, and softer where it is circled'); await sleep(700); await shot('marks, a reference, and words');
+  await mirror.locator('.mr-ask__go').click(); await sleep(1500);
+  // a second look, asked while the first is being made
+  await mirror.locator('.mr-part[data-part="lips"]').click(); await sleep(400); await mirror.locator('.mr-style[data-style="red"]').click(); await sleep(400);
+  await mirror.locator('.mr-ask__go').click(); await sleep(1600); await shot('a second look, asked while the first is made');
+  const pill = mirror.locator('.act');
+  if (await pill.isVisible().catch(() => false)) { await pill.click(); await sleep(1100); await shot('In the studio: each, and how far it has got'); await page.keyboard.press('Escape'); await sleep(600); }
+  tookBoth = await waitTurn(page, shot, () => mirror.locator('.mr-take.is-pending').count().then(n => n === 0));
+  note('two looks at once: ' + secs(tookBoth));
+  await sleep(1200); await shot('both landed');
+});
 await scene('you', 'The ring becomes you', page, async ({ shot }) => {
   await page.locator('section.mr .mr-bar__back').click(); await sleep(3200); await shot('back at the ring');
   const them = page.locator('.lb-whose button[data-who="them"]'), you = page.locator('.lb-whose button[data-who="you"]');
   if (await you.isVisible().catch(() => false)) { await you.click(); await sleep(2600); await shot('You'); await them.click(); await sleep(2200); await shot('Them'); }
+});
+await scene('rooms', 'Rooms: the whole app dressed, the Lookbook and the mirror too', page, async ({ shot }) => {
+  const to = async (id) => { await page.locator('.lb-bar__room').click(); await sleep(900); await page.locator('.sheet .postcard[data-room="' + id + '"]').click(); await sleep(1900); };
+  await page.locator('.lb-bar__room').click(); await sleep(1000); await shot('the rooms, from the Lookbook'); await page.keyboard.press('Escape'); await sleep(500);
+  await to('princess'); await shot('Little Princess');
+  await page.locator('.lb-card.is-front').click(); await page.locator('section.mr').waitFor({ timeout: 20000 }); await sleep(2400); await shot('the mirror, in the room');
+  await page.locator('section.mr .mr-bar__back').click(); await sleep(900);
+  await to('arcade'); await shot('Night Arcade');
+  await to('salon'); await shot('back in the Salon');
 });
 await scene('live', 'The live mirror (the camera plays a drawn sitter)', page, async ({ shot, note }) => {
   await page.goto(URL_ + '/'); await sleep(800);

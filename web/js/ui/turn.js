@@ -146,7 +146,7 @@ export async function runTurn(t) {
   for (const pin of spec.intent.pins || []) if (pin.mask && !pin.maskBlob) pin.maskBlob = await new Promise(r => pin.mask.toBlob(r, 'image/png'));
 
   await addItem({ type: 'you', text: t.said || t.text, pins: (t.intent.pins || []).map(p => ({ n: p.n, note: p.note, print: p.print })) });
-  const item = await addItem({ type: 'job', state: 'running', spec: id, text: t.text, parents: Object.keys(inputs), look: t.intent.look?.id || null, room: room.id, op: t.intent.op, n, pace: t.pace, ar, eta: est.ms, startedAt: Date.now(), summary: describeIntent(t.intent, handleOf), prints: [] });
+  const item = await addItem({ type: 'job', state: 'running', spec: id, text: t.text, said: t.said || null, parents: Object.keys(inputs), look: t.intent.look?.id || null, room: room.id, op: t.intent.op, n, pace: t.pace, ar, eta: est.ms, startedAt: Date.now(), summary: describeIntent(t.intent, handleOf), prints: [] });
   sound.play('send');
   t.onItem?.(item);
   const card = cards.get(item.id);

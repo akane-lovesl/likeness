@@ -91,3 +91,87 @@ test('the mirror tries a look on: four takes inside the part\'s mask, one kept, 
   await expect(mirror).toHaveClass(/is-turning/, { timeout: 60_000 });
   expect(turns.find(t => t.intent.op === 'angles').n).toBe(3);
 });
+
+test('looks asked for one after another are made side by side; the studio list says where each stands, and opens a finished one again', async ({ page }) => {
+  test.setTimeout(180_000);
+  const turns = [];
+  page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await mirror.locator('.mr-part[data-part="brows"]').click();
+  await mirror.locator('.mr-style[data-style="bold"]').click();
+  await mirror.locator('.mr-ask__go').click();
+  await expect(mirror.locator('.mr-take.is-pending')).toHaveCount(4);
+  // while that is being made, another: nothing waits for the first
+  await mirror.locator('.mr-part[data-part="lips"]').click();
+  await mirror.locator('.mr-style[data-style="red"]').click();
+  await mirror.locator('.mr-ask__go').click();
+  await expect(mirror.locator('.mr-take.is-pending')).toHaveCount(8);
+  await expect(page.locator('.toast')).toContainText('Making both: the studio works on them side by side');
+  await expect.poll(() => turns.filter(t => t.intent.op === 'region').length).toBe(2);
+  // the pill counts them; the list says what each is and how far it has got, and that leaving loses nothing
+  const pill = mirror.locator('.act');
+  await expect(pill).toHaveAttribute('data-n', '2');
+  await pill.click();
+  const rows = page.locator('.acts__row');
+  await expect(rows).toHaveCount(2);
+  await expect(page.locator('.acts__row[data-state="running"]')).toHaveCount(2);
+  await expect(page.locator('.acts__kept')).toContainText('carries on in the studio');
+  await expect(page.locator('.acts__row[data-state="done"]')).toHaveCount(2, { timeout: 120_000 });
+  await page.keyboard.press('Escape');
+  await expect(rows).toHaveCount(0);
+  await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(8, { timeout: 30_000 });
+  // later, from the Lookbook: the list opens the first of them again in the mirror, its pictures there
+  await mirror.locator('.mr-bar__back').click();
+  await expect(mirror).toHaveCount(0);
+  await page.locator('.lb-bar .act').click();
+  await expect(rows).toHaveCount(2);
+  await rows.nth(1).click();
+  await expect(mirror.locator('.mr-take:not(.is-origin)')).toHaveCount(4);
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated');
+});
+
+test('a look mixed from four parts, drawn on and with a reference, goes to the studio whole and comes back', async ({ page }) => {
+  test.setTimeout(150_000);
+  const turns = [];
+  page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  for (const [part, style] of [['bangs', 'curtain'], ['brows', 'bold'], ['lips', 'red'], ['colour', 'copper']]) {
+    await mirror.locator('.mr-part[data-part="' + part + '"]').click();
+    await mirror.locator('.mr-style[data-style="' + style + '"]').click();
+  }
+  await expect(mirror.locator('.mr-token:not(.mr-token--marks):not(.mr-token--ref)')).toHaveCount(4);
+  // a ring drawn round the jaw
+  await mirror.locator('.mr-ask__add').click();
+  await mirror.locator('.mr-tray__do[data-do="draw"]').click();
+  const box = await mirror.locator('.mr-frame').boundingBox();
+  const cx = box.x + box.width * .5, cy = box.y + box.height * .62, r = box.width * .16;
+  await page.mouse.move(cx + r, cy);
+  await page.mouse.down();
+  for (let k = 1; k <= 18; k++) await page.mouse.move(cx + r * Math.cos(k / 18 * 2 * Math.PI), cy + r * .8 * Math.sin(k / 18 * 2 * Math.PI));
+  await page.mouse.up();
+  await mirror.locator('.mr-drawbar__done').click();
+  // and a reference
+  const chooser = page.waitForEvent('filechooser');
+  await mirror.locator('.mr-ask__add').click();
+  await mirror.locator('.mr-tray__do[data-do="ref"]').click();
+  await (await chooser).setFiles('tests/fixtures/sitters/lena.jpg');
+  await mirror.locator('.mr-ask__input').fill('her fringe, and softer where it is circled');
+  await mirror.locator('.mr-ask__go').click();
+  await expect(mirror.locator('.mr-take.is-pending')).toHaveCount(4);
+  await expect.poll(() => turns.length).toBe(1);
+  // all of it, each picture by what it is, in sentences: a long note, and the studio takes it
+  const [t] = turns;
+  expect(t.intent.refs.map(x => x.role).sort()).toEqual(['look', 'marks']);
+  expect(t.pins[0].note.length).toBeGreaterThan(300);
+  expect(t.pins[0].note).toContain('Her fringe, and softer where it is circled.');
+  expect(t.pins[0].note).toContain('Follow the marks');
+  expect(t.pins[0].note).toMatch(/Keep everything else exactly as it is: .*background\.$/);
+  await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(4, { timeout: 90_000 });
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated');
+});

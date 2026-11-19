@@ -266,6 +266,22 @@ def _open(path: Path, longest: int = 1024) -> Image.Image:
     return picture
 
 
+def _borrow(image: Image.Image, ref: Image.Image, salt: int = 0) -> Image.Image:
+    """A stand-in for a look borrowed from a reference: its colours, laid over the picture's own light and shade."""
+    colours = _palette(ref)
+    dark, mid, light = colours[0], colours[len(colours) // 2], colours[-1]
+    return Image.blend(image, ImageOps.colorize(ImageOps.grayscale(image), dark, light, mid=mid), .55 + .05 * (salt % 3))
+
+
+def _marked(image: Image.Image, base: Image.Image, marked: Image.Image | None) -> Image.Image:
+    """The person's marks, shown faintly where they were drawn, so a stand-in says what it was given to follow."""
+    if marked is None:
+        return image
+    marked = marked.resize(base.size)
+    where = ImageOps.grayscale(ImageChops.difference(marked, base)).point(lambda v: 150 if v > 48 else 0)
+    return Image.composite(marked, image, where.filter(ImageFilter.MaxFilter(3)))
+
+
 def stamp(image: Image.Image) -> Image.Image:
     out = image.convert("RGB").copy()
     w, h = out.size
@@ -312,6 +328,8 @@ class Simulator:
             return scene(text or "a quiet morning", SIZE, index)
         base = _open(inputs.pictures[subject])
         others = [_open(p) for h, p in inputs.pictures.items() if h != subject]
+        # a look to borrow, and the person's marks: what the mirror sends beside a change
+        borrowed = {role: _open(inputs.pictures[h]) for h, role in inputs.refs if role in ("look", "marks") and h in inputs.pictures}
         if op == "restyle":
             return restyle(base, f"{turn.look.name} {turn.look.prompt}" if turn.look else text)
         if op == "reference" and others:
@@ -328,12 +346,14 @@ class Simulator:
                 if op == "remove" or re.search(r"remove|erase|take out|get rid|delete", note, re.I):
                     changed = base.filter(ImageFilter.GaussianBlur(max(12, base.width // 28)))
                     mask = mask.filter(ImageFilter.MaxFilter(9))
+                elif "look" in borrowed:
+                    changed = _borrow(out, borrowed["look"], index)
                 else:
                     changed = grade(out, note, strength=1.8)
                     if ImageChops.difference(changed, out).getbbox() is None:
                         changed = ImageEnhance.Color(grade(out, note, salt=n + index + 1, strength=1.6)).enhance(1.3)
                 out = Image.composite(changed, out, mask)
-            return out
+            return _marked(out, base, borrowed.get("marks"))
         if op == "backdrop":
             words = turn.backdrop.words if turn.backdrop else text
             place = scene(words, base.size, index)
@@ -354,6 +374,8 @@ class Simulator:
             w, h = varied.size
             cw, ch = w / zoom, h / zoom
             return varied.crop(((w - cw) / 2, (h - ch) / 2, (w + cw) / 2, (h + ch) / 2)).resize((w, h))
+        if "look" in borrowed:
+            return _marked(_borrow(base, borrowed["look"], index), base, borrowed.get("marks"))
         changed = grade(base, text, strength=1.3)
         return changed if ImageChops.difference(changed, base).getbbox() else grade(base, text, salt=1)
 

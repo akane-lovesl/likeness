@@ -15,6 +15,10 @@ img, canvas { display: block; -webkit-user-drag: none; }
 
 /* 9:16 on anything wider than a phone; a phone gets the whole screen. Everything inside is sized in cqw. */
 .stage { position: relative; width: min(100vw, 56.25dvh); height: 100dvh; overflow: hidden; container-type: size; isolation: isolate; color: var(--ink); background: var(--ground); font-size: calc(3.95cqw * var(--t-scale)); line-height: 1.45; font-weight: var(--t-weight); letter-spacing: var(--t-track); font-variation-settings: 'opsz' 14, 'SOFT' 50; }
+/* the keyboard: the stage stays as it is (held, if the browser pans), and only the line being typed in rises above it */
+.stage { translate: 0 var(--pan, 0px); }
+.stage :is(.lb-ask, .mr-ask, .composer) { transition: translate .24s cubic-bezier(.2, .8, .2, 1); }
+.stage.is-typing :is(.lb-ask, .mr-ask, .composer) { position: relative; z-index: 30; translate: 0 calc(-1 * var(--kb, 0px)); }
 @media (min-aspect-ratio: 9/15) { .stage { box-shadow: 0 0 0 1px rgb(255 255 255 / .06), 0 40px 120px rgb(0 0 0 / .6); border-radius: 10px; } }
 
 .ground { position: absolute; inset: 0; z-index: 0; background: radial-gradient(130% 70% at 20% 0%, var(--ground) 30%, var(--ground-2) 100%); }
@@ -79,9 +83,9 @@ img, canvas { display: block; -webkit-user-drag: none; }
 .chip[aria-pressed='true'] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
 
 /* Sheets rise from the bottom edge for anything that is an aside. */
-.scrim { position: absolute; inset: 0; z-index: 60; background: rgb(10 8 6 / .38); opacity: 0; transition: opacity var(--t-mid) var(--ease); }
+.scrim { position: absolute; inset: 0; z-index: 94; background: rgb(10 8 6 / .38); opacity: 0; transition: opacity var(--t-mid) var(--ease); }
 .scrim.is-in { opacity: 1; }
-.sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 61; max-height: 90%; display: flex; flex-direction: column; background: var(--surface); color: var(--ink); border-radius: 6cqw 6cqw 0 0; padding: 2.6cqw 0 calc(4cqw + env(safe-area-inset-bottom)); transform: translateY(104%); transition: transform var(--t-mid) var(--ease); box-shadow: 0 -3cqw 14cqw rgb(0 0 0 / .28); }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 95; max-height: 90%; display: flex; flex-direction: column; background: var(--surface); color: var(--ink); border-radius: 6cqw 6cqw 0 0; padding: 2.6cqw 0 calc(4cqw + env(safe-area-inset-bottom)); transform: translateY(104%); transition: transform var(--t-mid) var(--ease); box-shadow: 0 -3cqw 14cqw rgb(0 0 0 / .28); }
 .sheet.is-in { transform: none; }
 .sheet.is-dragging { transition: none; }
 .sheet__grip { width: 11cqw; height: 1.1cqw; border-radius: 1cqw; background: var(--rule); margin: 0 auto 3cqw; flex: none; }
@@ -89,7 +93,7 @@ img, canvas { display: block; -webkit-user-drag: none; }
 .sheet__body::-webkit-scrollbar { display: none; }
 .sheet__head { display: flex; align-items: baseline; justify-content: space-between; gap: 3cqw; margin-bottom: 4cqw; }
 
-.toast { position: absolute; left: 50%; top: 16cqw; z-index: 90; transform: translate(-50%, -4cqw); opacity: 0; padding: 2.4cqw 4.2cqw; border-radius: 99cqw; background: var(--ink); color: var(--ground); font: 500 calc(2.4cqw * var(--m-scale)) / 1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; transition: transform var(--t-mid) var(--ease-pop), opacity var(--t-mid) var(--ease); pointer-events: none; box-shadow: var(--card-shadow); }
+.toast { position: absolute; left: 50%; top: 16cqw; z-index: 99; transform: translate(-50%, -4cqw); opacity: 0; padding: 2.4cqw 4.2cqw; border-radius: 99cqw; background: var(--ink); color: var(--ground); font: 500 calc(2.4cqw * var(--m-scale)) / 1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; white-space: normal; text-align: center; width: max-content; max-width: 86cqw; text-wrap: balance; transition: transform var(--t-mid) var(--ease-pop), opacity var(--t-mid) var(--ease); pointer-events: none; box-shadow: var(--card-shadow); }
 .toast.is-in { transform: translate(-50%, 0); opacity: 1; }
 .toast--act.is-in { pointer-events: auto; }
 .toast__act { margin-left: 3cqw; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-decoration: underline; text-underline-offset: .25em; }

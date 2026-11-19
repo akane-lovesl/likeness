@@ -152,8 +152,10 @@ test('a chosen part brings the mirror close, and its look is shaped by hand: the
   await mirror.locator('.mr-ask__go').click();
   await expect(mirror.locator('.mr-take:not(.is-origin)')).toHaveCount(1, { timeout: 20_000 });
   await expect(mirror.locator('.mr-stamp')).toHaveText('Sketch');
-  await mirror.locator('.mr-styles__back').click();
+  // the part's pill, touched again, puts it down: no back button, the parts never leave the dock
+  await mirror.locator('.mr-part[aria-pressed="true"]').click();
   await expect(mirror).not.toHaveClass(/is-close/);
+  await expect(mirror.locator('.mr-styles')).toBeHidden();
 });
 
 test('the face turns under a finger, on the device, and says so while it is turned', async ({ page }) => {
@@ -161,7 +163,7 @@ test('the face turns under a finger, on the device, and says so while it is turn
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr'), frame = mirror.locator('.mr-frame');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
-  await expect(mirror.locator('.mr-parts')).toBeHidden();   // a face read is its own menu
+  await expect(mirror.locator('.mr-parts')).toBeVisible();   // the parts stay in the dock, read face or not
   await expect(mirror.locator('.mr-stamp')).toHaveText('Your photo');
   const box = await frame.boundingBox();
   await page.mouse.move(box.x + box.width * .5, box.y + box.height * .45);

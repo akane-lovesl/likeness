@@ -1,4 +1,4 @@
-/* Likeness: tokens. A room (js/room/theme.js) sets every colour, face and tempo below; these are the Atelier's. */
+/* Likeness: tokens. A room (js/room/theme.js) sets every colour, face and tempo below; these are the Salon's, the room it opens in. */
 @font-face { font-family: 'Fraunces'; src: url('../fonts/fraunces.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: 'Fraunces'; src: url('../fonts/fraunces-italic.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
 @font-face { font-family: 'IBM Plex Mono'; src: url('../fonts/plex-mono-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
@@ -14,17 +14,17 @@
 @font-face { font-family: 'Caveat'; src: url('../fonts/caveat.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
 
 /* Registered, so that a browser without view transitions still glides from one room to the next. */
-@property --ground { syntax: '<color>'; inherits: true; initial-value: #f3eee4; }
-@property --ground-2 { syntax: '<color>'; inherits: true; initial-value: #e7dccb; }
-@property --surface { syntax: '<color>'; inherits: true; initial-value: #fbf8f2; }
-@property --ink { syntax: '<color>'; inherits: true; initial-value: #1d1915; }
-@property --soft { syntax: '<color>'; inherits: true; initial-value: #786d61; }
-@property --accent { syntax: '<color>'; inherits: true; initial-value: #d8432b; }
-@property --accent-2 { syntax: '<color>'; inherits: true; initial-value: #c4932f; }
-@property --on-accent { syntax: '<color>'; inherits: true; initial-value: #fff8ee; }
+@property --ground { syntax: '<color>'; inherits: true; initial-value: #130f0d; }
+@property --ground-2 { syntax: '<color>'; inherits: true; initial-value: #2d231c; }
+@property --surface { syntax: '<color>'; inherits: true; initial-value: #1f1915; }
+@property --ink { syntax: '<color>'; inherits: true; initial-value: #f6efe6; }
+@property --soft { syntax: '<color>'; inherits: true; initial-value: #b3a596; }
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #f2c58a; }
+@property --accent-2 { syntax: '<color>'; inherits: true; initial-value: #c98d63; }
+@property --on-accent { syntax: '<color>'; inherits: true; initial-value: #1d140c; }
 
 :root {
-  --rule: rgb(29 25 21 / .14); --veil: rgb(243 238 228 / .78); --shade: rgb(40 28 14 / .28); --accent-soft: #f3d9cf;
+  --rule: rgb(246 239 230 / .16); --veil: rgb(19 15 13 / .82); --shade: rgb(0 0 0 / .55); --accent-soft: #5a4836;
   --font-display: 'Fraunces', Georgia, serif; --font-text: 'Fraunces', Georgia, serif; --font-mono: 'IBM Plex Mono', ui-monospace, monospace; --font-hand: 'Caveat', cursive;
   --d-scale: 1; --d-weight: 340; --d-track: -.03em; --d-case: none; --d-style: normal; --t-weight: 380; --t-scale: 1; --m-scale: 1; --t-track: 0;
   --radius: 1.4cqw; --radius-ui: 99cqw; --print-radius: .8cqw;

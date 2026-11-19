@@ -71,13 +71,30 @@ export function sketchFor(part, s) {
 }
 
 /**
- * The words for the studio: the change, and that nothing else changes. A person's own words come after, as they
- * wrote them. @param {{ part: string, style: Style, said?: string }[]} picks @param {string} own
+ * The words for the studio: the change, then a person's own words as they wrote them (made a sentence), then what
+ * goes with them (a reference, marks), and last that nothing else changes.
+ * @param {{ part: string, style: Style, said?: string }[]} picks @param {string} own @param {string[]} [extra]
  */
-export function wordsFor(picks, own = '') {
+export function wordsFor(picks, own = '', extra = []) {
   const change = picks.map(p => p.style.words + (p.said ? ' — ' + p.said : ''));
   const said = change.length ? 'Give them ' + (change.length > 1 ? change.slice(0, -1).join(', ') + ' and ' + change[change.length - 1] : change[0]) + '.' : '';
-  return [said, own.trim(), change.length ? 'Keep everything else exactly as it is: the same person, face, expression, skin, light and background.' : ''].filter(Boolean).join(' ');
+  const keep = change.length || extra.length ? 'Keep everything else exactly as it is: the same person, face, expression, skin, light and background.' : '';
+  return [said, sentence(own), ...extra.map(sentence), keep].filter(Boolean).join(' ');
+}
+/** Words made a sentence: a capital, and a stop where there was none. @param {string} s */
+const sentence = (s) => { const t = s.trim(); if (!t) return ''; const c = t[0].toUpperCase() + t.slice(1); return /[.!?…]$/.test(c) ? c : c + '.'; };
+
+/** What a part is called after a style's name, where the name needs it. */
+const NOUNS = /** @type {Record<string, string>} */ ({ bangs: 'bangs', brows: 'brows', colour: 'hair', cut: 'cut', lips: 'lips', beard: 'beard', lashes: 'eyes' });
+/**
+ * A look's name the way a person would say it: "Curtain bangs", "Copper hair", "Pixie cut", "Red lips", "Moustache".
+ * @param {string} part @param {string} style
+ */
+export function lookName(part, style) {
+  const s = styleOf(part, style); if (!s) return '';
+  const n = s.name, noun = NOUNS[part] || '';
+  const whole = !noun || n.toLowerCase().includes(noun.slice(0, 4)) || /shaven|moustache|stubble|liner/i.test(n) || (part === 'cut' && /\s|s$/.test(n));
+  return whole ? n : n + ' ' + noun;
 }
 
 /** A short title for what was picked: "Curtain bangs", "Copper · Bob". @param {{ part: string, style: Style }[]} picks */

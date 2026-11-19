@@ -10,10 +10,13 @@ import { sound } from './core/sound.js';
 import { screens } from './core/dom.js';
 import { deskScreen } from './ui/desk.js';
 import { showBook } from './looks/book.js';
+import { watchKeyboard } from './core/keyboard.js';
+import { welcome } from './ui/welcome.js';
 
 await Promise.all([connect(), boot()]);
 const stage = /** @type {HTMLElement} */ (document.getElementById('stage'));
-const room = roomById(settings.get('room', 'atelier'));
+watchKeyboard(stage);
+const room = roomById(settings.get('room', 'salon'));
 sky.mount(stage);
 paint(room); sky.setRoom(room); applySky();
 sound.set(settings.get('sound', false), room.sound);
@@ -33,4 +36,7 @@ stage.addEventListener('pointerdown', e => {
 });
 // the Lookbook first, unless the address asks for the desk
 const asked = new URLSearchParams(location.search);
-if (!asked.has('desk') && !asked.has('skipwelcome')) showBook();
+if (!asked.has('desk') && !asked.has('skipwelcome')) {
+  showBook();
+  if (asked.has('welcome') || !navigator.webdriver) setTimeout(() => welcome({ force: asked.has('welcome') }), 700);
+}

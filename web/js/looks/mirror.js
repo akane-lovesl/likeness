@@ -75,7 +75,7 @@ async function washOf(pic, f, picks) {
 
 /**
  * Opens the mirror on a photo (a print) or on one of the studio's example people.
- * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null, hair?: string | null }} o
+ * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null, hair?: string | null, turns?: string[] }} o
  */
 export function openMirror(o) {
   current?.close(true);
@@ -513,7 +513,7 @@ export function openMirror(o) {
 
   // on the frame: a drag turns the face (through its angles when the studio has made them, on the device when not),
   // a tap picks the part under it, and holding shows the face as it was
-  let hold = 0, comparing = false, turning = /** @type {null | { ring: string[], p: number, a: HTMLImageElement, b: HTMLImageElement }} */ (null), p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
+  let hold = 0, comparing = false, turning = /** @type {null | { ring: string[], p: number, a: HTMLImageElement, b: HTMLImageElement, at: number }} */ (null), p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
   let leaning = false, ready = false, pitchNow = 0, stampWas = /** @type {[string, string] | null} */ (null);
   drag(frame, {
     start: e => {
@@ -688,6 +688,8 @@ export function openMirror(o) {
    */
   async function angles() {
     if (turning) { stopTurning(); return; }
+    // every side of you, caught by the live mirror: yours already, nothing to ask for
+    if (shown < 0 && o.turns?.length === 3) { startTurning(o.turns, 1); return; }
     const t = shown >= 0 ? takes[shown] : null, look = t?.look || null;
     /** @type {string[] | null} */ let three = look?.angles?.length === 3 ? look.angles : null;
     if (!three && live && !busy) {
@@ -702,12 +704,19 @@ export function openMirror(o) {
     if (!three) { toast(live ? 'The angles did not come back' : 'Every angle needs the studio', 2600); return; }
     startTurning([three[1], three[0], (t || origin).url, three[2]]);
   }
-  function startTurning(/** @type {string[]} */ ring) {
+  /**
+   * The frame turning through a ring of angles, from the one at `at` (the picture on show): it leans one way to show it
+   * can, and comes back; or, on a tour, it goes all the way round and back, and lets go. @param {string[]} ring
+   */
+  function startTurning(ring, at = 2, tour = false) {
     const a = h('img.mr-angle', { alt: '', draggable: false }), b = h('img.mr-angle', { alt: '', draggable: false });
-    frame.append(a, b); turning = { ring, p: 2, a, b };
+    frame.append(a, b); turning = { ring, p: at, a, b, at };
     el.classList.add('is-turning'); dial.hidden = false; turnBtn.setAttribute('aria-pressed', 'true');
-    turnTo(2);
-    if (!reduced) { anim = spring({ from: 2, to: 1, stiffness: 40, damping: 9, onUpdate: v => turnTo(v), onRest: () => { anim = spring({ from: turning?.p ?? 1, to: 2, stiffness: 60, damping: 12, onUpdate: v => turnTo(v) }); } }); }
+    turnTo(at);
+    if (reduced) return;
+    const go = (/** @type {number[]} */ stops, /** @type {() => void} */ then) => { const [to, ...rest] = stops; if (to == null) { then(); return; } anim = spring({ from: turning?.p ?? at, to, stiffness: 46, damping: 11, onUpdate: v => turnTo(v), onRest: () => go(rest, then) }); };
+    if (tour) go([0, ring.length - 1, at], () => stopTurning());
+    else go([at - 1, at], () => {});
   }
   function stopTurning() {
     anim?.stop(); if (!turning) return;
@@ -717,18 +726,20 @@ export function openMirror(o) {
   /** The frame at a point between the angles: the two nearest cross-fade, and the frame leans as it turns. @param {number} v */
   function turnTo(v) {
     if (!turning) return;
-    turning.p = v; const i = Math.floor(v), u = v - i, A = turning.ring[i], B = turning.ring[Math.min(turning.ring.length - 1, i + 1)];
+    // past either end (a spring overshoots), the end picture stays
+    turning.p = v; const n = turning.ring.length - 1, w = Math.max(0, Math.min(n, v)), i = Math.min(n, Math.floor(w)), u = w - i, A = turning.ring[i], B = turning.ring[Math.min(n, i + 1)];
     if (turning.a.getAttribute('src') !== A) turning.a.src = A; if (turning.b.getAttribute('src') !== B) turning.b.src = B;
-    turning.b.style.opacity = u.toFixed(3);
-    const lean = Math.sin(u * Math.PI) * (v < 2 ? 7 : -7);
+    const d = Math.max(0, Math.min(1, (u - .3) / .4));
+    turning.b.style.opacity = (d * d * (3 - 2 * d)).toFixed(3);
+    const lean = Math.sin(u * Math.PI) * (v < turning.at ? 7 : -7);
     frame.style.transform = 'perspective(160cqw) rotateY(' + lean.toFixed(2) + 'deg)';
-    dial.style.setProperty('--a', ((v - 2) * 30).toFixed(1) + 'deg');
+    dial.style.setProperty('--a', ((v - turning.at) * 30).toFixed(1) + 'deg');
   }
 
   /** The look on your own face: the live mirror where there is a camera, else a photo. */
   async function onMe() {
-    const got = /** @type {{ print: any, picks: Pick[], from?: Element, face?: any } | null} */ ((await canLive()) ? await openLive({ picks, fallback: bringPhoto, from: frame }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
-    if (got) openMirror({ print: got.print, picks: got.picks, words: input.value, from: got.from || null, face: got.face });
+    const got = /** @type {{ print: any, picks: Pick[], from?: Element, face?: any, turns?: string[] } | null} */ ((await canLive()) ? await openLive({ picks, fallback: bringPhoto, from: frame }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
+    if (got) openMirror({ print: got.print, picks: got.picks, words: input.value, from: got.from || null, face: got.face, turns: got.turns });
   }
 
   function close(now = false) {
@@ -765,12 +776,13 @@ export function openMirror(o) {
       if (!known) await reading();
     }
     placeNotes(); paintPicks(); menu();
-    turnBtn.hidden = !(live || person?.looks.some(l => l.angles?.length));
+    turnBtn.hidden = !(live || person?.looks.some(l => l.angles?.length) || o.turns?.length === 3);
     const look = o.look && takes.findIndex(t => t.look === o.look);
     if (typeof look === 'number' && look >= 0) show(look);
     else if (picks[0] && !face) choose(picks[0].part);
     // then, unless they came asking for something already, the face looks this way and that as its notes come in
-    if (o.go) tryOn(); else if (face && shown < 0) hello();
+    // every side of you, caught by the live mirror: shown first, the frame turning through them; else the face says hello
+    if (o.go) tryOn(); else if (o.turns?.length === 3 && shown < 0 && !reduced) setTimeout(() => { if (el.isConnected && !turning) startTurning(/** @type {string[]} */ (o.turns), 1, true); }, 500); else if (face && shown < 0) hello();
   })();
 
   const self = { close };

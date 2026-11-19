@@ -224,10 +224,10 @@ function lookbook() {
   }
   /** Your face, for the look: the live mirror where there is a camera (a photo can be chosen from it), else a photo. */
   async function pickPhoto(/** @type {HTMLElement} */ from = photoBtn) {
-    const got = /** @type {{ print: any, picks: any[], from?: Element, face?: any } | null} */ ((await canLive()) ? await openLive({ picks: livePicks(), keep: picks, fallback: bringPhoto, from }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
+    const got = /** @type {{ print: any, picks: any[], from?: Element, face?: any, turns?: string[] } | null} */ ((await canLive()) ? await openLive({ picks: livePicks(), keep: picks, fallback: bringPhoto, from }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
     if (!got) return;
     photo = got.print; photoBtn.replaceChildren(h('img', { src: URL.createObjectURL(photo.blob), alt: '' })); photoBtn.classList.add('has-photo');
-    open({ print: photo, picks: got.picks, words: input.value, from: got.from || from, face: got.face });
+    open({ print: photo, picks: got.picks, words: input.value, from: got.from || from, face: got.face, turns: got.turns });
   }
   /** A card's look, as a pick: its part, its style, and the shape words gave it. @param {Card} c */
   function cardPick(c) {
@@ -236,8 +236,10 @@ function lookbook() {
   }
   /** What is asked for: the words' looks (each part they name, in the style they name or the one its face wears, shaped as said), and anything picked by hand that they do not name. */
   function said() {
-    const fromWords = heard.map(x => { const c = cards.find(k => k.kind !== 'photo' && k.heard && k.part === x.part); const s = styleOf(x.part, x.style || (c && c.kind !== 'photo' ? c.style : '') || partById(x.part)?.styles[0].id || ''); return s ? { part: x.part, style: s, shape: x.shape } : null; }).filter(q => !!q);
-    return [...picks.filter(q => !heard.some(x => x.part === q.part)), ...fromWords];
+    // the words in the line, and only those: what the line says by itself, with no one there, is not anyone's
+    const words = input.value.trim() ? heard : [];
+    const fromWords = words.map(x => { const c = cards.find(k => k.kind !== 'photo' && k.heard && k.part === x.part); const s = styleOf(x.part, x.style || (c && c.kind !== 'photo' ? c.style : '') || partById(x.part)?.styles[0].id || ''); return s ? { part: x.part, style: s, shape: x.shape } : null; }).filter(q => !!q);
+    return [...picks.filter(q => !words.some(x => x.part === q.part)), ...fromWords];
   }
   /** The look the live mirror opens on: what was asked for here, or the one at the front of the ring. */
   function livePicks() {
@@ -295,7 +297,7 @@ function lookbook() {
   let say = 0, typed = 0;
   const typing = setInterval(() => {
     // beside picks, only that more can be said
-    if (picks.length) { if (!input.value) input.placeholder = fitting(input, ['Say more…', 'More…']); typed = 0; return; }
+    if (picks.length) { if (!input.value) { input.placeholder = fitting(input, ['Say more…', 'More…']); if (heard.length) wear(''); } typed = 0; return; }
     if (document.activeElement === input || input.value || reduced) { input.placeholder = reduced ? SAYINGS[0] : input.placeholder; return; }
     const s = SAYINGS[say % SAYINGS.length]; typed++;
     if (typed <= s.length) {

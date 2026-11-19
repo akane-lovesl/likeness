@@ -3,13 +3,14 @@
  * the mirror draws over a photograph, redrawn on MediaPipe's points frame by frame, so turn your head and the look
  * turns with you. Swipe across the face for the next style; touch a part and the mirror shows every style of it on you
  * at once, live, each close on the part, to touch the one you want. The shutter keeps that moment as a photo and
- * opens the mirror on it with the look already picked. All of it on the device: nothing is kept or sent until the
- * shutter, and the frame says it is a sketch.
+ * opens the mirror on it with the look already picked. Or turn your head: the mirror catches you from the front and
+ * from each side, the look on each, and opens on all three, to turn through. All of it on the device: nothing is kept or
+ * sent until the shutter (or the last side), and the frame says it is a sketch.
  */
 import { h, icon, stage } from '../core/dom.js';
 import { reduced, flip } from '../core/motion.js';
 import * as P from '../studio/painter.js';
-import { follower, hairFollower, reframed, LIPS, MOUTH } from '../studio/face.js';
+import { follower, hairFollower, reframed, notHair, LIPS, MOUTH } from '../studio/face.js';
 import { addPrint, addItem } from '../state.js';
 import { studio } from '../studio/studio.js';
 import { partById, styleOf, plateSVG, tintOf } from './vocab.js';
@@ -29,6 +30,8 @@ const LIVE = ['bangs', 'brows', 'lashes', 'lips', 'beard', 'cut', 'colour'];
 /** How long the picture takes to come apart into tiles, or back. */
 const GRID_MS = 560;
 const pc = (/** @type {number} */ v) => (v * 100).toFixed(3) + '%';
+/** How far a face is turned, as you see it: the nose from between the cheeks, from -1 (to your left) to 1. @param {any} f */
+const yawOf = (f) => { const L = f.pts[234], R = f.pts[454], N = f.pts[1]; return (N.x - (L.x + R.x) / 2) / (Math.abs(R.x - L.x) / 2 || 1); };
 const ease = (/** @type {number} */ t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const mix = (/** @type {number[]} */ a, /** @type {number[]} */ b, /** @type {number} */ t) => a.map((v, i) => v + (b[i] - v) * t);
 /** Where n tiles go in a w × h picture ([x, y, w, h] each): two across (three past six), the last row centred. @param {number} n @param {number} w @param {number} hh */
@@ -55,7 +58,7 @@ let current = /** @type {null | (() => void)} */ (null);
  * The live mirror, on a look. Resolves with the photo taken and the look it was taken in; with a photo chosen
  * instead (by the fallback) and only the looks that were chosen (here, or before: keep); or null when it is closed.
  * @param {{ picks: Pick[], keep?: Pick[], fallback: () => Promise<any>, from?: Element | null }} o
- * @returns {Promise<{ print: any, picks: Pick[], from?: Element, face?: import('../studio/face.js').Face | null } | null>}
+ * @returns {Promise<{ print: any, picks: Pick[], from?: Element, face?: import('../studio/face.js').Face | null, turns?: string[] } | null>}
  */
 export function openLive(o) {
   current?.();
@@ -64,25 +67,31 @@ export function openLive(o) {
     if (!picks.length) { const s = styleOf('bangs', 'curtain'); if (s) picks = [{ part: 'bangs', style: s }]; }
     let part = picks[picks.length - 1]?.part || 'bangs', stream = /** @type {MediaStream | null} */ (null), raf = 0, done = false;
     let follow = /** @type {null | ((v: HTMLVideoElement, c: import('../studio/face.js').Crop, w: number, h: number) => any)} */ (null);
-    let hair = /** @type {null | ((f: HTMLCanvasElement) => HTMLCanvasElement | null)} */ (null), hairAsked = false;
+    let hair = /** @type {null | ((f: HTMLCanvasElement, now?: boolean) => HTMLCanvasElement | null)} */ (null), hairAsked = false;
     let face = /** @type {any} */ (null), seen = 0, read = 0, slow = 0, chose = false;
     // every style of a part, on you at once: the part shown as tiles, how far apart they have come (0 one picture, 1 all
     // apart), when that began and which way, and the tile the picture closes on
-    let grid = '', gt = 0, gAt = 0, gDir = 0, lead = '';
+    let grid = '', gt = 0, gAt = 0, gDir = 0, lead = '', nudged = false;
+    // every side of you: what has been caught (front, one side, the other: the picture with the look on it), the front
+    // kept clean as well for the photo, how far the head is turned now, and how long it has been in the side it is in
+    let sides = /** @type {null | { got: Record<string, string>, front: null | { still: HTMLCanvasElement, face: any }, yaw: number, zone: string, since: number }} */ (null);
 
     const video = /** @type {HTMLVideoElement} */ (h('video', { autoplay: true, playsinline: true }));
     video.muted = true; video.setAttribute('playsinline', ''); video.setAttribute('muted', '');
     const view = /** @type {HTMLCanvasElement} */ (h('canvas.lv-view', { 'aria-hidden': 'true' }));
     const name = h('p.lv-name', { 'aria-live': 'polite' }), hint = h('p.lv-hint', null, 'Look into the camera');
     const tiles = h('div.lv-tiles', { role: 'listbox', 'aria-label': 'Every style, on you' });
-    const frame = h('div.lv-frame', null, view, tiles, h('span.mr-stamp', { 'data-kind': 'sketch' }, 'Live sketch · on this device'), name, hint);
+    const dot = h('span.lv-level__dot', { 'aria-hidden': 'true' }), told = h('p.lv-level__say', { 'aria-live': 'polite' });
+    const level = h('div.lv-level', null, h('span.lv-level__track', { 'aria-hidden': 'true' }), ...['a', 'front', 'b'].map(z => h('span.lv-level__mark', { 'data-side': z, 'aria-hidden': 'true' })), dot, told);
+    const frame = h('div.lv-frame', null, view, tiles, h('span.mr-stamp', { 'data-kind': 'sketch' }, 'Live sketch · on this device'), name, hint, level);
     const partsRow = h('div.mr-parts.lv-parts', { role: 'toolbar', 'aria-label': 'What to change' });
     const shutter = h('button.lv-shutter', { type: 'button', 'aria-label': 'Take it', onclick: () => take() }, h('i'));
     const gallery = h('button.lv-gallery', { type: 'button', 'aria-label': 'Choose a photo instead', title: 'Choose a photo instead', html: icon('image'), onclick: () => finish(null, true) });
+    const turnsBtn = h('button.lv-turns', { type: 'button', 'aria-label': 'Every side of you: turn your head', title: 'Every side of you', 'aria-pressed': 'false', html: icon('orbit'), onclick: () => turning() });
     const el = h('section.lv', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Live mirror' },
       h('header.mr-bar', null, h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => finish(null) }), h('span.mr-bar__edition', { 'data-mode': studio.mode }, studio.label)),
       h('div.mr-stage.lv-stage', null, frame),
-      h('div.mr-dock.lv-dock', null, partsRow, h('div.lv-row', null, gallery, shutter, h('span.lv-gap'))));
+      h('div.mr-dock.lv-dock', null, partsRow, h('div.lv-row', null, gallery, shutter, turnsBtn)));
     stage().append(el);
     const was = o.from?.getBoundingClientRect() || null;
     requestAnimationFrame(() => { el.classList.add('is-in'); if (was && !reduced) flip(frame, was, { duration: 620 }); });
@@ -106,6 +115,7 @@ export function openLive(o) {
     /** Every style of a part, on you: the picture comes apart into a tile for each. @param {string} id */
     function openGrid(id) {
       if (!partById(id)) return;
+      if (sides) turning();
       part = id; grid = id; lead = picks.find(q => q.part === id)?.style.id || ''; gDir = 1; gAt = performance.now() - (gt * GRID_MS);
       paintParts(); paintTiles(); frame.classList.add('is-grid');
       if (id === 'colour' && !hairAsked) { hairAsked = true; hairFollower().then(f => { hair = f; }).catch(() => {}); }
@@ -183,6 +193,55 @@ export function openLive(o) {
         }
       }
       el.classList.toggle('has-face', there);
+      if (sides && there) sideways(now);
+      // a head turned to see the look from the side, before every side was asked for: the button that catches them says so, once
+      else if (there && !nudged && !grid && Math.abs(yawOf(face)) > .4) { nudged = true; turnsBtn.classList.add('is-nudged'); setTimeout(() => turnsBtn.classList.remove('is-nudged'), 4200); }
+    }
+
+    // —— every side of you: turn your head, and the front and each side are caught as you pass them ——
+    function turning() {
+      if (sides) { sides = null; frame.classList.remove('is-sides'); turnsBtn.setAttribute('aria-pressed', 'false'); return; }
+      if (grid) closeGrid();
+      sides = { got: {}, front: null, yaw: 0, zone: '', since: 0 };
+      level.querySelectorAll('.lv-level__mark').forEach(m => { m.classList.remove('is-caught'); /** @type {HTMLElement} */ (m).style.backgroundImage = ''; });
+      frame.classList.add('is-sides'); turnsBtn.setAttribute('aria-pressed', 'true');
+      tell('Turn slowly to one side, then the other');
+    }
+    /** What the level says, coming in when it changes. @param {string} text */
+    function tell(text) {
+      if (told.textContent === text) return;
+      told.textContent = text;
+      if (!reduced) told.animate([{ opacity: 0, translate: '0 .8em' }, { opacity: 1, translate: '0 0' }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    }
+    /** How far the head is turned (the nose between the cheeks, as you see it), shown on the level; held in a side, that side is caught. @param {number} now */
+    function sideways(now) {
+      const s = /** @type {NonNullable<typeof sides>} */ (sides);
+      s.yaw = s.yaw * .55 + yawOf(face) * .45;
+      dot.style.left = pc(.5 + Math.max(-.6, Math.min(.6, s.yaw)) / 1.2 * .84);
+      const zone = Math.abs(s.yaw) < .09 ? 'front' : s.yaw < -.32 ? 'a' : s.yaw > .32 ? 'b' : '';
+      if (zone !== s.zone) { s.zone = zone; s.since = now; }
+      if (zone && !s.got[zone] && now - s.since > 160) catchSide(zone);
+    }
+    /** One side of you, caught: the picture as it is, the look on it, a soft flash, and its mark on the level filled with it. @param {string} zone */
+    function catchSide(zone) {
+      const s = sides; if (!s) return;
+      const w = view.width, hh = view.height, shot = P.make(w, hh), full = [0, 0, w, hh];
+      // the hair read again in this very frame, so its new colour is where the hair is now, not where it was
+      if (hair && picks.some(q => q.part === 'colour')) hairMask(true);
+      draw(ctx(shot), picks, true, full, full, 1, 0);
+      s.got[zone] = shot.toDataURL('image/jpeg', .86);
+      if (zone === 'front') s.front = { still: stillNow(), face };
+      const m = /** @type {HTMLElement | null} */ (level.querySelector('.lv-level__mark[data-side="' + zone + '"]'));
+      if (m) { m.style.backgroundImage = 'url("' + s.got[zone] + '")'; m.classList.add('is-caught'); }
+      const fl = h('div.lv-flash.is-soft'); frame.append(fl); setTimeout(() => fl.remove(), 700);
+      const n = Object.keys(s.got).length;
+      tell(n === 3 ? 'Every side of you' : !s.got.front ? 'Now look straight at the camera' : n === 1 ? 'Now slowly to one side' : 'And the other side');
+      if (n === 3 && s.front) {
+        // in the order the mirror turns through them, as with the studio's angles: the nose to the right, straight on, to the left
+        const { still, face: held } = s.front, turns = [s.got.b, s.got.front, s.got.a];
+        cancelAnimationFrame(raf); follow = null; el.classList.add('is-taking');
+        setTimeout(() => keep(still, held, turns), reduced ? 0 : 700);
+      }
     }
     /**
      * The mirror, or one tile of it: the part of the camera's picture in crop, filling rect, with the looks in ps on the face.
@@ -222,11 +281,12 @@ export function openLive(o) {
       x.save(); x.clip(path, 'evenodd'); coat(x, tint, 'lips'); x.restore();
     }
     /** The hair, found a few times a second in a small copy of the picture (the last mask kept between). */
-    function hairMask() {
+    function hairMask(now = false) {
       const sw = small.width, sh = Math.round(sw * base.height / base.width);
       if (small.height !== sh) { small.height = sh; tints.clear(); }
       ctx(small).drawImage(base, 0, 0, sw, sh);
-      mask = hair?.(small) || mask;
+      mask = hair?.(small, now) || mask;
+      if (now) tints.clear();
     }
     /** The hair recoloured: the small copy coated and kept only where the hair is, to lay over the picture (made again when a few frames old). @param {string} tint */
     function hairTint(tint) {
@@ -237,7 +297,15 @@ export function openLive(o) {
       const t = ctx(k.c); k.at = now;
       t.globalCompositeOperation = 'source-over'; t.globalAlpha = 1; t.clearRect(0, 0, k.c.width, k.c.height); t.drawImage(small, 0, 0);
       coat(t, tint, 'colour');
-      t.globalCompositeOperation = 'destination-in'; t.drawImage(mask, 0, 0, k.c.width, k.c.height); t.globalCompositeOperation = 'source-over';
+      t.globalCompositeOperation = 'destination-in'; t.drawImage(mask, 0, 0, k.c.width, k.c.height);
+      // the hair on the head, not a beard or the brows (the segmenter counts them as hair), as in the mirror
+      if (face) {
+        const z = k.c.width / base.width;
+        t.globalCompositeOperation = 'destination-out'; t.fillStyle = '#fff'; t.filter = 'blur(1px)';
+        for (const s of notHair(face)) { t.beginPath(); s.forEach((p, i) => (i ? t.lineTo(p.x * z, p.y * z) : t.moveTo(p.x * z, p.y * z))); t.closePath(); t.fill(); }
+        t.filter = 'none';
+      }
+      t.globalCompositeOperation = 'source-over';
       return k.c;
     }
 
@@ -262,17 +330,28 @@ export function openLive(o) {
       cancelAnimationFrame(raf); follow = null;
       const held = face && performance.now() - seen < 450 ? face : null;
       frame.append(h('div.lv-flash')); el.classList.add('is-taking');
+      await keep(stillNow(), held);
+    }
+    /** The camera's picture as it is now, mirrored as you see yourself, at up to 1600 pixels. */
+    function stillNow() {
       const c = crop(), k = Math.min(1, 1600 / Math.max(c.sw, c.sh)), still = P.make(Math.round(c.sw * k), Math.round(c.sh * k)), x = ctx(still);
       x.translate(still.width, 0); x.scale(-1, 1); x.drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, still.width, still.height);
+      return still;
+    }
+    /**
+     * A still kept as your photo, and the mirror opened on it with the look picked (and every side of you, if caught).
+     * @param {HTMLCanvasElement} still @param {any} held the face read in it @param {string[]} [turns]
+     */
+    async function keep(still, held, turns) {
       const blob = await P.toBlob(still, 'image/jpeg', .92);
       const p = await addPrint({ blob, w: still.width, h: still.height, origin: 'upload', provenance: { kind: 'photo', label: 'Your picture' } });
       studio.engine.glance?.(p);
       await addItem({ type: 'prints', prints: [p.id], mine: true });
       // the face, as it was read at that moment, goes with the photo: the mirror has it at once, with the look on it
       const known = held ? reframed(held, still.width, still.height) : null;
-      setTimeout(() => finish({ print: p, picks, from: frame, face: known }), reduced ? 0 : 280);
+      setTimeout(() => finish({ print: p, picks, from: frame, face: known, ...(turns ? { turns } : {}) }), reduced ? 0 : 280);
     }
-    /** @param {{ print: any, picks: Pick[], from?: Element, face?: any } | null} result @param {boolean} [instead] a photo chosen instead */
+    /** @param {{ print: any, picks: Pick[], from?: Element, face?: any, turns?: string[] } | null} result @param {boolean} [instead] a photo chosen instead */
     function finish(result, instead = false) {
       if (done) return; done = true; if (current) current = null;
       cancelAnimationFrame(raf); stream?.getTracks().forEach(t => t.stop()); stream = null; video.srcObject = null;

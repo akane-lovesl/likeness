@@ -166,8 +166,9 @@ export async function follower() {
 let hairVideoLoading = /** @type {Promise<any> | null} */ (null);
 /**
  * The hair in a video, found a few times a second: each call hands the segmenter a small copy of the frame (when it is
- * free) and gives the latest mask, white where there is hair, at that small size. Null until there is one.
- * @returns {Promise<(frame: HTMLCanvasElement) => HTMLCanvasElement | null>}
+ * free) and gives the latest mask, white where there is hair, at that small size. Null until there is one. Asked for
+ * now, it reads this very frame, whenever it last read (a picture is being kept, and its hair has to be where it is).
+ * @returns {Promise<(frame: HTMLCanvasElement, now?: boolean) => HTMLCanvasElement | null>}
  */
 export async function hairFollower() {
   hairVideoLoading ||= (async () => {
@@ -180,8 +181,8 @@ export async function hairFollower() {
   const seg = await hairVideoLoading;
   // read a few times a second, less often where a reading is slow, so it never takes much of the device's time
   let mask = /** @type {HTMLCanvasElement | null} */ (null), at = 0, last = 0, gap = 180;
-  return (frame) => {
-    const now = performance.now(); if (now - at < gap) return mask;
+  return (frame, right = false) => {
+    const now = performance.now(); if (!right && now - at < gap) return mask;
     at = now;
     const t = Math.max(last + 1, now); last = t;
     seg.segmentForVideo(frame, t, (/** @type {any} */ res) => {
@@ -228,6 +229,13 @@ export function shapesOf(f) {
 }
 
 /**
+ * Where the hair's new colour never goes, though the hair segmenter counts it as hair: a beard, with a little room round
+ * it (a beard has depth, and it reaches up the sideburns as the head turns), and the brows.
+ * @param {Face} f
+ */
+export function notHair(f) { const s = shapesOf(f); return [...s.beard.map(b => grow(b, .1, .08)), ...s.brows]; }
+
+/**
  * A part's mask: white where it may change, the edge softened. For the hair's colour, the hair itself, found by the
  * hair segmenter.
  * @param {HTMLCanvasElement} picture @param {Face} f @param {string} part @returns {Promise<HTMLCanvasElement | null>}
@@ -239,7 +247,7 @@ export async function maskOf(picture, f, part) {
     x.drawImage(hair, 0, 0, w, h);
     // the hair on the head, not a beard: the segmenter counts both as hair
     x.globalCompositeOperation = 'destination-out'; x.filter = 'blur(' + Math.max(1.5, w / 200).toFixed(1) + 'px)'; x.fillStyle = '#fff';
-    for (const s of [...shapesOf(f).beard, ...shapesOf(f).brows]) { x.beginPath(); s.forEach((p, i) => (i ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y))); x.closePath(); x.fill(); }
+    for (const s of notHair(f)) { x.beginPath(); s.forEach((p, i) => (i ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y))); x.closePath(); x.fill(); }
     x.globalCompositeOperation = 'source-over'; x.filter = 'none';
     return c;
   }

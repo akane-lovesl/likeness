@@ -125,7 +125,7 @@ div.lb-card__after { position: absolute; inset: 0; }
 .lb-token svg, .mr-token__plate svg { width: 100%; height: 100%; }
 
 /* —— the mirror —— */
-.mr { z-index: 84; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); overflow: hidden; background: #0b0908; opacity: 0; transition: opacity .4s var(--lk-ease); }
+.mr { z-index: 84; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); overflow: clip; background: #0b0908; opacity: 0; transition: opacity .4s var(--lk-ease); }
 .mr.is-in { opacity: 1; }
 .mr.is-out { opacity: 0; pointer-events: none; }
 .mr-glow { position: absolute; inset: -14%; pointer-events: none; background: center / cover no-repeat; filter: blur(13cqw) saturate(1.4) brightness(.62); opacity: .6; }

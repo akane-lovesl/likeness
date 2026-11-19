@@ -25,6 +25,7 @@ relay/NNNN-slug/
 | Packet | What it is for |
 |---|---|
 | `0003-codex-studio` | Wire the Codex engine to the workstation, prove every flow end to end with real pictures, calibrate time estimates, polish what real use reveals, and connect the phone last. A one-shot hand-off. |
+| `0004-lookbook` | Make the Lookbook's people with GPT Image: eight portraits of people who do not exist, three looks each and every angle of one, judged picture by picture, then committed. Runs after 0003. |
 
 ## The runner
 

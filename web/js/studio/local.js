@@ -9,6 +9,7 @@ import { sleep, rng, pick } from '../core/dom.js';
 import { heardSpans } from '../room/maker.js';
 import { selectAt } from './segment.js';
 import * as D from './dress.js';
+import { relight, boundsOf } from './light.js';
 
 const PACE = { quick: 2200, fine: 4000, deep: 6800 };
 const cancelled = new Set();
@@ -331,7 +332,7 @@ async function tripLife(print, source) {
     for (const o of L.hints) if (o.k !== 'arch' && o.k !== 'window') { const q = intoFrame(o, at); if (q.win) q.pane = pane; hints.push(q); }
     const box = /** @type {[number, number, number, number]} */ ([at[0] * front.width, at[1] * front.height, at[2] * front.width, at[3] * front.height]);
     fc.drawImage(L.front, ...box);
-    if (mask) { const { plan } = planFor(rec, desc); fc.drawImage(plan ? D.dressUp(src, mask, plan, P.make(src.width, src.height), null, p.seed).canvas : P.composite(src, mask, null), ...box); }
+    if (mask) { const { plan } = planFor(rec, desc), own = plan ? D.dressUp(src, mask, plan, P.make(src.width, src.height), null, p.seed).canvas : P.composite(src, mask, null); fc.drawImage(desc.rig ? relight(own, desc.rig) : own, ...box); }
   });
   return hints.length ? { hints, front } : null;
 }
@@ -347,7 +348,7 @@ export async function tripOf(print, source, w) {
   const me = mask ? P.composite(src, mask, null) : null;
   const stops = t.places.map((/** @type {any} */ p) => {
     const rec = stopRecipe(t, p), desc = placeOf(rec, mask) || P.sceneFrom(p.words, null, p.seed), back = P.scene(desc, sw, sh), { plan } = planFor(rec, desc);
-    const person = mask ? (plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, p.seed).canvas : me) : null;
+    const own = mask ? (plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, p.seed).canvas : me) : null, person = own && desc.rig ? relight(own, desc.rig) : own;
     const L = P.lifeIn(desc, sw, sh); if (person) L.front.getContext('2d')?.drawImage(person, 0, 0, L.front.width, L.front.height);
     return { back, person, life: { ...L, person, picture: back }, caption: p.caption };
   });
@@ -414,9 +415,12 @@ function remake(rec, src, mask, frames, seed) {
   const w = src.width, h = src.height, bd = backOf(rec, desc, w, h), { plan, because } = planFor(rec, desc), pieces = frames ? /** @type {any[]} */ ([]) : null;
   // where they stand in the place, when they were moved there by hand
   const stand = rec.stand && bd && mask ? rec.stand : null, fx = stand ? D.figureOf(mask, w, h).cx / w : .5;
+  // put in a place, they are lit by it: laid on it as a layer of their own, in its light
+  const inLight = !!(desc?.rig && bd && mask), apart = !!stand || inLight;
   let canvas, person = null;
-  if (stand) {
+  if (apart) {
     person = plan ? D.dressUp(src, mask, plan, P.make(w, h), pieces, seed).canvas : P.composite(src, mask, null);
+    if (inLight) person = relight(person, desc.rig);
     canvas = placeOn(/** @type {HTMLCanvasElement} */ (bd), person, stand, fx);
   } else canvas = plan ? D.dressUp(src, mask, plan, bd, pieces, seed).canvas : bd ? P.composite(src, mask, bd) : P.copy(src);
   if (rec.adjust?.length) canvas = P.adjust(canvas, rec.adjust);
@@ -424,10 +428,12 @@ function remake(rec, src, mask, frames, seed) {
   if (look) canvas = P.grade(canvas, look, look.wash ? .9 : .7, seed);
   let layers = null;
   if (frames) {
-    const small = half(src), plainHalf = stand ? half(P.composite(src, mask, null)) : null, backHalf = stand && bd ? half(bd) : null;
+    const small = half(src), plainHalf = apart ? half(P.composite(src, mask, null)) : null, backHalf = apart && bd ? half(bd) : null;
     layers = [found(src, mask),
-      ...(desc?.layers || []).map((/** @type {any} */ l) => ({ label: l.label, canvas: stand && plainHalf ? placeOn(l.canvas, plainHalf, stand, fx) : P.composite(small, mask, l.canvas) })),
-      ...(pieces || []).map(f => ({ ...f, canvas: stand && backHalf ? placeOn(backHalf, f.canvas, stand, fx) : f.canvas, reveal: 'fade' }))];
+      ...(desc?.layers || []).map((/** @type {any} */ l) => ({ label: l.label, canvas: apart && plainHalf ? placeOn(l.canvas, plainHalf, stand, fx) : P.composite(small, mask, l.canvas) })),
+      ...(pieces || []).map(f => ({ ...f, canvas: apart && backHalf ? placeOn(backHalf, f.canvas, stand, fx) : f.canvas, reveal: 'fade' }))];
+    // until here they stood in their own light; now in the place's
+    if (inLight) layers.push({ label: 'The light of the place, on them', canvas: half(placeOn(/** @type {HTMLCanvasElement} */ (bd), /** @type {HTMLCanvasElement} */ (person), stand, fx)), reveal: 'fade' });
     if (look || rec.adjust?.length) layers.push({ label: look ? 'All of it in ' + look.name : cap(P.adjustmentsIn(rec.adjust.join(' '))?.said.join(', ') || 'Adjusted'), canvas: half(canvas) });
   }
   // a profile picture: the square around the face, found in the photo itself, so a helmet or a crown is not taken for it
@@ -448,7 +454,7 @@ export async function standStage(rec, input, w) {
   if (!mask) return null;
   const desc = placeOf(rec, mask), back = backOf(rec, desc, src.width, src.height);
   if (!back) return null;
-  const { plan } = planFor(rec, desc), person = plan ? D.dressUp(src, mask, plan, P.make(src.width, src.height), null, 1).canvas : P.composite(src, mask, null);
+  const { plan } = planFor(rec, desc), dressed = plan ? D.dressUp(src, mask, plan, P.make(src.width, src.height), null, 1).canvas : P.composite(src, mask, null), person = desc?.rig ? relight(dressed, desc.rig) : dressed;
   return { back, person, fx: D.figureOf(mask, src.width, src.height).cx / src.width, stand: rec.stand || { x: 0, s: 1 } };
 }
 /**
@@ -494,8 +500,13 @@ export async function lifeOf(print, source = null, o = {}) {
   if (rec && mask) {
     const src = await sizedOf(source, deep ? Math.max(w, h) : 192);
     const { plan } = planFor(rec, desc), sw = src.width, sh = src.height, fig = D.figureOf(mask, sw, sh), fx = fig.cx / sw, stand = o.stand || rec.stand || null;
-    const dressed = plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, rec.seed ?? 7).canvas : P.composite(src, mask, null);
-    if (deep) near = placeOn(P.make(w, h), dressed, stand, fx);
+    const own = plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, rec.seed ?? 7).canvas : P.composite(src, mask, null), dressed = desc.rig ? relight(own, desc.rig) : own;
+    if (deep) {
+      near = placeOn(P.make(w, h), dressed, stand, fx);
+      // and the place's lights that move, moving on them: kept to their outline when it plays
+      const box = boundsOf(near);
+      if (box) for (const m of desc.rig?.moves || []) hints.push({ k: 'on', kind: m.kind, c: m.c, c2: m.c2, x: m.x, y: m.y, a: m.a, per: m.per, two: m.two, box, z: 3 });
+    }
     else if (front) { person = placeOn(P.make(front.width, front.height), dressed, stand, fx); front.getContext('2d')?.drawImage(person, 0, 0); }
     // a fairy's sparkle about the head, a party's confetti coming down: where the person stands now
     const at = (/** @type {number} */ x, /** @type {number} */ y) => stand ? [fx + stand.x + (x - fx) * stand.s, 1 + (y - 1) * stand.s] : [x, y], k = stand?.s || 1;
@@ -704,6 +715,8 @@ export const local = {
   kind: 'device',
   /** @param {any} spec @param {Record<string, any>} inputs */
   async *turn(spec, inputs) {
+    // a face from other angles is a new photograph of it: nothing drawn on the device could honestly stand in for one
+    if (spec.intent.op === 'angles') throw Object.assign(new Error('Every angle is made by a studio: this edition only sketches.'), { hint: 'Run the live studio, on the simulator or on the workstation with GPT Image.' });
     const t0 = performance.now(), n = spec.n || 1, total = PACE[spec.pace || 'fine'] * (1 + (n - 1) * .3);
     const gate = async ms => { await sleep(ms); if (cancelled.has(spec.id)) throw Object.assign(new Error('Stopped.'), { cancelled: true }); };
     // something new is painted in layers you can watch, each with its note; a picture you have develops as before

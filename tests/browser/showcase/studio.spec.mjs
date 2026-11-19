@@ -1,29 +1,74 @@
 /** The showcase: the whole app with nothing behind it. Everything it makes is a sketch, and says so. */
 import { test, expect } from '@playwright/test';
-import { made, open, pinAndSend, samples, say } from '../kit.mjs';
+import { made, mirrorOn, open, pinAndSend, samples, say, stubExamples } from '../kit.mjs';
 
-test('the welcome walks you in, and the room you pick is the room you get', async ({ page }) => {
+test('the Lookbook is the way in: a ring of looks that turns under a finger, the parts drawn, the desk a tap away', async ({ page }) => {
   await page.goto('/');
-  const welcome = page.locator('section.welcome');
-  await expect(welcome).toContainText('Showcase');
-  // the first picture, painted on arrival: its sun can be taken down into the night from the keyboard too
-  const sun = page.locator('.welcome__scene.is-painted button.sun');
-  await expect(sun).toBeVisible();
-  for (let i = 0; i < 10; i++) await sun.press('ArrowDown');
-  await expect(sun).toHaveAttribute('aria-label', /at night/);
-  await page.locator('.welcome__next').click();
-  const card = page.locator('.welcome__rooms .postcard').nth(2);
-  const id = await card.getAttribute('data-room');
-  await card.click();
-  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.room)).toBe(id);
-  await page.locator('.welcome__next').click();
-  await page.locator('button.mood').nth(1).click();
-  await page.locator('.welcome__next').click();
-  await page.locator('.welcome__next').click();
-  await expect(welcome).toHaveCount(0);
-  await page.reload();
-  await expect(page.locator('section.welcome')).toHaveCount(0);
-  expect(await page.evaluate(() => document.documentElement.dataset.room)).toBe(id);
+  const book = page.locator('section.book');
+  await expect(book.locator('.lb-bar__edition')).toHaveText('Showcase');
+  // until the studio's people are made, the ring holds drawings, and says so
+  await expect(book.locator('.lb-card')).toHaveCount(8);
+  await expect(book.locator('.lb-card__tag').first()).toHaveText('Drawn');
+  await expect(book.locator('.lb-caption__title')).not.toBeEmpty();
+  const front = () => page.evaluate(() => [...document.querySelectorAll('.lb-card')].findIndex(c => c.classList.contains('is-front')));
+  const was = await front();
+  const box = await book.locator('.lb-orbit').boundingBox();
+  await page.mouse.move(box.x + box.width * .75, box.y + box.height * .5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * .25, box.y + box.height * .5, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(front).not.toBe(was);
+  // a part deals only its own styles, drawn
+  await book.locator('.lb-part[data-part="brows"]').click();
+  await expect(book.locator('.lb-style')).toHaveCount(6);
+  await expect(book.locator('.lb-card')).toHaveCount(6);
+  await book.locator('.lb-style[data-style="arched"]').click();
+  await expect(book.locator('.lb-token')).toHaveText(['High arch']);
+  await book.locator('.lb-bar__desk').click();
+  await expect(book).toHaveClass(/is-away/);
+  await expect(page.locator('.desk__bar .edition')).toBeVisible();
+  await page.getByRole('button', { name: 'Looks' }).click();
+  await expect(book).not.toHaveClass(/is-away/);
+});
+
+test('the mirror reads a face, names its parts in the margin, and sketches a look over it, stamped as a sketch', async ({ page }) => {
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/lena.jpg');
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Your photo');
+  await expect(mirror.locator('.mr-turn')).toBeHidden();
+  await mirror.locator('.mr-note[data-part="bangs"]').click();
+  await expect(mirror.locator('.mr-style')).toHaveCount(6);
+  await mirror.locator('.mr-style[data-style="curtain"]').click();
+  await expect(mirror).toHaveClass(/has-sketch/);
+  expect(await mirror.locator('.mr-sketch path').count()).toBeGreaterThan(4);
+  await mirror.locator('.mr-ask__input').fill('a little longer');
+  await mirror.locator('.mr-ask__go').click();
+  await expect(mirror.locator('.mr-take:not(.is-origin)')).toHaveCount(1, { timeout: 20_000 });
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Sketch');
+  await mirror.locator('.mr-bar__back').click();
+  await expect(mirror).toHaveCount(0);
+  await page.locator('.lb-bar__desk').click();
+  await expect(made(page, 'Sketch')).toHaveCount(1);
+});
+
+test('once the studio has made its people, the ring is their faces, and a face opens on its looks and every angle', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await stubExamples(page);
+  await page.goto('/');
+  const book = page.locator('section.book');
+  await expect(book.locator('.lb-card--photo')).toHaveCount(4);
+  await expect(book.locator('.lb-card--photo .lb-card__tag').first()).toHaveText('GPT Image');
+  await expect(book.locator('.lb-caption__part')).toHaveText('BANGS · LENA');
+  await book.locator('.lb-card.is-front').click();
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-take')).toHaveCount(2);
+  await expect(mirror.locator('.mr-stamp')).toHaveText('GPT Image');
+  await expect(mirror.locator('.mr-bar__mine')).toBeVisible();
+  await mirror.locator('.mr-turn').click();
+  await expect(mirror).toHaveClass(/is-turning/);
+  await expect(mirror.locator('.mr-angle')).toHaveCount(2);
 });
 
 test('words become a sketch, and the sketch says what it is', async ({ page }) => {
@@ -279,6 +324,38 @@ test('a picture you can look into: Paris behind them in planes, the sun waiting 
   await page.locator('figure.print').last().click();
   await expect(page.locator('.focus__hint--lineage .lineage')).toBeVisible();
   await expect(page.locator('.lineage__tip')).toHaveCount(0);
+});
+
+test('the place lights them: under the sea its light nets over them as it moves', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').first().click();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('button.bring__opt').first().click()]);
+  await chooser.setFiles('tests/fixtures/sitters/ruth.jpg');
+  await expect(page.locator('figure.print')).toHaveCount(1);
+  await say(page, '@A under the sea');
+  await expect(made(page, 'Sketch')).toHaveCount(1, { timeout: 40_000 });
+  await page.locator('figure.print').last().click();
+  await expect(page.locator('.focus__life.is-in[data-lights~="caustic"]')).toHaveCount(1, { timeout: 20_000 });
+});
+
+test('light multiplies what it falls on: night darkens and cools them, the side toward a light is brighter, dark hair stays dark', async ({ page }) => {
+  await open(page);
+  const r = await page.evaluate(async () => {
+    const L = await import('/js/studio/light.js');
+    // someone, as a disc: a pale shirt colour, with a dark band for hair across the top
+    const c = document.createElement('canvas'); c.width = 200; c.height = 200; const x = c.getContext('2d');
+    x.fillStyle = '#e8e4dc'; x.beginPath(); x.arc(100, 110, 80, 0, Math.PI * 2); x.fill(); x.fillStyle = '#141210'; x.fillRect(40, 40, 120, 26);
+    const at = (cv, px, py) => Array.from(cv.getContext('2d').getImageData(px, py, 1, 1).data);
+    const night = { amb: '#20305e', ak: .36, exp: .8, keys: [{ x: 1.2, y: .4, c: '#bcd0ff', k: .18 }], rim: 0, rc: '#ffffff', wrap: 0, haze: null, hk: 0, moves: [] };
+    const side = { amb: '#ffffff', ak: 0, exp: 1, keys: [{ x: -.3, y: .5, c: '#ffffff', k: .4 }], rim: 0, rc: '#ffffff', wrap: 0, haze: null, hk: 0, moves: [] };
+    const n = L.relight(c, night), s = L.relight(c, side);
+    return { before: at(c, 100, 130), night: at(n, 100, 130), left: at(s, 45, 130), right: at(s, 155, 130), hair: at(s, 60, 50) };
+  });
+  const lum = (p) => p[0] * .3 + p[1] * .59 + p[2] * .11;
+  expect(lum(r.night)).toBeLessThan(lum(r.before) * .9);
+  expect(r.night[2] - r.night[0]).toBeGreaterThan(r.before[2] - r.before[0]);
+  expect(lum(r.left)).toBeGreaterThan(lum(r.right) + 20);
+  expect(lum(r.hair)).toBeLessThan(40);
 });
 
 test('a trip: someone taken to four places at once, a sheet that lives, and a film where the world changes behind them', async ({ page }) => {

@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw
 from likeness.engines.simulator import Simulator, stamp
 from likeness.turns import Inputs, Turn
 
-OPS = ["create", "edit", "restyle", "reference", "blend", "region", "backdrop", "remove", "vary"]
+OPS = ["create", "edit", "restyle", "reference", "blend", "region", "backdrop", "remove", "vary", "angles"]
 
 
 @pytest.mark.parametrize("op", OPS)

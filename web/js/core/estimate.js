@@ -6,7 +6,7 @@
 import { settings } from './store.js';
 
 const DEFAULTS = { showcase: { quick: 2600, fine: 4400, deep: 7600 }, simulator: { quick: 3200, fine: 5200, deep: 8800 }, workstation: { quick: 28000, fine: 48000, deep: 95000 } };
-const OPS = { create: 1, edit: 1, restyle: .95, reference: 1.12, blend: 1.2, region: 1.05, backdrop: 1.1, vary: 1, remove: .95, room: .6, look: .6, backdrops: .7 };
+const OPS = { create: 1, edit: 1, restyle: .95, reference: 1.12, blend: 1.2, region: 1.05, backdrop: 1.1, vary: 1, remove: .95, angles: 1.1, room: .6, look: .6, backdrops: .7 };
 const key = (mode, op, pace, n) => `${mode}:${op}:${pace}:${n > 1 ? 'n' : '1'}`;
 const median = xs => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 

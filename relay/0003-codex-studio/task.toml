@@ -9,7 +9,7 @@ run = ["uv", "sync"]
 timeout = 900
 
 [[stage]]
-id = "pytest"         # 35 tests; the Codex engine is tested against tests/fake_codex.py
+id = "pytest"         # 41 tests; the Codex engine is tested against tests/fake_codex.py
 run = ["uv", "run", "pytest"]
 timeout = 900
 

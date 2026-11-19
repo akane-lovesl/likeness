@@ -3,6 +3,7 @@
   serve          start the studio (the app, its API and an engine) and print how a phone reaches it
   probe codex    check that Codex CLI is here, signed in, and speaks the flags the studio uses; --smoke makes a picture
   relay          run a relay packet
+  examples       make the Lookbook's example people through the engine (portraits, looks, angles) into web/examples
 """
 
 from __future__ import annotations
@@ -84,6 +85,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--smoke", action="store_true", help="also make pictures through the real engine and time them")
     p.add_argument("--out", help="write the report here too (pictures go beside it)")
 
+    p = sub.add_parser("examples", help="make the Lookbook's example people through the engine")
+    p.add_argument("--cast", default="", help="the people and their looks (default: relay/0004-lookbook/cast.toml)")
+    p.add_argument("--out", default="", help="where the app reads them (default: web/examples)")
+    p.add_argument("--engine", default="", help="codex or simulator (default: studio.toml, then auto)")
+    p.add_argument("--pace", default="fine", choices=["quick", "fine", "deep"])
+    p.add_argument("--only", action="append", help="one person's id; may be given more than once")
+    p.add_argument("--fresh", action="store_true", help="make everything again, even what is already on disk")
+    p.add_argument("--report", default="", help="write the turns and their times here as JSON")
+
     p = sub.add_parser("relay", help="run a relay packet")
     p.add_argument("action", choices=["run", "pending"])
     p.add_argument("packet", nargs="?", default="")
@@ -92,6 +102,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "serve":
         return serve(args)
+    if args.command == "examples":
+        from . import engines, examples, settings
+
+        home = paths.home()
+        config = settings.load(home)
+        engine = engines.create(args.engine or config["studio"].get("engine", "auto"), config, home)
+        cast = examples.load_cast(Path(args.cast) if args.cast else examples.CAST)
+        print(f"Making the Lookbook's examples with {engine.describe()['label']}")
+        done = examples.make(cast, engine, Path(args.out) if args.out else examples.OUT, home, args.pace, args.only, args.fresh)
+        if args.report:
+            _write({"by": done["manifest"].get("by"), "kind": done["manifest"].get("kind"), "turns": done["turns"]}, args.report)
+        return 0
     if args.command == "probe":
         from . import settings
         from .engines import codex

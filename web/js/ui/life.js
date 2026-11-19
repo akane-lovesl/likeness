@@ -38,6 +38,126 @@ function rgba(c, a) {
 const FRONT = new Set(['rain', 'snow', 'petals', 'fireflies', 'motes', 'specks', 'sparkle', 'confetti']);
 
 /**
+ * A light of the place moving on whoever stands in it, drawn as light alone: the picture keeps it to their outline and
+ * adds it on. Each keeps time with what throws it, so the beacon's beam crosses them as it swings past, the tower's
+ * bulbs catch on them while it glitters, and a sign's stutter shows on their cheek.
+ * @param {any} o @param {number} W @param {number} H @param {number} seed @returns {Effect | null}
+ */
+function lightOn(o, W, H, seed) {
+  if (!o.box) return null;
+  const r = rng(seed), S = W / 360, bx = o.box[0] * W, by = o.box[1] * H, bw = o.box[2] * W, bh = o.box[3] * H, a0 = o.a ?? .5, left = o.x * W < bx + bw / 2;
+  /** A wash from the side the light is on: strongest at that edge of them, gone a little past their middle. */
+  const wash = (/** @type {CanvasRenderingContext2D} */ x, /** @type {string} */ c, /** @type {number} */ a, fromLeft = left) => {
+    if (a < .005) return;
+    const g = x.createLinearGradient(fromLeft ? bx : bx + bw, 0, fromLeft ? bx + bw * .7 : bx + bw * .3, 0);
+    g.addColorStop(0, rgba(c, a)); g.addColorStop(1, rgba(c, 0)); x.fillStyle = g; x.fillRect(bx, by, bw, bh);
+  };
+  switch (o.kind) {
+    case 'shimmer': {
+      // the sun on the water thrown back up at them: wavering lines of light drifting across, brightest low down
+      const tw = Math.round(150 * S), th = Math.round(64 * S), tex = document.createElement('canvas'); tex.width = tw; tex.height = th;
+      const raw = document.createElement('canvas'); raw.width = tw; raw.height = th;
+      const rx = /** @type {CanvasRenderingContext2D} */ (raw.getContext('2d')); rx.strokeStyle = rgba(o.c, 1); rx.lineCap = 'round';
+      // a few short wavering strokes, scattered, as light off moving water lands on a wall: never a pattern of stripes
+      for (let i = 0; i < 9; i++) {
+        const y0 = r() * th, x0 = r() * tw, len = tw * (.12 + r() * .22), amp = (.8 + r() * 1.8) * S, f1 = r() * TAU;
+        rx.globalAlpha = .4 + r() * .5; rx.lineWidth = (1 + r() * 1.6) * S;
+        for (const shift of [0, -tw, tw]) { rx.beginPath(); for (let k = 0; k <= 12; k++) { const u = k / 12, px = x0 + shift + u * len, y = y0 + Math.sin(u * TAU * 1.5 + f1) * amp; k ? rx.lineTo(px, y) : rx.moveTo(px, y); } rx.stroke(); }
+      }
+      const tx = /** @type {CanvasRenderingContext2D} */ (tex.getContext('2d')); tx.filter = 'blur(' + (1.2 * S).toFixed(1) + 'px)';
+      for (const [u, v] of [[0, 0], [0, -th], [0, th]]) tx.drawImage(raw, u, v);
+      return { draw(x, t) {
+        const p = x.createPattern(tex, 'repeat'); if (!p) return;
+        x.save(); x.fillStyle = p;
+        for (const [v, dy, k] of [[16, 0, 1], [-10, th * .41, .7]]) {
+          p.setTransform(new DOMMatrix().translate(bx + t * v * S, by + dy + Math.sin(t * .8 + k * 3) * 3 * S));
+          // in bands, fainter going up: the light comes off the water, below them
+          for (let j = 0; j < 6; j++) { x.globalAlpha = a0 * .6 * k * (.1 + .9 * Math.pow(j / 5, 1.8)) * (.75 + .25 * Math.sin(t * 1.3 + j)); x.fillRect(bx, by + bh * (.3 + j * .7 / 6), bw, bh * .7 / 6 + 1); }
+        }
+        x.restore();
+      } };
+    }
+    case 'caustic': {
+      // under the surface: its light netted over them, two nets drifting through each other, brightest where they cross
+      const n = 96, tex = document.createElement('canvas'); tex.width = tex.height = n;
+      const tx = /** @type {CanvasRenderingContext2D} */ (tex.getContext('2d')), img = tx.createImageData(n, n), d = img.data, pts = Array.from({ length: 11 }, () => [r() * n, r() * n]);
+      const c = parseInt(String(o.c).replace('#', ''), 16), cr = c >> 16 & 255, cg = c >> 8 & 255, cb = c & 255;
+      // cells whose walls are bright, the space they lie in warped (and still wrapping round) so the walls curve
+      const ph = [r() * TAU, r() * TAU, r() * TAU, r() * TAU];
+      for (let py = 0; py < n; py++) for (let px = 0; px < n; px++) {
+        const wx = px + Math.sin(py / n * TAU * 2 + ph[0]) * n * .07 + Math.sin(py / n * TAU * 3 + ph[1]) * n * .03, wy = py + Math.sin(px / n * TAU * 2 + ph[2]) * n * .07 + Math.sin(px / n * TAU * 3 + ph[3]) * n * .03;
+        let f1 = 1e9, f2 = 1e9;
+        for (const [qx, qy] of pts) { let dx = Math.abs(((wx % n) + n) % n - qx), dy = Math.abs(((wy % n) + n) % n - qy); if (dx > n / 2) dx = n - dx; if (dy > n / 2) dy = n - dy; const dd = dx * dx + dy * dy; if (dd < f1) { f2 = f1; f1 = dd; } else if (dd < f2) f2 = dd; }
+        const e = Math.sqrt(f2) - Math.sqrt(f1), v = Math.max(0, 1 - e / (n * .075)), i = (py * n + px) * 4;
+        d[i] = cr; d[i + 1] = cg; d[i + 2] = cb; d[i + 3] = Math.pow(v, 2.4) * 230;
+      }
+      tx.putImageData(img, 0, 0);
+      const soft = document.createElement('canvas'); soft.width = soft.height = n; const sx2 = /** @type {CanvasRenderingContext2D} */ (soft.getContext('2d'));
+      // drawn wrapped round, so the softening does not stop at the tile's edge
+      sx2.filter = 'blur(1px)'; for (const [u, v] of [[0, 0], [-n, 0], [n, 0], [0, -n], [0, n]]) sx2.drawImage(tex, u, v);
+      const sc = Math.max(bw, bh) / n / 3.4;
+      return { draw(x, t) {
+        const p = x.createPattern(soft, 'repeat'); if (!p) return;
+        x.save(); x.fillStyle = p;
+        for (const [vx, vy, rot, k] of [[3.6, 2.2, .3, 1], [-2.8, 3.1, -.5, .85]]) {
+          p.setTransform(new DOMMatrix().translate(bx + t * vx * S + Math.sin(t * .5 * k) * 4 * S, by + t * vy * S + Math.cos(t * .4 * k) * 3 * S).rotate(rot * 57.3).scale(sc * (1 + .06 * Math.sin(t * .3 + k))));
+          x.globalAlpha = a0 * .75 * k * (.8 + .2 * Math.sin(t * .9 + k * 2)); x.fillRect(bx, by, bw, bh);
+        }
+        x.restore();
+      } };
+    }
+    case 'neon': {
+      // a sign each side, humming, and now and then the stutter a tube gives
+      const every = [5 + r() * 6, 7 + r() * 6], off = [r() * 9, r() * 9];
+      return { draw(x, t) {
+        [o.c, o.c2 || o.c].forEach((c, i) => {
+          const ph = (t + off[i]) % every[i], f = ph < .5 ? (Math.floor(ph * 22) % 3 === 0 ? .1 : 1.25) : .82 + .12 * Math.sin(t * 23 + i * 3) * Math.sin(t * 7.1 + i);
+          wash(x, c, a0 * .5 * f, i === 0);
+        });
+      } };
+    }
+    case 'glint': {
+      // the tower glittering: its bulbs warm on the side of them it is on, catching here and there in their hair
+      const every = 13, on = 6, pts = Array.from({ length: 24 }, () => ({ u: r(), v: r(), f: r() * TAU, s: 5 + r() * 9 }));
+      return { draw(x, t) {
+        const c = (t + every - 1.4) % every; if (c > on) return;
+        const env = Math.min(1, c / .7, (on - c) / .9);
+        wash(x, o.c, a0 * .45 * env * (.75 + .25 * Math.sin(t * 17)));
+        for (const q of pts) {
+          const a = peak(t * q.s + q.f, 14) * env; if (a < .06) continue;
+          const px = left ? bx + q.u * bw * .42 : bx + bw - q.u * bw * .42, py = by + q.v * bh * .75, l = (1.4 + 2.4 * a) * S;
+          x.fillStyle = rgba('#fffaf0', a); x.fillRect(px - l, py - .3 * S, l * 2, .6 * S); x.fillRect(px - .3 * S, py - l, .6 * S, l * 2);
+        }
+      } };
+    }
+    case 'beam': {
+      // a beam going round: as it faces this way it lights them, from where it is
+      const per = o.per || 10;
+      return { draw(x, t) {
+        let f = 0;
+        if (o.two) for (const p of [0, Math.PI]) f = Math.max(f, Math.pow(Math.max(0, Math.cos(t * TAU / per + p)), 12));
+        else f = Math.pow(Math.max(0, Math.cos(t * TAU / per)), 10);
+        if (f < .02) return;
+        wash(x, o.c, a0 * .7 * f); x.fillStyle = rgba(o.c, a0 * .16 * f); x.fillRect(bx, by, bw, bh);
+      } };
+    }
+    case 'flicker': {
+      // firelight: warm from where the fire is, never still
+      return { draw(x, t) { wash(x, o.c, a0 * (.34 + .16 * Math.sin(t * 13) + .1 * Math.sin(t * 7.7 + 1) + .07 * Math.sin(t * 23 + 2))); } };
+    }
+    case 'aurora': {
+      // the curtains overhead: their colours sliding over them from above, slowly
+      return { draw(x, t) {
+        const a = a0 * (.26 + .14 * Math.sin(t * .5)), u = .5 + .5 * Math.sin(t * .23);
+        const g = x.createLinearGradient(bx, by, bx + bw, by); g.addColorStop(0, rgba(o.c, a * (1 - u))); g.addColorStop(.5, rgba(o.c2 || o.c, a * .6)); g.addColorStop(1, rgba(o.c, a * u));
+        // in bands, fading going down: the light is overhead
+        x.save(); x.fillStyle = g; for (let j = 0; j < 5; j++) { x.globalAlpha = 1 - j / 5; x.fillRect(bx, by + bh * j * .14, bw, bh * .14 + 1); } x.restore();
+      } };
+    }
+  }
+  return null;
+}
+/**
  * One hint, made ready to play in a picture W × H: what it draws at a time t (in seconds). Sizes are for a picture 360
  * wide, scaled by S; a hint from a picture that is only part of this one (a frame on a contact sheet) says how much of
  * it its own picture is (s across, sy down), and is sized for that.
@@ -527,7 +647,9 @@ function deepFor(life, W, H) {
     });
   }
   const fx = /** @type {(Effect & { z: number })[]} */ ([]);
-  life.hints.forEach((o, i) => { const e = effect(o, W, H, 101 + i * 7919); if (e) fx.push({ ...e, z: FRONT.has(o.k) && !o.win ? 4 : Math.max(0, Math.min(3, o.z ?? 1)) }); });
+  life.hints.forEach((o, i) => { const e = o.k === 'on' ? null : effect(o, W, H, 101 + i * 7919); if (e) fx.push({ ...e, z: FRONT.has(o.k) && !o.win ? 4 : Math.max(0, Math.min(3, o.z ?? 1)) }); });
+  // the place's lights moving on whoever stands nearest: drawn apart, kept to their outline, added on
+  const person = planes.find(p => p.z === 3), on = person ? life.hints.flatMap((o, i) => (o.k === 'on' ? [lightOn(o, W, H, 9001 + i * 31)] : [])).filter(e => !!e) : [], lit = on.length ? layer() : null;
   const S = layer();
   return { draw(/** @type {CanvasRenderingContext2D} */ x, /** @type {number} */ t, alpha = 1, cam = [0, 0]) {
     if (alpha <= 0) return;
@@ -537,6 +659,12 @@ function deepFor(life, W, H) {
       for (const p of planes) if (p.z === z) slab(s, p.c, dx, dy, W, H);
       if (z === 2) for (const sp of sprites) { s.save(); s.translate(dx, dy); sp.move(s, t); s.drawImage(sp.img, sp.x, sp.y); s.restore(); }
       for (const e of fx) if (e.z === z) { s.save(); s.translate(dx, dy); e.draw(s, t); s.restore(); }
+      if (z === 3 && lit && person) {
+        const l = lit.x; l.clearRect(0, 0, W, H);
+        l.save(); l.translate(dx, dy); for (const e of on) /** @type {Effect} */ (e).draw(l, t); l.restore();
+        l.globalCompositeOperation = 'destination-in'; l.drawImage(person.c, dx, dy); l.globalCompositeOperation = 'source-over';
+        s.save(); s.globalCompositeOperation = 'lighter'; s.drawImage(lit.c, 0, 0); s.restore();
+      }
     }
     if (top) s.drawImage(top.c, 0, 0);
     x.save(); x.globalAlpha = alpha; x.drawImage(S.c, 0, 0); x.restore();
@@ -567,6 +695,9 @@ export function alive(host, life, before = null, cls = 'focus__life') {
   size();
   if (!play) return null;
   if (life.depth?.planes?.length) cv.dataset.depth = String(life.depth.planes.length);
+  // the place's lights that move on whoever stands in it, by name
+  const lights = (life.hints || []).filter(o => o.k === 'on').map(o => o.kind);
+  if (lights.length) cv.dataset.lights = lights.join(' ');
   host.insertBefore(cv, before);
   const ro = new ResizeObserver(size); ro.observe(host);
   const t0 = performance.now();

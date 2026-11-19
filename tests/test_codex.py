@@ -66,6 +66,16 @@ def test_a_turn_goes_through_codex_and_comes_back_as_renders(engine, tmp_path):
     assert argv[argv.index("-m") + 1] == "gpt-test" and "model_reasoning_effort=low" in argv
 
 
+def test_every_angle_is_asked_of_gpt_image_one_picture_per_angle(engine, tmp_path):
+    a = tmp_path / "a.png"
+    Image.new("RGB", (64, 96), (200, 150, 120)).save(a)
+    turn = Turn(id="t", text="@A from every angle", pace="quick", n=3, handles={"A": "a"}, intent={"op": "angles", "subject": "a"})
+    job = run_turn(engine, turn, Inputs(pictures={"A": a}, subject="A"))
+    assert [e["type"] for e in job.events].count("result") == 3
+    brief = (next((engine.home / "jobs").iterdir()) / "brief.md").read_text(encoding="utf-8")
+    assert "profile" in brief and "three-quarter" in brief and "Only the camera moves" in brief and "Make 3 pictures" in brief
+
+
 def test_codex_saying_it_cannot_reaches_the_app_with_its_hint(engine, monkeypatch):
     monkeypatch.setenv("FAKE_CODEX", "fail")
     with pytest.raises(EngineError) as failed:

@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Op = Literal["create", "edit", "restyle", "reference", "blend", "region", "backdrop", "remove", "vary"]
+Op = Literal["create", "edit", "restyle", "reference", "blend", "region", "backdrop", "remove", "vary", "angles"]
 Pace = Literal["quick", "fine", "deep"]
 
 

@@ -26,6 +26,9 @@ OPS = {
     "backdrop": "Replace the background behind the subject with the place described below. Keep the subject exactly, and match the light to the new place.",
     "remove": "Remove what the words (or the marked regions) point at, and fill the space so nobody could tell.",
     "vary": "Make variations of the subject picture: the same subject, different takes on it.",
+    "angles": ("Show the person in the subject picture from other angles, one picture each, in this order unless the words say otherwise: "
+               "three-quarter view from their right, profile, three-quarter view from their left. Keep them exactly: the same face, hair, "
+               "make-up, clothes, light and backdrop. Only the camera moves."),
 }
 PIN_MARKS = "①②③④⑤⑥⑦⑧⑨"
 

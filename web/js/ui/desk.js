@@ -27,6 +27,7 @@ import { openRooms } from './rooms.js';
 import { openSky } from './skysheet.js';
 import { openAlbum } from './album.js';
 import { openCamera, canFilm } from './camera.js';
+import { showBook } from '../looks/book.js';
 
 
 export function deskScreen() {
@@ -39,7 +40,8 @@ export function deskScreen() {
   const thread = h('div.thread');
   const scroll = h('div.desk__scroll', null, thread);
   const comp = composer({ onSend: t => send(t), onAttach: () => attach() });
-  el.append(h('header.desk__bar', null, mark, edition, h('div.desk__tools', null, skyBtn, albumBtn)), scroll, comp.el);
+  const looksBtn = h('button.icon-btn', { 'aria-label': 'Looks', title: 'Looks', html: icon('sparkle'), onclick: () => showBook() });
+  el.append(h('header.desk__bar', null, mark, edition, h('div.desk__tools', null, looksBtn, skyBtn, albumBtn)), scroll, comp.el);
 
   const open = (p, from) => openFocus(p, from, { onSend: t => send(t), onUse: id => { comp.addToTray([id]); comp.mention(printById(id).handle); } });
   const handlers = { onOpen: open, onIdea: (text, item) => sendIdea(text, item.prints), onRetry: item => send({ text: item.retry?.text || '', intent: readIntent(item.retry?.text || '', ctx()), pace: item.retry?.pace || 'fine' }) };

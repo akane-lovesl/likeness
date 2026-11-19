@@ -9,6 +9,7 @@ import { rng } from '../core/dom.js';
 import { path2d } from '../room/ornaments.js';
 import { rampAround } from './looks.js';
 import { placeIn, ownLand, placeSays, placeNote, paintPlace, mars as marsLand } from './atlas.js';
+import { rigOf, mixRig } from './light.js';
 
 export const MAX = 1024;
 export function make(w, h) { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; }
@@ -363,7 +364,7 @@ export function scene(desc, w = 768, h = 1024) {
     // between two hours (the sun part way down the sky): both painted from the same seed, the second laid over the first
     const { blend, ...one } = desc, two = { ...one, light: blend.light, layers: null }, a = scene(one, w, h), b = scene(two, w, h), ax = a.getContext('2d');
     ax.globalAlpha = Math.min(1, blend.t); ax.drawImage(b, 0, 0); ax.globalAlpha = 1;
-    desc.sunAt = one.sunAt; desc.life = blend.t > .5 ? two.life : one.life;
+    desc.sunAt = one.sunAt; desc.life = blend.t > .5 ? two.life : one.life; desc.rig = mixRig(one.rig, two.rig, Math.min(1, blend.t));
     return a;
   }
   const c = make(w, h), x = c.getContext('2d'), rnd = rng(desc.seed || 7), L = desc.light, horizon = h * (desc.inside ? .62 : .6);
@@ -493,7 +494,8 @@ export function scene(desc, w = 768, h = 1024) {
     }
     const hz = oy + oh * .6;
     const g = x.createLinearGradient(0, oy, 0, hz); g.addColorStop(0, sky[0]); g.addColorStop(.6, sky[1]); g.addColorStop(1, sky[2]); x.fillStyle = g; x.fillRect(ox, oy, ow, oh);
-    if (L === 'night') for (let i = 0; i < 160 * ow / w; i++) { x.globalAlpha = .3 + twinkle() * .7; x.fillStyle = '#fff'; x.fillRect(ox + twinkle() * ow, oy + twinkle() * (hz - oy), twinkle() < .1 ? 2 : 1, twinkle() < .1 ? 2 : 1); }
+    // no stars through rain cloud
+    if (L === 'night' && desc.weather !== 'rain') for (let i = 0; i < 160 * ow / w; i++) { x.globalAlpha = .3 + twinkle() * .7; x.fillStyle = '#fff'; x.fillRect(ox + twinkle() * ow, oy + twinkle() * (hz - oy), twinkle() < .1 ? 2 : 1, twinkle() < .1 ? 2 : 1); }
     x.globalAlpha = 1;
     if (desc.aurora) {
       // curtains of light, green rising into violet, rippling across the sky
@@ -517,9 +519,9 @@ export function scene(desc, w = 768, h = 1024) {
     const sun = desc.sun || (L === 'night' ? (stands ? [side < 0 ? .2 : .8, 1.74] : [1 - along, 1.28]) : [along, L === 'day' ? .32 : .72]);
     const body = L === 'night' ? [1 - sun[0], Math.max(.18, Math.min(.92, 2 - sun[1]))] : sun;
     const sx = ox + ow * body[0], sy = oy + (hz - oy) * body[1], sr = ow * (L === 'night' ? .07 : .1);
-    desc.sunAt = { x: (ox + ow * sun[0]) / w, y: (oy + (hz - oy) * sun[1]) / h, r: ow * .1 / w, box: [ox / w, oy / h, ow / w, (hz - oy) / h], sun };
+    desc.sunAt = { x: (ox + ow * sun[0]) / w, y: (oy + (hz - oy) * sun[1]) / h, r: ow * .1 / w, box: [ox / w, oy / h, ow / w, (hz - oy) / h], sun, lit: [sx / w, sy / h] };
     // after dark the stars come and go, never over the moon, and now and then one falls
-    if (L === 'night') { live({ k: 'stars', box: fr(ox, oy, ow, (hz - oy) * .82), n: 26, avoid: [sx / w, sy / h, sr * 1.6 / w] }); live({ k: 'meteor', box: fr(ox, oy, ow, (hz - oy) * .7) }); }
+    if (L === 'night' && desc.weather !== 'rain') { live({ k: 'stars', box: fr(ox, oy, ow, (hz - oy) * .82), n: 26, avoid: [sx / w, sy / h, sr * 1.6 / w] }); live({ k: 'meteor', box: fr(ox, oy, ow, (hz - oy) * .7) }); }
     if (desc.weather !== 'rain') {
     const glow = x.createRadialGradient(sx, sy, sr * .4, sx, sy, sr * 4); glow.addColorStop(0, L === 'night' ? 'rgb(255 250 230 / .4)' : 'rgb(255 236 190 / .7)'); glow.addColorStop(1, 'rgb(255 236 190 / 0)');
     x.fillStyle = glow; x.fillRect(ox, oy, ow, hz - oy);
@@ -869,9 +871,11 @@ export function scene(desc, w = 768, h = 1024) {
   if (desc.arch) { const m = make(w, h), mc = m.getContext('2d'); mc.fillStyle = desc.ramp ? desc.ramp[4] : desc.pal ? desc.pal.ground : '#f6efe2'; mc.fillRect(0, 0, w, h); mc.globalCompositeOperation = 'destination-out'; mc.beginPath(); mc.moveTo(w * .1, h); mc.lineTo(w * .1, h * .4); mc.arc(w / 2, h * .4, w * .4, Math.PI, 0); mc.lineTo(w * .9, h); mc.fill(); x.drawImage(m, 0, 0); }
   if (desc.zoom > 1) {
     const z = desc.zoom, was = copy(c), k = (1 - 1 / z) / 2; x.drawImage(was, w * k, h * k, w / z, h / z, 0, 0, w, h);
-    const s = desc.sunAt; if (s) desc.sunAt = { ...s, x: (s.x - k) * z, y: (s.y - k) * z, r: s.r * z, box: [(s.box[0] - k) * z, (s.box[1] - k) * z, s.box[2] * z, s.box[3] * z] };
+    const s = desc.sunAt; if (s) desc.sunAt = { ...s, x: (s.x - k) * z, y: (s.y - k) * z, r: s.r * z, box: [(s.box[0] - k) * z, (s.box[1] - k) * z, s.box[2] * z, s.box[3] * z], ...(s.lit ? { lit: [(s.lit[0] - k) * z, (s.lit[1] - k) * z] } : {}) };
     for (const o of life) zoomHint(o, z, k);
   }
+  // the light here, for whoever is put in it
+  desc.rig = rigOf(desc, L, sky, life);
   if (desc.quiet) { if (!desc.key) vignette(c, .35); return c; }
   const grainy = x.getImageData(0, 0, w, h), gd = grainy.data, grain = rng((desc.seed || 7) + 50021);
   for (let i = 0; i < gd.length; i += 4) { const n = (grain() - .5) * 14; gd[i] += n; gd[i + 1] += n; gd[i + 2] += n; }
@@ -908,7 +912,7 @@ function zoomHint(o, z, k) {
 export function lifeIn(desc, w, h, { depth = false } = {}) {
   if (depth) return deepIn(desc, w, h);
   const again = (/** @type {any} */ more) => ({ ...desc, things: [...(desc.things || [])], layers: null, quiet: true, ...more });
-  const full = again({}), whole = scene(full, w, h);
+  const full = again({}), whole = scene(full, w, h); desc.rig = full.rig;
   const sw = 160, sh = Math.max(1, Math.round(sw * h / w));
   const a = ctx2d(scene(again({}), sw, sh)).getImageData(0, 0, sw, sh).data, b = ctx2d(scene(again({ bare: true }), sw, sh)).getImageData(0, 0, sw, sh).data;
   const front = make(sw, sh), fx = ctx2d(front), m = fx.createImageData(sw, sh);
@@ -941,7 +945,7 @@ const MOVES = new Set(['bob', 'sway', 'beat', 'spin']);
  */
 function deepIn(desc, w, h) {
   const as = (/** @type {any} */ more) => ({ ...desc, things: [...(desc.things || [])], layers: null, ...more });
-  const full = as({}), F = scene(full, w, h), B = scene(as({ bare: true }), w, h), hints = full.life || [];
+  const full = as({}), F = scene(full, w, h), B = scene(as({ bare: true }), w, h), hints = full.life || []; desc.rig = full.rig;
   const near = differs(F, B), planes = /** @type {{ c: HTMLCanvasElement, z: number }[]} */ ([]);
   if (desc.inside) {
     const room = copy(B), rx = ctx2d(room), win = hints.find((/** @type {any} */ o) => o.k === 'window');

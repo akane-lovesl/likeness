@@ -8,7 +8,9 @@ const VENDOR = new URL('../../vendor/mediapipe/', import.meta.url).href;
 let loading = null;
 
 /** MediaPipe writes its start-up notes to stderr, which the browser shows as errors. They are notes. */
-function quiet() {
+let quieted = false;
+export function quiet() {
+  if (quieted) return; quieted = true;
   const error = console.error.bind(console), warn = console.warn.bind(console), note = /^(INFO|WARNING):|^[IWE]\d{4} |XNNPACK|gl_context|Graph successfully|OpenGL error checking|TensorFlow Lite|inference_feedback|Feedback manager/;
   const route = original => (...args) => (typeof args[0] === 'string' && note.test(args[0]) ? console.debug(...args) : original(...args));
   console.error = route(error); console.warn = route(warn);

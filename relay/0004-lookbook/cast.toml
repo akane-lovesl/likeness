@@ -1,0 +1,67 @@
+# The Lookbook's example people: eight people who do not exist, each with three looks and every angle of the first.
+# Read by  uv run likeness examples  (likeness/examples.py). Each look is a part and a style the app offers
+# (web/js/looks/vocab.js); the studio is asked for it in the app's own words. Who they are is described, never named
+# after anyone: these are invented faces.
+
+[style]
+portrait = """A photorealistic editorial portrait of an invented person who does not exist: {who}. Head and shoulders, \
+the whole head and hair in frame with a little space above it, looking straight into the camera with a calm, open \
+expression. Soft, even daylight from a large window on the left, an 85 mm lens at f/2.8, natural skin texture with \
+pores and fine hairs, no retouched gloss, no jewellery, plain clothes. A seamless paper backdrop in {backdrop}. \
+Vertical 3:4 framing. No text, no watermark."""
+
+[[person]]
+id = "ama"
+name = "Ama"
+who = "a woman in her late twenties with deep brown skin, high cheekbones and shoulder-length natural coils, worn loose"
+backdrop = "warm sand"
+looks = [["colour", "honey"], ["lips", "berry"], ["lashes", "wing"]]
+
+[[person]]
+id = "sofia"
+name = "Sofía"
+who = "a woman in her early thirties with light olive skin, dark eyes and long straight dark-brown hair with a middle part"
+backdrop = "dusty rose"
+looks = [["bangs", "curtain"], ["bangs", "birkin"], ["colour", "copper"]]
+
+[[person]]
+id = "kenji"
+name = "Kenji"
+who = "a man in his mid-thirties with light skin, a narrow face and short black hair, clean-shaven"
+backdrop = "cool slate grey"
+looks = [["beard", "trimmed"], ["beard", "moustache"], ["cut", "shag"]]
+
+[[person]]
+id = "noor"
+name = "Noor"
+who = "a woman in her mid-twenties with light brown skin, full natural brows and thick wavy dark hair past her shoulders"
+backdrop = "pale sage green"
+looks = [["brows", "feathered"], ["lashes", "smoky"], ["bangs", "wispy"]]
+
+[[person]]
+id = "maeve"
+name = "Maeve"
+who = "a woman in her mid-forties with fair freckled skin, green eyes and auburn hair in a loose chin-length cut"
+backdrop = "soft teal"
+looks = [["cut", "pixie"], ["colour", "platinum"], ["lips", "red"]]
+
+[[person]]
+id = "mateus"
+name = "Mateus"
+who = "a man in his late twenties with warm light-brown skin, dark eyes and short dark curly hair, with light stubble"
+backdrop = "terracotta"
+looks = [["beard", "full"], ["cut", "buzz"], ["colour", "silver"]]
+
+[[person]]
+id = "ingrid"
+name = "Ingrid"
+who = "a woman in her mid-sixties with light skin, laugh lines and silver hair pulled back loosely, a few strands around the face"
+backdrop = "warm ivory"
+looks = [["cut", "bob"], ["brows", "arched"], ["lips", "nude"]]
+
+[[person]]
+id = "priya"
+name = "Priya"
+who = "a woman in her early twenties with warm brown skin, dark eyes and very long straight black hair, worn down"
+backdrop = "pale lavender"
+looks = [["bangs", "blunt"], ["colour", "rose"], ["lashes", "bright"]]

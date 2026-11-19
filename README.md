@@ -1,8 +1,10 @@
 # Likeness
 
-**A personal image studio you talk to.**
+**Try a look on before you commit to it.**
 
-Bring pictures and words and say what you want: *"Use @B as a reference and make @A look like it."* Pin the part of a picture you mean and say what it should become. Ask for a backdrop and choose from ideas made for that picture. Dress the whole app as a room (Little Princess, Noir, Riviera, or one you invent from a sentence: *"take me to a rainy Tokyo jazz bar at midnight"*) and let today's sky set the weather.
+Likeness opens on the **Lookbook**: a ring of faces that turns by itself, each changing one thing in a sweep of light. Curtain bangs, feathered brows, a copper colour, a bob. Touch a face to open it in the **mirror**, or bring your own.
+
+The mirror reads your face on the device. A line of light passes down it, its points light up, and the parts a look can change are named in the margin: bangs, brows, eyes, lips, beard, colour, cut. Pick a part on the face, a style by its drawing, and add a few words if you like (*a little longer, parted off-centre*). The change is sketched over your face first. Then **Try on**: GPT Image sends back four takes, made inside that part's mask and nowhere else. Scrub through them with a finger, hold the picture to see yourself as you were, keep the one you like, and ask for **every angle**: the frame turns under your finger, from one side round to the other.
 
 It is a phone-shaped web app and a small studio server. Codex CLI with GPT Image makes the pictures, on your own machine.
 
@@ -10,18 +12,18 @@ It is a phone-shaped web app and a small studio server. Codex CLI with GPT Image
 
 | Edition | What makes the pictures | Label on every picture |
 |---|---|---|
-| **Showcase** | the device itself, as quick sketches (static files, no server) | Sketch |
+| **Showcase** | the device itself: looks are sketched over the face, never rendered (static files, no server) | Sketch |
 | **Live · Simulator** | `likeness serve --engine simulator`: Pillow stand-ins, also stamped on the picture | Simulated |
 | **Live · Workstation** | `likeness serve` with Codex CLI and GPT Image | Render |
 
-The edition is in the header of every screen, and every picture says how it was made.
+The edition is in the header of every screen, and every picture says how it was made. Every angle needs a studio: the showcase says so rather than pretending.
 
 ## Run it
 
 The showcase needs only Node:
 
 ```
-npm run serve                            # http://127.0.0.1:4173
+npm run serve                            # http://127.0.0.1:4173   (?desk opens straight on the desk)
 ```
 
 The live studio needs Python 3.12 and [uv](https://docs.astral.sh/uv/):
@@ -30,52 +32,30 @@ The live studio needs Python 3.12 and [uv](https://docs.astral.sh/uv/):
 uv sync
 uv run likeness serve                    # Codex when the codex command answers here, otherwise the simulator
 uv run likeness serve --engine simulator
-uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speaking every flag the studio uses? --smoke makes two pictures
+uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speaking every flag the studio uses?
+uv run likeness examples                 # make the Lookbook's people through the engine (relay packet 0004)
 ```
 
-`serve` prints a link for this machine and a pairing QR code for a phone on the same network. Scan it once and the phone stays paired; other devices get a polite refusal.
+`serve` prints a link for this machine and a pairing QR code for a phone on the same network. Scan it once and the phone stays paired.
 
-## What it does
+## The Lookbook and the mirror
 
-- **Conversation, not menus.**
-  - Pictures get handles (A, B, …). Type `@` to call a picture and `#` to call a look.
-  - While you type, the app reads what you mean (change, restyle, use as a reference, blend, pin, backdrop, variations) and shows it with a time estimate before you send.
-  - In the showcase, a small proof rises behind the composer and sketches what you are asking for, painted again as the words change. Tap it for another arrangement; the picture you send for is the one it showed.
-  - Every reply ends with three ideas for what to say next.
-  - On the device, a sketch does what it honestly can to any picture (warmer, brighter, black and white, a plain or transparent background, a profile picture around the face, a crown or a cape) and says plainly when something needs the studio, rather than pretending.
-  - A sketch the device made can be talked to: *make it night*, *add a rabbit in a crown* or *two more like this* paints the same scene again, with just that changed.
-- **The sun.** On a sketch the device made, the sun can be held. Drag it across the sky and the scene is painted again under your finger: first light low on the left, the golden hour low on the right, and night once it goes under the horizon, when the moon rises across the sky. Indoors, the window's light moves across the table. Let go, and it offers to paint it at that hour.
-- **Alive.** A picture the device painted knows what is in it, so while you look at it, what could move does. The boat rocks and the lighthouse's lamp comes round to flare at you. Stars come and go, and now and then one falls. Light glints on the water along the path under the sun, a town's windows go on and off, and neon stutters. Steam curls off the cup, dust turns in the sunbeam, rain runs down the glass and a mirror ball throws its light over whoever is dancing. On the moon the stars hold still, because there is no air up there to make them twinkle; the Earth turns instead. It all plays on a layer over the picture and behind whoever is standing in it, so the picture itself is never changed. Drag the sun down and the night version comes alive the same way. The film of a picture's making ends with it alive. The welcome opens on one, painted as you arrive: drag its sun before you even come in. Nothing moves for anyone who asks their device for less motion.
-- **The look camera.** Point the camera and see the world in any look, sketched live on the device. Take the picture, and the studio paints it in that look.
-- **Pins.** Tap part of a picture and an on-device segmenter (MediaPipe) selects it, or paint it with a finger. Each pin gets its own note, and only those parts change. On the device, a note that names scenery (*a starry night with the northern lights*, *a stormy sea*) is painted into the pin.
-- **Looks.** Styles as data: a prompt for the model, plus a recipe the device can sketch at once. Make your own from words or from a picture. On the device, Watercolour is a medium rather than a tint: flat, transparent washes in the picture's own colours, pooled at their edges over a pencil drawing, on paper that shows through at ragged margins.
-- **Backdrops.** Not a hundred presets. The studio suggests places for *this* picture, and two dials move the ideas between near and far, and between real and dreamt. Or just say where: *@A on a beach in Lisbon*, *put her in front of a lighthouse at sunset*, *@A underwater*, *above the clouds at sunset*. *Put me on the moon* comes with a helmet, since there is no air up there (unless you say *without a helmet*), and the Earth hangs in a sky that stays black at every hour. On the device, the segmenter finds who the picture is of, and the proof shows them there before you send.
-- **Dressing up.** *Make @A a superhero* gets a cape, the city at night and a light along the outline. An astronaut, a king or queen, a wizard, a witch, an angel, a fairy and a little devil each come with their own pieces. Or ask for one piece at a time: *give her a crown and a blue cape*. On the device the pieces are painted on, placed by the outline the segmenter found (the top of the head, its width, the neck, the shoulders), and the reply says what was painted. The studio on a workstation paints the whole costume.
-- **Trips.** *Take @A on a trip* sends the person in a photo to four places at once: Lisbon at dawn, Tokyo at night, the moon and under the sea, with a helmet wherever there is no air. Name your own (*take @A to Paris, Kyoto and Mars*) and they go there instead. They come back as one sheet of postcards, the route across the top and each one captioned by hand, and every postcard is alive. Save offers *The trip*: a short film in which they stay where they are and the world changes behind them, place by place, until they are home. A trip is always drawn on the device and labelled a sketch, in every edition.
-- **Places that look like themselves.** Name a famous place and the device paints what makes it itself, standing to one side so whoever is put there leaves it in view. That means the tower over the zinc roofs of Paris, a pagoda and a raked garden in Kyoto, Fuji upside down in its lake, and Tokyo Tower. There are Manhattan's two crowns, Big Ben and the wheel across the river, the bell tower and a gondola in Venice, the Colosseum and the pyramids. Santorini's blue domes, the Golden Gate, the Opera House, the hills of Lisbon and Mars are there too. Each lives its own way. After dark the Paris tower sparkles and its beacon sweeps the sky, fog drifts in under the bridge, maple leaves come down, the wheel turns, and dust blows across Mars, where the sunset is blue.
-- **Depth.** Every picture the device paints can be looked into. It is painted again as planes (the sky, the land, the things in it, and whoever stands in front), and when you open it the planes move apart a little as your mouse moves or your phone tilts, the near more than the far. Left alone, the view drifts slowly. The life in a picture stays in its own plane: rain falls in front, windows light up in the town, and stars come out behind the tower. The camera settles while you pin, drag the sun, move someone, or hold the picture to see what it was made from. The film of its making ends with the same drift into the picture.
-- **Rooms.** A room is the whole atmosphere:
-  - colours, typefaces, frames and ornaments;
-  - a set piece and a texture;
-  - weather, small sounds and motion;
-  - the voice the studio talks in, and the wipe that carries you in.
+- **The ring.** Eight people who do not exist, rendered by GPT Image on the workstation (`relay/0004-lookbook`), three looks each. Drag it, or let it turn. Touch a part and the ring deals only that part's looks. Until the people are made, the ring holds drawings of each style, labelled as drawings.
+- **The face, read on the device.** MediaPipe's face landmarker finds 478 points (`web/js/studio/face.js`). From them come the parts and their masks: where bangs fall, the brows, the eyes, the lips, a beard. A small hair segmenter finds the hair for a colour. Nothing is sent anywhere until you try something on.
+- **Markup, then renders.** A style is drawn over your face from your own landmarks (`web/js/looks/markup.js`): bangs fall from your hairline, brows follow your brow bone, a wing leaves the corner of your eye, a colour is washed into your hair. A live studio then makes four takes in the app's own words for that style (`web/js/looks/vocab.js`), inside the mask, keeping everything else.
+- **Takes and angles.** Takes arrive one by one, each with the studio's estimate burning round it. Scrub, keep, hold to compare. *Every angle* asks for three more pictures of the one on show (`op: angles`): three-quarter from the right, profile, three-quarter from the left. They are turned through with a finger.
+- **Stacking.** A change asked while a take is on show is made from that take, so bangs, then brows, then colour build on each other.
 
-  Seven are built in. Invent more from a sentence or a picture: the device reads the sentence cue by cue (places, settings, styles, things, people, seasons, weather, times of day, moods and colours), shows what it heard, and composes the room, name, voice and sparks included. *"Another take"* settles its close calls another way. Or say it in the composer: *"take me to my grandmother's kitchen in Lisbon"*. After you paint a place, the first idea is *Take me there*.
-- **Today's sky.**
-  - A mood sets the weather and light for the day, and it resets at dawn.
-  - If you switch it on, the weather outside comes in: your rounded position goes to open-meteo.com, and nothing else leaves the device.
-  - Each room offers three new sparks to start from every day.
-- **Memory.**
-  - Every picture remembers how it was made. Open it to see the chain of asks that led there, and hold it to compare with the one before.
-  - On the device, a picture made from your photo keeps its recipe: where you were put, what you wear, the hour, the look. Ask for more (*make them a superhero*, *without the helmet*, *somewhere else*) and it is made again from the photo, never cut out of a cut-out. The sun can be held there too: drag it and the place relights around you. So can you: pick yourself up and drag across, or up to step back into the place and down to come closer. Let go, and it offers to keep you there.
-  - Save offers the picture, or a short film of its making: what you asked, the photo as it was, the person found in it, each layer with its note, and the picture last, labelled as a sketch drawn on the device. It plays as it records, and it is saved on the device.
-  - A standing note of your taste travels with every request.
-- **Honest waiting.**
-  - A draft is sketched on the device at once, from the same reading of your words that invents rooms: a jazz bar gets its neon sign, a Lisbon kitchen its tiles, lavender its rows. In the showcase you watch a new one painted layer by layer, each named as it goes down. A photo you brought shows its making too: it is on the card while your words are read, the person in it is outlined once the device finds them, and the new place is painted in behind them. A watercolour starts as a pencil drawing.
-  - Stages are named in the room's voice, and the model's own notes appear as it thinks.
-  - Previews come in, and a fuse burns toward an estimate learned on your machine.
-  - Stop works mid-turn, and reloading the page picks a turn up again.
-- **Pace.** Quick, Fine and Deep. Each one is a model, a reasoning effort and an image quality, set in `studio.toml`.
+## The desk
+
+Behind the Lookbook is the desk, where Likeness began: a studio you talk to.
+
+- **Conversation, not menus.** Pictures get handles (A, B, …). `@` calls a picture, `#` a look, and the app reads what you mean as you type: change, restyle, reference, blend, pin, backdrop, variations, every angle.
+- **Pins.** Tap part of a picture (an on-device segmenter selects it) and say what it should become.
+- **Backdrops and trips.** *@A on a beach in Lisbon*, *put me on the moon*, *take @A to Paris, Kyoto and Mars*. The device paints the place, finds the person, and lights them by it.
+- **Alive.** A picture the device painted moves while you look at it, and opens into depth. The sun can be held and dragged across the sky.
+- **Rooms and today's sky.** The whole app dressed as a room you choose or invent from a sentence, with weather that resets each morning.
+- **Honest waiting.** A draft at once, stages in the room's voice, previews, and a fuse burning toward an estimate learned on your machine. Stop works mid-turn.
 
 ## How a turn travels
 
@@ -87,20 +67,15 @@ app ── POST /api/assets ──────────────▶ studio
     ── POST /api/rooms | looks | backdrops ─▶      words from the model, checked before they reach the app
 ```
 
-The Codex engine runs one `codex exec --json` per turn, sandboxed in a job folder of its own under `private/jobs/`:
-
-- **Inputs.** The pictures go in `in/`, named by their handles, with the masks beside them.
-- **Instructions.** The brief (`likeness/brief.py`) asks for a `PLAN` line, then the pictures in `out/`, then a `DONE` line.
-- **Progress.** Codex's event stream becomes the progress you see.
-- **Rooms, looks and backdrop ideas.** These are words only. They use `--output-schema` with strict schemas, and `likeness/rooms.py` normalises whatever comes back.
+A look tried on in the mirror is an `op: region` turn with `n: 4` and one pin, whose mask is the part's; a cut has no mask and is an `op: edit`. Every angle is `op: angles` with `n: 3`. The Codex engine runs one `codex exec --json` per turn in a job folder of its own under `private/jobs/`: the pictures and masks in `in/`, a brief (`likeness/brief.py`) that asks for a `PLAN` line, the pictures in `out/` and a `DONE` line, and Codex's event stream becomes the progress you see.
 
 ## The repository
 
 ```
-web/                 the app: index.html, css/, js/ (core, room, studio, ui), fonts/, vendor/ (MediaPipe)
-likeness/            the studio: server.py, engines/ (simulator, codex), brief.py, turns.py, rooms.py, jobs.py, store.py, estimates.py
+web/                 the app: index.html, css/, js/ (core, looks, room, studio, ui), examples/, fonts/, vendor/ (MediaPipe)
+likeness/            the studio: server.py, engines/ (simulator, codex), brief.py, examples.py, turns.py, rooms.py, jobs.py, store.py
 studio.toml          the studio's defaults; private/studio.toml holds this machine's own answers
-tests/               pytest (server, simulator, Codex engine against tests/fake_codex.py, rooms) and browser/ (Playwright)
+tests/               pytest (server, simulator, Codex engine against tests/fake_codex.py, examples, rooms, relay) and browser/ (Playwright)
 relay/               hand-off packets for the workstation
 tools/serve.mjs      the static server for the showcase
 ```
@@ -109,4 +84,4 @@ Checks: `npm run check` (types), `uv run pytest`, and `npm test` (Chrome at a 9:
 
 ## Privacy
 
-Your pictures, the studio's jobs, pairing keys and settings live in `private/`, which git ignores. The only faces in the repository are the drawn test sitters in `tests/fixtures/sitters/`.
+Your pictures, the studio's jobs, pairing keys and settings live in `private/`, which git ignores. The faces in the repository are the Lookbook's people, who do not exist (rendered by GPT Image from words), and the drawn test sitters in `tests/fixtures/sitters/`. The mirror reads a face on the device; a picture leaves it only when you ask a studio for something.

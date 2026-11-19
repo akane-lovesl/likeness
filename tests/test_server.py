@@ -51,6 +51,16 @@ def test_a_region_change_stays_inside_its_mask(client):
     assert max(abs(a - b) for a, b in zip(outside, (180, 180, 180))) <= 3, "outside the mask nothing changes"
 
 
+def test_a_face_can_be_walked_round_one_angle_at_a_time(client):
+    subject = upload(client, png((120, 160), (200, 160, 130)))
+    turn = {"id": "t8", "text": "@A from every angle", "pace": "quick", "n": 3, "handles": {"A": subject}, "intent": {"op": "angles", "subject": subject}}
+    events = follow(client, client.post("/api/turns", json=turn).json()["job"])
+    results = [e for e in events if e["type"] == "result"]
+    assert sorted(r["index"] for r in results) == [0, 1, 2]
+    assert all(r["provenance"]["kind"] == "simulated" for r in results)
+    assert next(e for e in events if e["type"] == "plan")["plan"]["summary"].startswith("Walking round")
+
+
 def test_a_turn_naming_a_picture_the_studio_does_not_have_asks_for_it_again(client):
     res = client.post("/api/turns", json={"id": "t3", "text": "warmer", "handles": {"A": "deadbeef00"}, "intent": {"op": "edit", "subject": "deadbeef00"}})
     assert res.status_code == 409

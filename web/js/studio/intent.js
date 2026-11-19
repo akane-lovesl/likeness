@@ -104,6 +104,7 @@ export function readIntent(text, ctx) {
   else if (trip) op = 'trip';
   else if (subject && (where || /(background|backdrop|behind (her|him|them|it|me)|scene behind|setting|surroundings|put (her|him|them|it|me) (in|on|at))/.test(low))) op = 'backdrop';
   else if (subject && /\b(remove|erase|get rid of|delete|take out|without)\b/.test(low)) op = 'remove';
+  else if (subject && /\b(every|all|other|different) angles?\b|\bfrom (the|every|all) sides?\b|\b(side|profile) view\b|\bin profile\b|\bturn (them|her|him|it) (round|around)\b|\bwalk (round|around)\b/.test(low)) op = 'angles';
   else if (subject && !look && /(variation|alternative|another take|different take|more like (this|that|it|the)|riff|remix|three takes|few takes)/.test(low)) op = 'vary';
   else if (ids.length >= 2 && /(combine|merge|mix|blend|together|fuse|both)/.test(low)) op = 'blend';
   else if (subject && refs.some(r => r.role === 'style')) op = 'reference';
@@ -111,14 +112,14 @@ export function readIntent(text, ctx) {
   else if (subject) op = 'edit';
 
   const cm = low.match(/\b(two|three|four|a couple of|a few|[234])\s+(versions|variations|options|takes|images|pictures|ideas|alternatives|of them|more)\b/);
-  const n = cm ? COUNT[cm[1]] : op === 'vary' ? 3 : 1;
+  const n = cm ? COUNT[cm[1]] : op === 'vary' || op === 'angles' ? 3 : 1;
   const pace = /\b(quick|quickly|fast|rough|draft)\b/.test(low) ? 'quick' : /\b(detailed|careful|carefully|best|high quality|masterpiece|perfect)\b/.test(low) ? 'deep' : null;
   // dressing up: who they are to be ("as a superhero"), or what they are to wear ("a crown")
   const dressed = subject && ['edit', 'restyle', 'backdrop', 'trip'].includes(op) ? dressFrom(t) : null, dress = dressed ? (dressed.persona ? 'as ' + dressed.persona.name : pieceList(dressed.pieces)) : '';
   return { op, subject, refs: [...refs, ...others], look: op === 'trip' ? null : look, n: op === 'trip' ? 1 : Math.min(4, n), pace, pins, ...(op === 'backdrop' && where ? { where } : {}), ...(op === 'trip' ? { places: listed } : {}), ...(dress ? { dress } : {}) };
 }
 
-const LABEL = { room: 'Move to', create: 'Paint something new', edit: 'Change', restyle: 'Restyle', reference: 'Change', blend: 'Blend', region: 'Change part of', backdrop: 'New backdrop for', remove: 'Remove from', vary: 'Variations of', trip: 'A trip for' };
+const LABEL = { room: 'Move to', create: 'Paint something new', edit: 'Change', restyle: 'Restyle', reference: 'Change', blend: 'Blend', region: 'Change part of', backdrop: 'New backdrop for', remove: 'Remove from', vary: 'Variations of', angles: 'Every angle of', trip: 'A trip for' };
 /** The reading as short phrases for the strip above the composer. */
 export function describeIntent(it, handleOf) {
   const h = id => handleOf(id) || '?', out = [];

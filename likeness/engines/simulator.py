@@ -32,20 +32,21 @@ PLANS = {
     "restyle": "Repainting {subject} as {look}", "reference": "Lending {subject} the light of {ref}",
     "blend": "Bringing {pictures} together", "region": "Changing only the marked parts of {subject}",
     "backdrop": "Moving {subject} to {place}", "remove": "Taking that out of {subject}", "vary": "Trying {n} takes on {subject}",
+    "angles": "Walking round {subject}",
 }
 NOTES = {
     "create": ["Finding the light", "Laying in the sky", "Placing the horizon"], "edit": ["Reading the picture", "Matching the light", "Keeping faces as they are"],
     "restyle": ["Studying the look", "Mixing the palette", "Keeping the composition"], "reference": ["Studying the reference", "Borrowing its palette", "Matching the light"],
     "blend": ["Lining the pictures up", "Finding the seam", "Mixing the light"], "region": ["Finding the marked parts", "Changing only those", "Feathering the edges"],
     "backdrop": ["Lifting the subject", "Building the place", "Matching the light"], "remove": ["Finding what goes", "Filling the space", "Checking the seams"],
-    "vary": ["A first take", "Another one", "Comparing them"],
+    "vary": ["A first take", "Another one", "Comparing them"], "angles": ["From their right", "In profile", "From their left"],
 }
 SUGGEST = {
     "create": ["Warmer light", "Make it night", "Three variations"], "edit": ["A little brighter", "Try a backdrop", "Three variations"],
     "restyle": ["Stronger", "Softer", "Another look"], "reference": ["Closer to the reference", "Keep more colour", "Three variations"],
     "blend": ["More of the first", "More of the second", "Try a backdrop"], "region": ["Brighter", "Try a backdrop", "Three variations"],
     "backdrop": ["Golden hour light", "Another place", "Make it night"], "remove": ["Clean up more", "Try a backdrop", "Warmer light"],
-    "vary": ["Wilder", "Make it night", "Try a backdrop"],
+    "vary": ["Wilder", "Make it night", "Try a backdrop"], "angles": ["Closer", "Softer light", "Three variations"],
 }
 ROOM_WORDS = [   # (words, what they suggest); the first match wins for each setting
     (r"night|midnight|noir|space|neon|goth|dark|moon|cosmic|galaxy", {"dark": True}),
@@ -339,6 +340,14 @@ class Simulator:
             return Image.composite(grade(base, words, strength=.4), place, _mask(inputs.subject_mask, base.size, "figure"))
         if op == "remove":
             return Image.composite(base.filter(ImageFilter.GaussianBlur(base.width // 28)), base, _mask(None, base.size))
+        if op == "angles":
+            # a stand-in for the camera walking round them: the picture turned in perspective, the other way for the other side
+            w, h = base.size
+            k = (-.16, .0, .16)[index % 3]
+            squeezed = base.resize((max(1, int(w * (1 - abs(k) * 1.6))), h)) if k else ImageOps.mirror(base).resize((int(w * .78), h))
+            out = Image.new("RGB", (w, h), _palette(base, 1)[0])
+            out.paste(squeezed, ((w - squeezed.width) // 2 + int(k * w * .6), 0))
+            return out
         if op == "vary" or index:
             varied = grade(base, text, salt=index + 1, strength=1.2)
             zoom = random.Random(_seed(text, index)).uniform(1.0, 1.08)

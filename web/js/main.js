@@ -1,4 +1,4 @@
-/** Likeness: find out which studio is speaking, remember the room, raise the sky, open the desk. */
+/** Likeness: find out which studio is speaking, remember the room, raise the sky, open the desk, and over it the Lookbook. */
 import { connect, studio } from './studio/studio.js';
 import { boot, settings, app } from './state.js';
 import { paint } from './room/theme.js';
@@ -9,6 +9,7 @@ import { refreshOutside } from './room/outside.js';
 import { sound } from './core/sound.js';
 import { screens } from './core/dom.js';
 import { deskScreen } from './ui/desk.js';
+import { showBook } from './looks/book.js';
 
 await Promise.all([connect(), boot()]);
 const stage = /** @type {HTMLElement} */ (document.getElementById('stage'));
@@ -28,6 +29,8 @@ Object.assign(window, { likeness: { app, studio, sky, room: id => changeRoom(roo
 /** Touching the empty room stirs the weather. */
 stage.addEventListener('pointerdown', e => {
   const t = /** @type {HTMLElement} */ (e.target);
-  if (!t.closest('button, a, input, textarea, .print, .say, .job, .sheet, .box, .focus, .picker')) sky.poke(e.clientX, e.clientY);
+  if (!t.closest('button, a, input, textarea, .print, .say, .job, .sheet, .box, .focus, .picker, .book, .mr')) sky.poke(e.clientX, e.clientY);
 });
-if (!settings.get('welcomed', false) && !new URLSearchParams(location.search).has('skipwelcome')) import('./ui/welcome.js').then(m => m.welcome());
+// the Lookbook first, unless the address asks for the desk
+const asked = new URLSearchParams(location.search);
+if (!asked.has('desk') && !asked.has('skipwelcome')) showBook();

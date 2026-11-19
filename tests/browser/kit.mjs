@@ -1,8 +1,8 @@
 /** Small steps the browser tests share. */
 import { expect } from '@playwright/test';
 
-/** Opens the desk, past the welcome. */
-export async function open(page, path = '/?skipwelcome') {
+/** Opens the desk, past the Lookbook. */
+export async function open(page, path = '/?desk') {
   await page.goto(path);
   await expect(page.locator('.desk__bar .edition')).toBeVisible();
 }
@@ -31,4 +31,19 @@ export async function pinAndSend(page, note) {
   await page.locator('.bubble input').fill(note);
   await page.keyboard.press('Enter');
   await page.locator('button.focus__send').click();
+}
+
+/** From the Lookbook, a photo brought in: the mirror opens on it. */
+export async function mirrorOn(page, sitter) {
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('.lb-ask__photo').click()]);
+  await chooser.setFiles(sitter);
+  await expect(page.locator('section.mr')).toBeVisible();
+}
+
+/** The studio's example people, stood in for by the drawn sitters (the real ones are rendered on the workstation). */
+export async function stubExamples(page, kind = 'render') {
+  const people = [['lena', 'bangs', 'curtain', 'mei'], ['kofi', 'beard', 'trimmed', 'tomas'], ['ines', 'colour', 'copper', 'ruth'], ['mei', 'brows', 'feathered', 'lena']]
+    .map(([id, part, style, after]) => ({ id, name: id[0].toUpperCase() + id.slice(1), portrait: 'p/' + id + '.jpg', looks: [{ part, style, image: 'p/' + after + '.jpg', angles: ['p/tomas.jpg', 'p/ruth.jpg', 'p/ines.jpg'] }] }));
+  await page.route('**/examples/manifest.json', r => r.fulfill({ json: { by: 'test', kind, people } }));
+  await page.route('**/examples/p/*.jpg', r => r.fulfill({ path: 'tests/fixtures/sitters/' + r.request().url().split('/').pop() }));
 }

@@ -1,0 +1,38 @@
+# Packet 0004: the Lookbook's people. Run with   uv run likeness relay run 0004
+# The stages make the pictures and check the app still passes. PROMPT.md is the rest of the job: look at every picture.
+id = "0004-lookbook"
+title = "The Lookbook's people: portraits of people who do not exist, their looks and their angles, made with GPT Image"
+
+[[stage]]
+id = "sync"
+run = ["uv", "sync"]
+timeout = 900
+
+[[stage]]
+id = "pytest"         # 41 tests; the examples maker is tested against tests/fake_codex.py
+run = ["uv", "run", "pytest"]
+timeout = 900
+
+[[stage]]
+id = "probe"          # Codex CLI is here, signed in, and has every flag the engine passes (packet 0003 must have run)
+run = ["uv", "run", "likeness", "probe", "codex", "--out", "relay/0004-lookbook/out/probe.json"]
+timeout = 300
+expect = ["relay/0004-lookbook/out/probe.json"]
+
+[[stage]]
+id = "examples"       # 8 portraits, 24 looks, 24 angles: 56 pictures, one turn at a time. Stopped or failed, run it again: what is on disk is kept
+run = ["uv", "run", "likeness", "examples", "--engine", "codex", "--pace", "fine", "--report", "relay/0004-lookbook/out/examples.json"]
+timeout = 14400
+expect = ["web/examples/manifest.json", "relay/0004-lookbook/out/examples.json"]
+
+[[stage]]
+id = "npm"
+run = ["npm", "ci"]
+timeout = 900
+gate = false
+
+[[stage]]
+id = "browser"        # the app in Chrome against the showcase and the simulator
+run = ["npm", "test"]
+timeout = 1800
+gate = false

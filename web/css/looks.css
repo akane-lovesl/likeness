@@ -270,6 +270,15 @@
 .lv-parts .mr-part[aria-pressed="true"] .mr-part__name { color: var(--lk-on-accent); }
 .lv-parts .mr-part.is-picked:not([aria-pressed="true"]) .mr-part__name::after { content: ' •'; color: var(--lk-accent); }
 .lv-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+/* every style on you: buttons over the tiles the mirror draws of you, each named, the one picked ringed */
+.lv-tiles { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.lv-frame.is-grid .lv-tiles { pointer-events: auto; }
+.lv .lv-tile { position: absolute; padding: 0; border: 0; background: none; display: flex; align-items: flex-end; opacity: 0; transition: opacity .15s; }
+.lv-frame.is-grid .lv-tile { opacity: 1; transition: opacity .35s calc(.36s + var(--i) * 45ms); }
+.lv-tile__name { margin: 0 0 2.2cqw 2.2cqw; padding: 1cqw 2.2cqw 1.1cqw; border-radius: 99cqw; background: rgb(12 10 9 / .55); color: #fff; font: italic 400 3.3cqw/1 var(--font-display); backdrop-filter: blur(6px); white-space: nowrap; }
+.lv-tile[aria-selected="true"] { box-shadow: inset 0 0 0 .8cqw var(--lk-accent); }
+.lv-tile[aria-selected="true"] .lv-tile__name { background: var(--lk-accent); color: var(--lk-on-accent); }
+.lv-frame.is-grid :is(.lv-name, .lv-hint) { opacity: 0 !important; }
 .lv-shutter { width: 18cqw; height: 18cqw; border-radius: 50%; padding: 0; border: 1.1cqw solid rgb(255 248 236 / .92); background: none; display: grid; place-items: center; box-shadow: 0 1.4cqw 4cqw rgb(0 0 0 / .45); }
 .lv-shutter i { width: 13.2cqw; height: 13.2cqw; border-radius: 50%; background: #fff8ec; transition: scale .15s var(--lk-ease), background .2s; }
 .lv-shutter:active i { scale: .86; }

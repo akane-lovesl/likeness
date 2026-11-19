@@ -12,10 +12,16 @@ test('the camera is a mirror: the look sketched live on the face, and the shutte
   const live = page.locator('section.lv');
   await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
   await expect(live.locator('.mr-stamp')).toHaveText('Live sketch · on this device');
-  await expect(live.locator('.lv-styles .mr-style[aria-selected="true"]')).toHaveAttribute('data-style', 'arched');
+  await expect(live.locator('.lv-parts .mr-part[data-part="brows"]')).toHaveAttribute('data-style', 'arched');
+  // a part touched: every style of it on you at once, a tile each, the one to keep touched
   await live.locator('.lv-parts .mr-part[data-part="lips"]').click();
-  await live.locator('.lv-styles .mr-style[data-style="red"]').click();
+  await expect(live.locator('.lv-frame')).toHaveClass(/is-grid/);
+  await expect(live.locator('.lv-tile')).toHaveCount(4);
+  await live.locator('.lv-tile[data-style="red"]').click();
+  await expect(live.locator('.lv-frame')).not.toHaveClass(/is-grid/);
+  await expect(live.locator('.lv-tile')).toHaveCount(0);
   await expect(live.locator('.lv-parts .mr-part.is-picked')).toHaveCount(2);
+  await expect(live.locator('.lv-parts .mr-part[data-part="lips"]')).toHaveAttribute('data-style', 'red');
   await live.locator('.lv-shutter').click();
   const mirror = page.locator('section.mr');
   await expect(mirror).toBeVisible();
@@ -33,6 +39,6 @@ test('On me, on a face in the ring: the camera opens with that look on', async (
   await front.locator('.lb-card__me').click();
   const live = page.locator('section.lv');
   await expect(live).toBeVisible();
-  await expect(live.locator('.lv-styles .mr-style[aria-selected="true"]')).toHaveAttribute('data-style', 'curtain');
+  await expect(live.locator('.lv-parts .mr-part[data-part="bangs"]')).toHaveAttribute('data-style', 'curtain');
   await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
 });

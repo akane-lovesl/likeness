@@ -1,7 +1,8 @@
 /**
  * The live mirror: the front camera as a mirror, with a look sketched on the face as it moves. It is the same markup
  * the mirror draws over a photograph, redrawn on MediaPipe's points frame by frame, so turn your head and the look
- * turns with you. Swipe across the face, or touch a style, to change it. The shutter keeps that moment as a photo and
+ * turns with you. Swipe across the face for the next style; touch a part and the mirror shows every style of it on you
+ * at once, live, each close on the part, to touch the one you want. The shutter keeps that moment as a photo and
  * opens the mirror on it with the look already picked. All of it on the device: nothing is kept or sent until the
  * shutter, and the frame says it is a sketch.
  */
@@ -25,6 +26,28 @@ export async function canLive() {
 
 /** The parts a live sketch can show, in the order they are offered. */
 const LIVE = ['bangs', 'brows', 'lashes', 'lips', 'beard', 'cut', 'colour'];
+/** How long the picture takes to come apart into tiles, or back. */
+const GRID_MS = 560;
+const pc = (/** @type {number} */ v) => (v * 100).toFixed(3) + '%';
+const ease = (/** @type {number} */ t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const mix = (/** @type {number[]} */ a, /** @type {number[]} */ b, /** @type {number} */ t) => a.map((v, i) => v + (b[i] - v) * t);
+/** Where n tiles go in a w × h picture ([x, y, w, h] each): two across (three past six), the last row centred. @param {number} n @param {number} w @param {number} hh */
+function cells(n, w, hh) {
+  const cols = n > 6 ? 3 : 2, rows = Math.max(1, Math.ceil(n / cols)), g = w * .024, cw = (w - g * (cols + 1)) / cols, ch = (hh - g * (rows + 1)) / rows;
+  return Array.from({ length: n }, (_, i) => { const r = Math.floor(i / cols), row = Math.min(cols, n - r * cols), off = (cols - row) * (cw + g) / 2; return [g + off + (i % cols) * (cw + g), g + r * (ch + g), cw, ch]; });
+}
+/**
+ * What a tile shows of the picture: close on the part, at least as wide as the face, in the tile's proportions.
+ * @param {import('../studio/face.js').Face} f @param {string} part @param {number} aspect width over height
+ */
+function partCrop(f, part, aspect) {
+  const [bx, by, bw, bh] = f.box, P = (/** @type {number} */ i) => f.pts[i], cx = bx + bw / 2;
+  const [x, y, tall] = ({ bangs: [cx, by + bh * .3, bh * 1.35], brows: [cx, (P(105).y + P(159).y) / 2, bh * .62], lashes: [cx, (P(159).y + P(386).y) / 2, bh * .5], lips: [P(13).x, (P(13).y + P(14).y) / 2, bh * .55], beard: [cx, (P(1).y + P(152).y) / 2 + bh * .05, bh], cut: [cx, by + bh * .55, bh * 2.1], colour: [cx, by + bh * .25, bh * 1.7] })[part] || [cx, by + bh * .5, bh * 1.6];
+  let ch = tall, cw = ch * aspect; if (cw < bw * 1.02) { cw = bw * 1.02; ch = cw / aspect; }
+  return [x - cw / 2, y - ch / 2, cw, ch];
+}
+/** The middle of a w × h picture, in a tile's proportions. @param {number} w @param {number} hh @param {number} aspect */
+const fitCrop = (w, hh, aspect) => (aspect > w / hh ? [0, (hh - w / aspect) / 2, w, w / aspect] : [(w - hh * aspect) / 2, 0, hh * aspect, hh]);
 const ctx = (/** @type {HTMLCanvasElement} */ c) => /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
 let current = /** @type {null | (() => void)} */ (null);
 
@@ -43,20 +66,23 @@ export function openLive(o) {
     let follow = /** @type {null | ((v: HTMLVideoElement, c: import('../studio/face.js').Crop, w: number, h: number) => any)} */ (null);
     let hair = /** @type {null | ((f: HTMLCanvasElement) => HTMLCanvasElement | null)} */ (null), hairAsked = false;
     let face = /** @type {any} */ (null), seen = 0, read = 0, slow = 0, chose = false;
+    // every style of a part, on you at once: the part shown as tiles, how far apart they have come (0 one picture, 1 all
+    // apart), when that began and which way, and the tile the picture closes on
+    let grid = '', gt = 0, gAt = 0, gDir = 0, lead = '';
 
     const video = /** @type {HTMLVideoElement} */ (h('video', { autoplay: true, playsinline: true }));
     video.muted = true; video.setAttribute('playsinline', ''); video.setAttribute('muted', '');
     const view = /** @type {HTMLCanvasElement} */ (h('canvas.lv-view', { 'aria-hidden': 'true' }));
     const name = h('p.lv-name', { 'aria-live': 'polite' }), hint = h('p.lv-hint', null, 'Look into the camera');
-    const frame = h('div.lv-frame', null, view, h('span.mr-stamp', { 'data-kind': 'sketch' }, 'Live sketch · on this device'), name, hint);
+    const tiles = h('div.lv-tiles', { role: 'listbox', 'aria-label': 'Every style, on you' });
+    const frame = h('div.lv-frame', null, view, tiles, h('span.mr-stamp', { 'data-kind': 'sketch' }, 'Live sketch · on this device'), name, hint);
     const partsRow = h('div.mr-parts.lv-parts', { role: 'toolbar', 'aria-label': 'What to change' });
-    const stylesRow = h('div.mr-styles.lv-styles', { role: 'listbox', 'aria-label': 'Styles' });
     const shutter = h('button.lv-shutter', { type: 'button', 'aria-label': 'Take it', onclick: () => take() }, h('i'));
     const gallery = h('button.lv-gallery', { type: 'button', 'aria-label': 'Choose a photo instead', title: 'Choose a photo instead', html: icon('image'), onclick: () => finish(null, true) });
     const el = h('section.lv', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Live mirror' },
       h('header.mr-bar', null, h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => finish(null) }), h('span.mr-bar__edition', { 'data-mode': studio.mode }, studio.label)),
       h('div.mr-stage.lv-stage', null, frame),
-      h('div.mr-dock.lv-dock', null, partsRow, stylesRow, h('div.lv-row', null, gallery, shutter, h('span.lv-gap'))));
+      h('div.mr-dock.lv-dock', null, partsRow, h('div.lv-row', null, gallery, shutter, h('span.lv-gap'))));
     stage().append(el);
     const was = o.from?.getBoundingClientRect() || null;
     requestAnimationFrame(() => { el.classList.add('is-in'); if (was && !reduced) flip(frame, was, { duration: 620 }); });
@@ -64,22 +90,38 @@ export function openLive(o) {
 
     // —— the look: a part, its styles, one picked per part ——
     function paintParts() {
-      partsRow.replaceChildren(...LIVE.map(id => { const p = partById(id); return h('button.mr-part', { type: 'button', 'data-part': id, 'aria-pressed': String(id === part), onclick: () => { part = id; paintParts(); paintStyles(); } },
-        h('span.mr-part__glyph', { html: plateSVG(id, p?.styles[0].id || '') }), h('span.mr-part__name', null, p?.name || id)); }));
+      partsRow.replaceChildren(...LIVE.map(id => {
+        const p = partById(id), on = picks.find(q => q.part === id)?.style;
+        return h('button.mr-part', { type: 'button', 'data-part': id, 'data-style': on?.id || '', 'aria-pressed': String(id === grid), 'aria-label': (p?.name || id) + (on ? ': ' + on.name : ''), onclick: () => (grid === id && gDir >= 0 ? closeGrid() : openGrid(id)) },
+          h('span.mr-part__glyph', { html: plateSVG(id, p?.styles[0].id || '') }), h('span.mr-part__name', null, p?.name || id));
+      }));
       partsRow.querySelectorAll('.mr-part').forEach(b => b.classList.toggle('is-picked', picks.some(q => q.part === /** @type {HTMLElement} */ (b).dataset.part)));
     }
-    function paintStyles() {
-      const on = picks.find(q => q.part === part)?.style.id;
-      stylesRow.replaceChildren(...(partById(part)?.styles || []).map((s, i) => h('button.mr-style', { type: 'button', role: 'option', 'data-style': s.id, style: { '--d': (i * 45) + 'ms' }, 'aria-selected': String(s.id === on), onclick: () => pick(s.id) },
-        h('span.mr-style__plate', { html: plateSVG(part, s.id) }), h('span.mr-style__name', null, s.name))));
-      stylesRow.querySelector('[aria-selected="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+    /** A part's styles as tiles over the mirror, each a button over its own picture of you. */
+    function paintTiles() {
+      const all = partById(grid)?.styles || [], on = picks.find(q => q.part === grid)?.style.id, at = cells(all.length, 1, view.height / view.width || 4 / 3);
+      tiles.replaceChildren(...all.map((s, i) => h('button.lv-tile', { type: 'button', role: 'option', 'data-style': s.id, 'aria-selected': String(s.id === on), style: { borderRadius: (frame.clientWidth * .035).toFixed(1) + 'px', left: pc(at[i][0]), top: pc(at[i][1] / (view.height / view.width || 4 / 3)), width: pc(at[i][2]), height: pc(at[i][3] / (view.height / view.width || 4 / 3)), '--i': i }, onclick: () => { const was = picks.find(q => q.part === grid)?.style.id; pick(s.id); closeGrid(was === s.id ? '' : s.id); } },
+        h('span.lv-tile__name', null, s.name))));
+    }
+    /** Every style of a part, on you: the picture comes apart into a tile for each. @param {string} id */
+    function openGrid(id) {
+      if (!partById(id)) return;
+      part = id; grid = id; lead = picks.find(q => q.part === id)?.style.id || ''; gDir = 1; gAt = performance.now() - (gt * GRID_MS);
+      paintParts(); paintTiles(); frame.classList.add('is-grid');
+      if (id === 'colour' && !hairAsked) { hairAsked = true; hairFollower().then(f => { hair = f; }).catch(() => {}); }
+    }
+    /** Back to the one picture, closing on the tile chosen (or the look as it is). @param {string} [on] */
+    function closeGrid(on) {
+      if (!grid) return;
+      lead = on ?? picks.find(q => q.part === grid)?.style.id ?? ''; gDir = -1; gAt = performance.now() - ((1 - gt) * GRID_MS);
+      frame.classList.remove('is-grid'); paintParts();
     }
     /** A style for the part on show, picked (or, picked again, taken off). @param {string} id */
     function pick(id) {
       const s = styleOf(part, id); if (!s) return;
       const had = picks.find(q => q.part === part), off = had?.style.id === id; chose = true;
       picks = off ? picks.filter(q => q !== had) : [...picks.filter(q => q.part !== part), { part, style: s }];
-      paintParts(); paintStyles();
+      paintParts(); if (grid) paintTiles();
       say(off ? 'As you are' : s.name + (part === 'bangs' || part === 'brows' ? ' ' + (partById(part)?.name || '').toLowerCase() : ''));
       if (part === 'colour' && !hairAsked) { hairAsked = true; hairFollower().then(f => { hair = f; }).catch(() => {}); }
     }
@@ -89,13 +131,16 @@ export function openLive(o) {
     let x0 = /** @type {number | null} */ (null);
     frame.addEventListener('pointerdown', e => { x0 = e.clientX; });
     frame.addEventListener('pointerup', e => {
-      if (x0 == null) return; const dx = e.clientX - x0; x0 = null; if (Math.abs(dx) < 40) return;
+      if (x0 == null || grid) return; const dx = e.clientX - x0; x0 = null; if (Math.abs(dx) < 40) return;
       const all = partById(part)?.styles || [], i = all.findIndex(s => s.id === picks.find(q => q.part === part)?.style.id);
       const next = all[(i + (dx < 0 ? 1 : -1) + all.length) % all.length]; if (next && next.id !== picks.find(q => q.part === part)?.style.id) pick(next.id);
     });
 
     // —— the mirror itself: each frame, the camera (mirrored, as you see yourself) and the look on the face in it ——
-    const small = P.make(192, 256), tinted = P.make(192, 256);
+    const small = P.make(192, 256), base = P.make(2, 2);
+    let mask = /** @type {HTMLCanvasElement | null} */ (null);
+    /** @type {Map<string, { c: HTMLCanvasElement, at: number }>} each colour laid on the hair, kept a moment (a tile each) */
+    const tints = new Map();
     // its size as laid out, not as drawn: the frame may still be growing out of what was touched
     function size() { const k = Math.min(2, devicePixelRatio || 1); view.width = Math.max(2, Math.round(frame.clientWidth * k)); view.height = Math.max(2, Math.round(frame.clientHeight * k)); }
     /** The part of the camera's picture the frame shows. */
@@ -117,22 +162,57 @@ export function openLive(o) {
         face = f ? reframed(f, w, hh, true) : null; if (face) seen = now;
         const took = performance.now() - t0; slow = Math.min(400, Math.max(28, took * 1.1)); el.dataset.read = String(Math.round(took));
       }
-      const there = !!face && now - seen < 450, colour = picks.find(q => q.part === 'colour'), tint = there && colour && hair ? tintOf('colour', colour.style.id, colour.shape?.shade || 0) : '';
-      x.save(); x.translate(w, 0); x.scale(-1, 1);
-      x.drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, w, hh);
-      if (tint) hairOf(x, c, tint);
-      x.restore();
-      if (there) look(x, face);
+      const there = !!face && now - seen < 450;
+      // the camera, mirrored as you see yourself, once a frame: the view, or each of its tiles, is drawn from it
+      if (base.width !== w || base.height !== hh) { base.width = w; base.height = hh; }
+      const b = ctx(base); b.save(); b.translate(w, 0); b.scale(-1, 1); b.drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, w, hh); b.restore();
+      if (hair && (grid === 'colour' || picks.some(q => q.part === 'colour'))) hairMask();
+      // how far the tiles have come apart
+      if (gDir) { const p = Math.min(1, (now - gAt) / (reduced ? 1 : GRID_MS)); gt = gDir > 0 ? p : 1 - p; if (p >= 1) { if (gDir < 0) { grid = ''; tiles.replaceChildren(); } gDir = 0; } }
+      x.setTransform(1, 0, 0, 1, 0, 0);
+      const full = [0, 0, w, hh];
+      if (!grid) draw(x, picks, there, full, full, 1, 0);
+      else {
+        // every style of the part, on you: the picture comes apart into tiles, each close on the part, the one picked on top
+        x.fillStyle = '#0d0a09'; x.fillRect(0, 0, w, hh);
+        const all = partById(grid)?.styles || [], at = cells(all.length, w, hh), e = ease(gt);
+        const order = all.map((_, i) => i).sort((i, j) => Number(all[i].id === lead) - Number(all[j].id === lead));
+        for (const i of order) {
+          const s = all[i], aspect = at[i][2] / at[i][3], to = there ? partCrop(face, grid, aspect) : fitCrop(w, hh, aspect);
+          draw(x, [...picks.filter(q => q.part !== grid), { part: grid, style: s }], there, mix(full, at[i], e), mix(full, to, e), gDir < 0 && s.id !== lead ? e : 1, e * w * .035);
+        }
+      }
       el.classList.toggle('has-face', there);
     }
-    /** The picks on a face (the hair, if it is recoloured, is already done): the lips tinted, then the strokes. @param {CanvasRenderingContext2D} x @param {any} f */
-    function look(x, f) {
-      for (const q of picks) {
+    /**
+     * The mirror, or one tile of it: the part of the camera's picture in crop, filling rect, with the looks in ps on the face.
+     * @param {CanvasRenderingContext2D} x @param {Pick[]} ps @param {boolean} there @param {number[]} rect @param {number[]} crop @param {number} alpha @param {number} radius
+     */
+    function draw(x, ps, there, rect, crop, alpha, radius) {
+      const [tx, ty, tw, th] = rect, [cx, cy, cw, ch] = crop, k = Math.max(tw / cw, th / ch), ox = tx + (tw - cw * k) / 2 - cx * k, oy = ty + (th - ch * k) / 2 - cy * k;
+      x.save(); x.globalAlpha = alpha;
+      if (radius > .5) { x.beginPath(); x.roundRect(tx, ty, tw, th, radius); x.clip(); }
+      // only the part of the picture that shows in the rectangle is drawn (a tile is a small part of it)
+      const sx = Math.max(0, (tx - ox) / k), sy = Math.max(0, (ty - oy) / k), sw = Math.min(base.width, (tx + tw - ox) / k) - sx, sh = Math.min(base.height, (ty + th - oy) / k) - sy;
+      if (sw > 0 && sh > 0) {
+        x.drawImage(base, sx, sy, sw, sh, sx * k + ox, sy * k + oy, sw * k, sh * k);
+        const colour = ps.find(q => q.part === 'colour'), tint = there && colour && mask ? tintOf('colour', colour.style.id, colour.shape?.shade || 0) : '';
+        const t = tint ? hairTint(tint) : null, s = t ? t.width / base.width : 1;
+        if (t) x.drawImage(t, sx * s, sy * s, sw * s, sh * s, sx * k + ox, sy * k + oy, sw * k, sh * k);
+      }
+      x.setTransform(k, 0, 0, k, ox, oy);
+      if (there) look(x, face, ps, k);
+      x.restore();
+    }
+    /** The looks on a face (the hair, if it is recoloured, is already done): the lips tinted, then the strokes, a little finer up close. @param {CanvasRenderingContext2D} x @param {any} f @param {Pick[]} ps @param {number} [k] */
+    function look(x, f, ps, k = 1) {
+      for (const q of ps) {
         const tint = q.part === 'lips' && tintOf(q.part, q.style.id, q.shape?.shade || 0);
         if (tint) lips(x, f, tint);
       }
       x.strokeStyle = '#fff4e0'; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, view.width / 320);
-      for (const q of picks) for (const s of markup(f, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
+      const fine = 1 / Math.sqrt(Math.max(1, k));
+      for (const q of ps) for (const s of markup(f, q.part, q.style.id, q.shape)) { x.lineWidth = s.w * fine; x.stroke(new Path2D(s.d)); }
       x.shadowBlur = 0;
     }
     /** The lips tinted, between their outline and the mouth. @param {CanvasRenderingContext2D} x @param {any} f @param {string} tint */
@@ -141,16 +221,24 @@ export function openLive(o) {
       for (const ring of [LIPS, MOUTH]) { ring.forEach((i, k) => (k ? path.lineTo(f.pts[i].x, f.pts[i].y) : path.moveTo(f.pts[i].x, f.pts[i].y))); path.closePath(); }
       x.save(); x.clip(path, 'evenodd'); coat(x, tint, 'lips'); x.restore();
     }
-    /** The hair recoloured: a small copy of the frame, its hair found a few times a second, tinted and laid back over it. @param {CanvasRenderingContext2D} x @param {import('../studio/face.js').Crop} c @param {string} tint */
-    function hairOf(x, c, tint) {
-      const sw = small.width, sh = Math.round(sw * view.height / view.width);
-      if (small.height !== sh) { small.height = sh; tinted.height = sh; }
-      ctx(small).drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, sw, sh);
-      const m = hair?.(small); if (!m) return;
-      const t = ctx(tinted); t.globalCompositeOperation = 'source-over'; t.globalAlpha = 1; t.clearRect(0, 0, sw, sh); t.drawImage(small, 0, 0);
+    /** The hair, found a few times a second in a small copy of the picture (the last mask kept between). */
+    function hairMask() {
+      const sw = small.width, sh = Math.round(sw * base.height / base.width);
+      if (small.height !== sh) { small.height = sh; tints.clear(); }
+      ctx(small).drawImage(base, 0, 0, sw, sh);
+      mask = hair?.(small) || mask;
+    }
+    /** The hair recoloured: the small copy coated and kept only where the hair is, to lay over the picture (made again when a few frames old). @param {string} tint */
+    function hairTint(tint) {
+      if (!mask) return null;
+      let k = tints.get(tint); const now = performance.now();
+      if (k && now - k.at < 90) return k.c;
+      if (!k) { k = { c: P.make(small.width, small.height), at: 0 }; tints.set(tint, k); }
+      const t = ctx(k.c); k.at = now;
+      t.globalCompositeOperation = 'source-over'; t.globalAlpha = 1; t.clearRect(0, 0, k.c.width, k.c.height); t.drawImage(small, 0, 0);
       coat(t, tint, 'colour');
-      t.globalCompositeOperation = 'destination-in'; t.globalAlpha = 1; t.drawImage(m, 0, 0, sw, sh);
-      x.drawImage(tinted, 0, 0, view.width, view.height);
+      t.globalCompositeOperation = 'destination-in'; t.drawImage(mask, 0, 0, k.c.width, k.c.height); t.globalCompositeOperation = 'source-over';
+      return k.c;
     }
 
     async function start() {
@@ -196,7 +284,7 @@ export function openLive(o) {
     const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Escape') finish(null); };
     document.addEventListener('keydown', onKey);
     addEventListener('resize', size);
-    paintParts(); paintStyles();
+    paintParts();
     const first = picks.find(q => q.part === part); if (first) say(first.style.name + (part === 'bangs' || part === 'brows' ? ' ' + (partById(part)?.name || '').toLowerCase() : ''));
     start();
   });

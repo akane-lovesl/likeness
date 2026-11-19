@@ -178,9 +178,10 @@ export async function hairFollower() {
   })();
   hairVideoLoading.catch(() => { hairVideoLoading = null; });
   const seg = await hairVideoLoading;
-  let mask = /** @type {HTMLCanvasElement | null} */ (null), at = 0, last = 0;
+  // read a few times a second, less often where a reading is slow, so it never takes much of the device's time
+  let mask = /** @type {HTMLCanvasElement | null} */ (null), at = 0, last = 0, gap = 180;
   return (frame) => {
-    const now = performance.now(); if (now - at < 180) return mask;
+    const now = performance.now(); if (now - at < gap) return mask;
     at = now;
     const t = Math.max(last + 1, now); last = t;
     seg.segmentForVideo(frame, t, (/** @type {any} */ res) => {
@@ -189,6 +190,7 @@ export async function hairFollower() {
       for (let i = 0; i < data.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = Math.max(0, Math.min(1, (data[i] - .45) / .22)) * 255; }
       x.putImageData(img, 0, 0); mask = out;
     });
+    gap = Math.max(180, (performance.now() - now) * 4);
     return mask;
   };
 }

@@ -203,6 +203,11 @@ test('someone put somewhere can be picked up and walked back into the place', as
   await page.mouse.up();
   await page.locator('.focus__walkdock .focus__go').click();
   await expect(page.getByText(/B, (?:far |further )back and to the left\./)).toBeVisible({ timeout: 30_000 });
+  // and its making can be kept as a short film, watched as it saves
+  await page.locator('figure.print').last().click();
+  await page.locator('.tool', { hasText: 'Save' }).click();
+  const [film] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), page.locator('.bring__opt', { hasText: 'How it was made' }).click()]);
+  expect(film.suggestedFilename()).toMatch(/^likeness-c-making\.(webm|mp4)$/);
 });
 
 test('the device does what it honestly can to a photo, and says plainly when it cannot', async ({ page }) => {

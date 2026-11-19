@@ -72,6 +72,12 @@
 .walk:focus-visible { outline: .45cqw dashed rgb(255 255 255 / .85); outline-offset: .6cqw; }
 .walk__hint { position: absolute; top: 74%; translate: -50% 0; white-space: nowrap; font-family: var(--font-hand); font-size: 5cqw; line-height: 1; color: #fff; text-shadow: 0 .3cqw 1.6cqw rgb(0 0 0 / .8); pointer-events: none; animation: sun-hint calc(var(--tempo) * 4.2s) var(--ease) 1.6s both; }
 .focus[data-mode='pin'] .walk, .focus[data-mode='pin'] .walk__hint, .focus[data-mode='pin'] .focus__walk { display: none; }
+/* the film of a picture's making, played over it as it records */
+.focus__film { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; border-radius: var(--print-radius); }
+.focus__rec { position: absolute; z-index: 4; top: 2.4cqw; left: 2.4cqw; display: inline-flex; align-items: center; gap: 1.2cqw; padding: .9cqw 2cqw; border-radius: 99cqw; background: rgb(10 8 6 / .5); color: #fff; font: 500 calc(1.8cqw * var(--m-scale)) / 1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; pointer-events: none; }
+.focus__rec::before { content: ''; width: 1.4cqw; aspect-ratio: 1; border-radius: 50%; background: #ff4a3a; box-shadow: 0 0 1.2cqw #ff4a3a; animation: rec-pulse calc(var(--tempo) * .9s) ease-in-out infinite alternate; }
+.focus.is-filming .focus__dock, .focus.is-filming .focus__hint, .focus.is-filming .sun, .focus.is-filming .walk__hint { opacity: .3; pointer-events: none; transition: opacity var(--t-mid) var(--ease); }
+@keyframes rec-pulse { from { opacity: .3; } }
 @keyframes beckon { 0% { scale: 1; opacity: .7; } 35% { scale: 1.32; opacity: 1; } 100% { scale: 1; opacity: .7; } }
 @keyframes sun-hint { 0% { opacity: 0; transform: translateY(1.5cqw) rotate(-4deg); } 15%, 80% { opacity: 1; transform: rotate(-4deg); } 100% { opacity: 0; transform: rotate(-4deg); } }
 

@@ -3,7 +3,7 @@
  * should become (the retoucher's marks), give it a new backdrop or look, ask for variations, keep it, or save it.
  * Hold the picture to see what it was made from.
  */
-import { h, icon, toast, stage } from '../core/dom.js';
+import { h, icon, toast, stage, sheet } from '../core/dom.js';
 import { flip, reduced } from '../core/motion.js';
 import { glyph } from '../room/ornaments.js';
 import { app, urlOf, printById, setKept, settings } from '../state.js';
@@ -14,7 +14,8 @@ import * as P from '../studio/painter.js';
 import { selectAt, brush, loadSegmenter } from '../studio/segment.js';
 import { pinMark } from './cards.js';
 import { studio } from '../studio/studio.js';
-import { proofOf, standStage, standWords } from '../studio/local.js';
+import { proofOf, standStage, standWords, makingOf } from '../studio/local.js';
+import { film, canFilm } from './reel.js';
 
 let open = null;
 
@@ -100,7 +101,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
 
   function shut(fromHistory = false) {
     if (!open) return;
-    open = null; removeEventListener('popstate', onPop); ro.disconnect();
+    open = null; removeEventListener('popstate', onPop); ro.disconnect(); filming?.abort();
     if (!fromHistory && history.state?.focus) history.back();
     el.classList.remove('is-in');
     const target = fromImg?.isConnected ? fromImg.getBoundingClientRect() : null;
@@ -117,7 +118,40 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     if (kept) { const r = keepBtn.getBoundingClientRect(); sky.burst(r.left + r.width / 2, r.top, { n: 12, glyph: 'heart' }); sound.play('pin'); }
     toast(kept ? 'Kept in the album' : 'Taken out of the album');
   }
+  /** Save: the picture, or, for one the device made, a short film of its making. */
   function save() {
+    if (!(studio.mode === 'showcase' && canFilm() && (print.provenance?.scene || (recipe && from)))) return saveImage();
+    sheet(close => [
+      h('div.sheet__head', null, h('h2.t-title', null, 'Save')),
+      h('div.bring', null,
+        h('button.bring__opt', { onclick: () => close('image') }, h('span', { html: icon('image') }), h('b', null, 'The picture'), h('span.t-soft', null, 'As it is, to keep or to send')),
+        h('button.bring__opt', { onclick: () => close('film') }, h('span', { html: icon('film') }), h('b', null, 'How it was made'), h('span.t-soft', null, 'A short film of its making, played as it saves'))),
+    ], { label: 'Save' }).then(pick => { if (pick === 'image') saveImage(); else if (pick === 'film') saveFilm(); });
+  }
+  let filming = /** @type {AbortController | null} */ (null);
+  /** The film plays over the picture as it records: what was asked, each step with its note, the picture. */
+  async function saveFilm() {
+    if (filming) return;
+    const ctl = filming = new AbortController(), W = 540, H = Math.round(W * (print.h || 4) / (print.w || 3));
+    const view = h('canvas.focus__film', { width: W, height: H }), rec = h('span.focus__rec', null, 'Filming');
+    pic.append(view, rec); el.classList.add('is-filming');
+    try {
+      const making = await makingOf(print, from ? { blob: from.blob, handle: from.handle } : null), final = await P.fromBlob(print.blob, W);
+      const css = getComputedStyle(document.documentElement), v = (/** @type {string} */ n, /** @type {string} */ or) => css.getPropertyValue(n).trim() || or;
+      const asks = lineage(print).map(p => String(p.prompt || '').replace(/@([A-Z]{1,2})\b/g, '$1').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(-3);
+      await document.fonts?.ready;
+      const day = new Date(print.createdAt || Date.now()).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+      const blob = making && await film({ asks: asks.length ? asks : ['A picture'], day, start: making.start, frames: making.frames, final, end: 'Likeness · a sketch, drawn on this device' }, view,
+        { ground: v('--ground', '#f4efe6'), ink: v('--ink', '#1d1a17'), accent: v('--accent', '#d4452f'), display: v('--font-display', 'serif'), hand: v('--font-hand', 'cursive'), mono: v('--font-mono', 'monospace'), signal: ctl.signal });
+      if (blob) {
+        const href = URL.createObjectURL(blob), a = h('a', { href, download: `likeness-${print.handle.toLowerCase()}-making.${blob.type.includes('mp4') ? 'mp4' : 'webm'}` });
+        document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(href), 60_000);
+        toast('Saved the film of its making');
+      }
+    } catch (e) { console.warn('film', e); toast('The film could not be made here'); }
+    finally { filming = null; el.classList.remove('is-filming'); view.remove(); rec.remove(); }
+  }
+  function saveImage() {
     const a = h('a', { href: url, download: `likeness-${print.handle.toLowerCase()}-${new Date(print.createdAt).toISOString().slice(0, 10)}.${print.blob.type === 'image/png' ? 'png' : 'jpg'}` });
     document.body.append(a); a.click(); a.remove(); toast('Saved');
   }

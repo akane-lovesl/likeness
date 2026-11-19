@@ -167,7 +167,7 @@ function namesPlace(words) { const d = P.sceneFrom(words); return d.land !== 'hi
  * How a picture made here from a photo can be made again: the photo it came from, the place it was put (a scene, with
  * every change asked of it since), what they wear, a look over it and any adjustments. A later ask changes the recipe
  * and the picture is made again from the photo, so nothing is ever cut out of a picture that was itself cut out.
- * @typedef {{ from: string, scene: { words: string, seed: number, edits: any[] } | null, ramp: string[] | null, dress: any, bare: boolean, look: string | null, adjust: string[], cut?: boolean, plain?: string | null, profile?: boolean, stand?: { x: number, s: number } | null }} Recipe
+ * @typedef {{ from: string, scene: { words: string, seed: number, edits: any[] } | null, ramp: string[] | null, dress: any, bare: boolean, look: string | null, adjust: string[], cut?: boolean, plain?: string | null, profile?: boolean, stand?: { x: number, s: number } | null, seed?: number }} Recipe
  */
 /** Without a helmet, said any way. @param {string} words */
 const bareHeaded = words => /\b(?:without|no|minus|lose|take off|leave off|remove)\s+(?:a |an |the |any |his |her |their |its |my )?helmet|helmetless|bare[- ]?headed|\btake (?:the |her |his |their |its |my )?helmet off/i.test(words);
@@ -178,7 +178,7 @@ const bareHeaded = words => /\b(?:without|no|minus|lose|take off|leave off|remov
  */
 function placed(src, mask, where, words, seed, ramp = null, frames = false, from = '') {
   const plan = D.dressFrom(words);
-  /** @type {Recipe} */ const recipe = { from, scene: where ? { words: where, seed, edits: [] } : null, ramp, dress: plan, bare: bareHeaded(words), look: null, adjust: [] };
+  /** @type {Recipe} */ const recipe = { from, scene: where ? { words: where, seed, edits: [] } : null, ramp, dress: plan, bare: bareHeaded(words), look: null, adjust: [], seed };
   return { ...remake(recipe, src, mask, frames, seed), recipe };
 }
 /** What a recipe has them wear: what was asked, and a helmet where there is no air unless they go without. @param {Recipe} rec @param {any} desc */
@@ -255,6 +255,25 @@ export async function standStage(rec, input, w) {
   const { plan } = planFor(rec, desc), person = plan ? D.dressUp(src, mask, plan, P.make(src.width, src.height), null, 1).canvas : P.composite(src, mask, null);
   return { back, person, fx: D.figureOf(mask, src.width, src.height).cx / src.width, stand: rec.stand || { x: 0, s: 1 } };
 }
+/**
+ * How a picture the device made was made, frame by frame, again: for a film of its making. A recipe is made again from
+ * its photo, a scene painted again from its words; the steps come as the card showed them. Null for anything else.
+ * @param {any} print @param {any} [source] the photo a recipe was made from
+ */
+export async function makingOf(print, source = null) {
+  const rec = print.provenance?.recipe, kept = print.provenance?.scene;
+  if (rec && source?.blob) {
+    const src = await P.fromBlob(source.blob, P.MAX), mask = await subjectOf(source), made = remake(rec, src, mask, true, rec.seed ?? 7);
+    return { start: half(src), frames: made.layers || [] };
+  }
+  if (kept) {
+    const desc = P.sceneAgain(kept); desc.layers = [];
+    const c = P.scene(desc, 768, 1024), look = kept.look ? LOOKS.find(l => l.id === kept.look) : null, frames = [...desc.layers];
+    if (look) frames.push({ label: 'All of it in ' + look.name, canvas: P.copy(P.grade(c, look, .6, kept.seed), 384, 512) });
+    return { start: null, frames };
+  }
+  return null;
+}
 /** Where someone was moved to, in words: "further back and to the left". @param {{ x: number, s: number }} st */
 export function standWords(st) {
   const depth = st.s < .62 ? 'far back' : st.s < .9 ? 'further back' : st.s > 1.1 ? 'closer' : '';
@@ -271,6 +290,7 @@ const ELSEWHERE = ['on the moon', 'a beach in Lisbon at golden hour', 'a lavende
  */
 function recipeAfter(rec, spec, it, words, seed) {
   const r = /** @type {Recipe} */ (JSON.parse(JSON.stringify(rec))), t = words.toLowerCase(), did = /** @type {Record<string, any>} */ ({});
+  r.seed = seed;
   if (it.pins?.length) return null;
   if (spec.stand && typeof spec.stand.x === 'number' && typeof spec.stand.s === 'number') {
     r.stand = { x: Math.max(-.5, Math.min(.5, spec.stand.x)), s: Math.max(.3, Math.min(1.3, spec.stand.s)) }; did.stand = standWords(r.stand);

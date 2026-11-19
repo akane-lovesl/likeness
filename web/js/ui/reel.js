@@ -1,11 +1,12 @@
 /**
  * The making of a picture, as a short film: what was asked, each step as the card showed it with its note, and then
  * the picture, labelled for what it is. It plays on a canvas while it records, so the film is watched as it is made.
- * Nothing is sent anywhere: the film is saved on the device.
+ * Nothing is sent anywhere: the film is saved on the device. A picture with life in it comes alive at the very end.
  */
+import { lifeFor } from './life.js';
 
 /** @typedef {{ label: string, canvas: CanvasImageSource, reveal?: string | null }} Frame */
-/** @typedef {{ asks: string[], day: string, start: CanvasImageSource | null, frames: Frame[], final: CanvasImageSource, end: string }} Story */
+/** @typedef {{ asks: string[], day: string, start: CanvasImageSource | null, frames: Frame[], final: CanvasImageSource, end: string, life?: import('./life.js').Life | null }} Story */
 /** @typedef {{ ground: string, ink: string, accent: string, display: string, hand: string, mono: string, signal?: AbortSignal }} Look */
 
 const ease = (/** @type {number} */ t) => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
@@ -30,7 +31,8 @@ export async function film(story, view, look) {
   const shots = [{ kind: 'title', dur: 1.2 + story.asks.length * .45 }];
   if (story.start) shots.push({ kind: 'frame', img: story.start, reveal: 'fade', label: 'As it was', dur: 1.1 });
   for (const f of story.frames) shots.push({ kind: 'frame', img: f.canvas, reveal: f.reveal || 'sweep', label: f.label, dur: f.reveal === 'bloom' ? 1.7 : 1.2 });
-  shots.push({ kind: 'frame', img: story.final, reveal: 'fade', label: story.end, dur: 2.6, last: true });
+  const living = story.life ? lifeFor(story.life, W, H) : null;
+  shots.push({ kind: 'frame', img: story.final, reveal: 'fade', label: story.end, dur: living ? 4.4 : 2.6, last: true });
   const total = shots.reduce((a, s) => a + s.dur, 0);
 
   const cover = (/** @type {CanvasImageSource} */ img, /** @type {CanvasRenderingContext2D} */ c = x) => c.drawImage(img, 0, 0, W, H);
@@ -93,7 +95,8 @@ export async function film(story, view, look) {
     if (s.kind === 'title') return title(t - at, s.dur);
     x.fillStyle = look.ground; x.fillRect(0, 0, W, H);
     if (prev?.img) cover(prev.img);
-    reveal(s, ease(p / .5));
+    reveal(s, ease(s.last ? Math.min(1, (t - at) / 1.3) : p / .5));
+    if (s.last && living) living.draw(x, t - at, ease(((t - at) - 1.2) / 1.2));
     caption(s.label || '', p, !!s.last);
   }
 

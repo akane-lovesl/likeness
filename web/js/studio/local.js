@@ -274,6 +274,39 @@ export async function makingOf(print, source = null) {
   }
   return null;
 }
+/**
+ * What moves in a picture the device made, for while it is looked at: the painter's hints for its place (stars, water,
+ * rain, a lamp), and what stands in front of them, the things painted there and whoever was put there, in what they
+ * wear, where they stand. With a sun held somewhere else, or someone moved by hand, as the picture is shown just then.
+ * Null when nothing in it moves, or when it was finished in a look or cut to a square: a painting holds still.
+ * @param {any} print @param {any} [source] the photo a recipe was made from
+ * @param {{ sun?: number[] | null, stand?: { x: number, s: number } | null }} [o]
+ * @returns {Promise<import('../ui/life.js').Life | null>}
+ */
+export async function lifeOf(print, source = null, o = {}) {
+  const rec = print.provenance?.recipe, kept = print.provenance?.scene;
+  if (rec ? !rec.scene || rec.look || rec.profile || rec.adjust?.length || !source?.blob : !kept || kept.look) return null;
+  const desc = rec ? placeOf(rec) : P.sceneAgain(kept);
+  if (!desc) return null;
+  if (o.sun) P.setSun(desc, o.sun);
+  const w = print.w || 768, h = print.h || 1024, { hints, front, bare, cut } = P.lifeIn(desc, w, h);
+  let person = null;
+  if (rec) {
+    const src = await sizedOf(source, 192), mask = await subjectOf(source);
+    if (!mask) return null;
+    const { plan } = planFor(rec, desc), sw = src.width, sh = src.height, fig = D.figureOf(mask, sw, sh), fx = fig.cx / sw, stand = o.stand || rec.stand || null;
+    const dressed = plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, rec.seed ?? 7).canvas : P.composite(src, mask, null);
+    person = placeOn(P.make(front.width, front.height), dressed, stand, fx); front.getContext('2d')?.drawImage(person, 0, 0);
+    // a fairy's sparkle about the head, a party's confetti coming down: where the person stands now
+    const at = (/** @type {number} */ x, /** @type {number} */ y) => stand ? [fx + stand.x + (x - fx) * stand.s, 1 + (y - 1) * stand.s] : [x, y], k = stand?.s || 1;
+    if (plan?.sparkle) { const [x0, y0] = at((fig.cx - fig.headW * 1.3) / sw, Math.max(0, fig.top / sh - .06)); hints.push({ k: 'sparkle', box: [x0, y0, fig.headW * 2.6 / sw * k, (fig.headH / sh + .2) * k] }); }
+    if (plan?.confetti) hints.push({ k: 'confetti', box: [0, 0, 1, 1] });
+  }
+  if (!hints.some(o => !['window', 'arch'].includes(o.k))) return null;
+  // the picture itself, for what moves whole (a boat, a balloon) to be cut from
+  const picture = bare && print.blob ? await P.fromBlob(print.blob, Math.max(w, h)) : null;
+  return { hints, front, bare, cut, person, picture };
+}
 /** Where someone was moved to, in words: "further back and to the left". @param {{ x: number, s: number }} st */
 export function standWords(st) {
   const depth = st.s < .62 ? 'far back' : st.s < .9 ? 'further back' : st.s > 1.1 ? 'closer' : '';

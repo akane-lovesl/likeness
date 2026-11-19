@@ -359,9 +359,9 @@ export function describeScene(d) {
 export function scene(desc, w = 768, h = 1024) {
   if (desc.blend?.light && desc.blend.t > .01) {
     // between two hours (the sun part way down the sky): both painted from the same seed, the second laid over the first
-    const { blend, ...one } = desc, a = scene(one, w, h), b = scene({ ...one, light: blend.light, layers: null }, w, h), ax = a.getContext('2d');
+    const { blend, ...one } = desc, two = { ...one, light: blend.light, layers: null }, a = scene(one, w, h), b = scene(two, w, h), ax = a.getContext('2d');
     ax.globalAlpha = Math.min(1, blend.t); ax.drawImage(b, 0, 0); ax.globalAlpha = 1;
-    desc.sunAt = one.sunAt;
+    desc.sunAt = one.sunAt; desc.life = blend.t > .5 ? two.life : one.life;
     return a;
   }
   const c = make(w, h), x = c.getContext('2d'), rnd = rng(desc.seed || 7), L = desc.light, horizon = h * (desc.inside ? .62 : .6);
@@ -369,6 +369,12 @@ export function scene(desc, w = 768, h = 1024) {
   // composition (which takes from rnd) comes out the same at any size, and a small proof agrees with the full sketch
   const spark = rng((desc.seed || 7) + 104729), twinkle = rng((desc.seed || 7) + 7919);
   const notes = notesFor(desc), mark = (/** @type {string} */ label) => { if (desc.layers && label) desc.layers.push({ label, canvas: copy(c, Math.round(w / 2), Math.round(h / 2)) }); };
+  // what in it can move, for a picture that lives a little while it is looked at: hints in fractions of the picture,
+  // sampled from a stream of their own, so the painting comes out the same with them or without
+  const life = desc.life = /** @type {any[]} */ ([]), lr = rng((desc.seed || 7) + 31337), lights = /** @type {any[]} */ ([]);
+  let inWin = false;
+  const live = (/** @type {any} */ o) => { if (inWin) o.win = true; life.push(o); };
+  const fr = (/** @type {number} */ px, /** @type {number} */ py, /** @type {number} */ pw, /** @type {number} */ ph) => [px / w, py / h, pw / w, ph / h];
   const skies = { day: ['#9ccaf0', '#d8ecf7', '#fff4e2'], dawn: ['#7e9ed8', '#f2b8b0', '#ffe2bd'], dusk: ['#2a1d52', '#a8467a', '#f39a5a'], night: ['#04061a', '#15204a', '#2b3a72'] };
   let sky = skies[L];
   if (desc.ramp) sky = L === 'night' ? [desc.ramp[0], desc.ramp[1], desc.ramp[2]] : [desc.ramp[2], desc.ramp[3], desc.ramp[4]];
@@ -401,6 +407,7 @@ export function scene(desc, w = 768, h = 1024) {
       for (let i = 0; i < 11; i++) { const bx = ox + rnd() * ow, ht = oh * (.1 + rnd() * .24), sw = (rnd() - .5) * ow * .09; x.strokeStyle = i % 3 === 0 && pal ? mix(pal.accent2, deep, .2) : mix(pal ? pal.accent : '#2f8f6a', deep, .3 + rnd() * .25); x.lineWidth = ow * (.008 + rnd() * .01); x.beginPath(); x.moveTo(bx, floorY + oh * .03); x.bezierCurveTo(bx + sw, floorY - ht * .33, bx - sw, floorY - ht * .66, bx + sw * .5, floorY - ht); x.stroke(); }
       x.lineCap = 'butt'; x.strokeStyle = 'rgb(255 255 255 / .55)'; x.lineWidth = 1.2;
       for (let i = 0; i < 40; i++) { x.beginPath(); x.arc(ox + rnd() * ow, oy + rnd() * oh * .85, 1 + Math.pow(rnd(), 2) * ow * .012, 0, Math.PI * 2); x.stroke(); }
+      live({ k: 'under', box: fr(ox, oy, ow, floorY - oy) });
       return floorY;
     }
     if (desc.land === 'space') {
@@ -415,6 +422,7 @@ export function scene(desc, w = 768, h = 1024) {
       const gy = oy + oh * .76, gc = desc.mars ? '#a9482a' : pal ? mix(pal.accent2, '#3a1a10', .5) : '#7a3a22';
       x.fillStyle = gc; x.beginPath(); x.moveTo(ox, oy + oh); for (let q = 0; q <= ow; q += 8) x.lineTo(ox + q, gy - Math.sin(q / ow * 5 + 1) * oh * .025); x.lineTo(ox + ow, oy + oh); x.fill();
       for (let i = 0; i < 7; i++) { const cx = ox + rnd() * ow, cy = gy + oh * (.05 + rnd() * .15), cr = ow * (.02 + rnd() * .05); x.fillStyle = mix(gc, '#000000', .3); x.beginPath(); x.ellipse(cx, cy, cr, cr * .3, 0, 0, Math.PI * 2); x.fill(); x.fillStyle = mix(gc, '#ffffff', .12); x.beginPath(); x.ellipse(cx, cy + cr * .06, cr * .8, cr * .2, 0, 0, Math.PI); x.fill(); }
+      live({ k: 'glide', box: fr(ox, oy, ow, (gy - oy) * .75) });
       return gy;
     }
     if (desc.land === 'moon') {
@@ -439,6 +447,8 @@ export function scene(desc, w = 768, h = 1024) {
       const dx = sx - ex, dy = sy - ey, dl = Math.hypot(dx, dy) || 1, ux = dx / dl, uy = dy / dl, night = x.createLinearGradient(ex + ux * er, ey + uy * er, ex - ux * er, ey - uy * er);
       night.addColorStop(0, 'rgb(2 4 12 / 0)'); night.addColorStop(.42, 'rgb(2 4 12 / 0)'); night.addColorStop(.6, 'rgb(2 4 12 / .82)'); night.addColorStop(1, 'rgb(2 4 12 / .92)'); x.fillStyle = night; x.fillRect(ex - er, ey - er, er * 2, er * 2);
       x.restore();
+      // no air: the stars hold still, but the Earth turns, and now and then something in orbit goes over
+      live({ k: 'earth', at: [ex / w, ey / h], r: er / w, sun: [sx / w, sy / h] }); live({ k: 'glide', box: fr(ox, oy, ow, (hz - oy) * .8) });
       if (!desc.inside) mark(notes.sky);
       if (desc.skyOnly) return oy + oh;
       // the ground: bright grey under a high sun, long-shadowed under a low one, blue with earthlight after dark
@@ -479,6 +489,7 @@ export function scene(desc, w = 768, h = 1024) {
         }
       }
       x.restore();
+      live({ k: 'aurora', box: fr(ox, oy + span * .1, ow, span * .75), c: [c1, c2] });
     }
     // the sun, where it was put or where the words leave it (east, on the left, at first light), and after dark the moon
     // across the sky from it, rising as the sun sinks. Its place always takes one draw, so the hour can change and
@@ -488,6 +499,8 @@ export function scene(desc, w = 768, h = 1024) {
     const body = L === 'night' ? [1 - sun[0], Math.max(.18, Math.min(.92, 2 - sun[1]))] : sun;
     const sx = ox + ow * body[0], sy = oy + (hz - oy) * body[1], sr = ow * (L === 'night' ? .07 : .1);
     desc.sunAt = { x: (ox + ow * sun[0]) / w, y: (oy + (hz - oy) * sun[1]) / h, r: ow * .1 / w, box: [ox / w, oy / h, ow / w, (hz - oy) / h], sun };
+    // after dark the stars come and go, never over the moon, and now and then one falls
+    if (L === 'night') { live({ k: 'stars', box: fr(ox, oy, ow, (hz - oy) * .82), n: 26, avoid: [sx / w, sy / h, sr * 1.6 / w] }); live({ k: 'meteor', box: fr(ox, oy, ow, (hz - oy) * .7) }); }
     if (desc.weather !== 'rain') {
     const glow = x.createRadialGradient(sx, sy, sr * .4, sx, sy, sr * 4); glow.addColorStop(0, L === 'night' ? 'rgb(255 250 230 / .4)' : 'rgb(255 236 190 / .7)'); glow.addColorStop(1, 'rgb(255 236 190 / 0)');
     x.fillStyle = glow; x.fillRect(ox, oy, ow, hz - oy);
@@ -495,6 +508,7 @@ export function scene(desc, w = 768, h = 1024) {
     if (L === 'night') { x.fillStyle = sky[1]; x.beginPath(); x.arc(sx + sr * .45, sy - sr * .2, sr * .9, 0, Math.PI * 2); x.fill(); }
     }
     for (let i = 0; i < 4; i++) { const cx = ox + rnd() * ow, cy = oy + (hz - oy) * (.15 + rnd() * .45), cw = ow * (.18 + rnd() * .2); if (L === 'night') continue; x.fillStyle = desc.weather === 'rain' ? 'rgb(120 128 142 / .55)' : 'rgb(255 255 255 / .55)'; for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(cx + (k - 2) * cw * .22, cy + Math.sin(k) * 6, cw * .22, cw * .12, 0, 0, Math.PI * 2); x.fill(); } }
+    if (L !== 'night' && desc.weather !== 'rain' && desc.weather !== 'snow') live({ k: 'birds', box: fr(ox, oy + (hz - oy) * .08, ow, (hz - oy) * .5), dusk: L === 'dusk' });
     if (!desc.inside) mark(notes.sky);
     if (desc.skyOnly) return oy + oh;
     const far = mix(sky[1], sky[2], .3), mid = mix(sky[0], '#203040', L === 'night' ? .3 : .45), near = mix(sky[0], '#101820', L === 'night' ? .55 : .7);
@@ -507,7 +521,7 @@ export function scene(desc, w = 768, h = 1024) {
         while (px < ox + ow) {
           const bw = ow * (.06 + rnd() * .09), bh = oh * (top * .5 + rnd() * top), face = row && faces ? faces[Math.floor(rnd() * faces.length)] : col;
           x.fillStyle = face; x.fillRect(px, hz - bh, bw, bh + oh);
-          if (L === 'night' || L === 'dusk') { for (let wy = hz - bh + 8; wy < hz - 6; wy += 11) for (let wx = px + 4; wx < px + bw - 5; wx += 9) if (spark() < lit) { x.fillStyle = spark() < .5 ? '#ffd27a' : (desc.ramp ? desc.ramp[3] : pal ? pal.accent2 : '#ff7ab8'); x.fillRect(wx, wy, 4, 5); } }
+          if (L === 'night' || L === 'dusk') { for (let wy = hz - bh + 8; wy < hz - 6; wy += 11) for (let wx = px + 4; wx < px + bw - 5; wx += 9) if (spark() < lit) { x.fillStyle = spark() < .5 ? '#ffd27a' : (desc.ramp ? desc.ramp[3] : pal ? pal.accent2 : '#ff7ab8'); x.fillRect(wx, wy, 4, 5); if (lr() < .06) lights.push([wx / w, wy / h, 4 / w, 5 / h, face, 0]); } else if (lr() < .05) lights.push([wx / w, wy / h, 4 / w, 5 / h, '#ffd27a', 1]); }
           else if (face !== col) {
             const cw = Math.max(4, ow * .012), ch = Math.max(6, oh * .024); x.fillStyle = mix(face, '#26323f', .5);
             for (let wy = hz - bh + ch; wy < hz + oh * .3 - ch; wy += ch * 2) for (let wx = px + cw; wx < px + bw - cw * 1.5; wx += cw * 2.2) x.fillRect(wx, wy, cw, ch);
@@ -516,9 +530,11 @@ export function scene(desc, w = 768, h = 1024) {
           px += bw + 2;
         }
       }
+      if (lights.length) live({ k: 'windows', rects: lights.splice(0) });
       if (props.includes('neon')) for (let i = 0; i < 4; i++) {
         // signs stacked up the buildings, glowing in the words' own colours
         const col = i % 2 ? (pal?.accent2 || '#35e8ff') : (pal?.accent || '#ff3fa4'), sw = ow * (.03 + rnd() * .02), sh = oh * (.07 + rnd() * .07), sx2 = ox + ow * (.06 + i * .24 + rnd() * .08), sy2 = hz - oh * (.1 + rnd() * .12);
+        live({ k: 'neon', box: fr(sx2, sy2, sw, sh), c: col });
         neon(col, () => { x.lineWidth = Math.max(1.5, ow * .005); x.beginPath(); x.roundRect(sx2, sy2, sw, sh, sw * .3); x.stroke(); for (let k = 0; k < 3; k++) x.fillRect(sx2 + sw * .3, sy2 + sh * (.2 + k * .25), sw * .4, Math.max(1.5, sh * .07)); }, ow * .035);
       }
     }
@@ -568,7 +584,8 @@ export function scene(desc, w = 768, h = 1024) {
     if (desc.land === 'sea' && desc.skyline) {
       // a town across the water, lit after dark
       const tone = mix(far, near, .45); let px = ox;
-      while (px < ox + ow) { const bw = ow * (.03 + rnd() * .06), bh = oh * (.03 + rnd() * .11); x.fillStyle = tone; x.fillRect(px, hz - bh, bw, bh + 1); if (L === 'night' || L === 'dusk') for (let wy = hz - bh + 4; wy < hz - 3; wy += 6) for (let wx = px + 2; wx < px + bw - 3; wx += 5) if (spark() < .35) { x.fillStyle = spark() < .5 ? '#ffd27a' : pal ? (spark() < .5 ? pal.accent : pal.accent2) : '#ff7ab8'; x.fillRect(wx, wy, 2, 3); } px += bw + 1; }
+      while (px < ox + ow) { const bw = ow * (.03 + rnd() * .06), bh = oh * (.03 + rnd() * .11); x.fillStyle = tone; x.fillRect(px, hz - bh, bw, bh + 1); if (L === 'night' || L === 'dusk') for (let wy = hz - bh + 4; wy < hz - 3; wy += 6) for (let wx = px + 2; wx < px + bw - 3; wx += 5) if (spark() < .35) { x.fillStyle = spark() < .5 ? '#ffd27a' : pal ? (spark() < .5 ? pal.accent : pal.accent2) : '#ff7ab8'; x.fillRect(wx, wy, 2, 3); if (lr() < .05) lights.push([wx / w, wy / h, 2 / w, 3 / h, tone, 0]); } else if (lr() < .04) lights.push([wx / w, wy / h, 2 / w, 3 / h, '#ffd27a', 1]); px += bw + 1; }
+      if (lights.length) live({ k: 'windows', rects: lights.splice(0) });
     }
     if (desc.land === 'sea') {
       const sg = x.createLinearGradient(0, hz, 0, oy + oh); const aqua = pal && [pal.accent, pal.accent2].find(c => { const [hh, ss] = hsl(c); return hh > 150 && hh < 250 && ss > .25; });
@@ -581,6 +598,7 @@ export function scene(desc, w = 768, h = 1024) {
       x.strokeStyle = 'rgb(255 255 255 / .35)'; x.lineWidth = 1.2; for (let i = 0; i < 40; i++) { const ly = hz + Math.pow(rnd(), 1.6) * (oy + oh - hz), lw = 10 + rnd() * 40; x.globalAlpha = .2 + rnd() * .5; x.beginPath(); x.moveTo(ox + rnd() * ow, ly); x.lineTo(ox + rnd() * ow + lw, ly); x.stroke(); }
       x.globalAlpha = .5; x.fillStyle = L === 'night' ? '#f4f0dc' : '#ffe2a0'; if (body[1] < 1) for (let ly = hz + 4; ly < oy + oh; ly += 7) { const wv = sr * (1.4 - (ly - hz) / oh) * (.5 + spark()); x.fillRect(sx - wv / 2, ly, wv, 2); }
       x.globalAlpha = 1;
+      live({ k: 'water', box: fr(ox, hz, ow, oy + oh - hz), path: body[1] < 1 && desc.weather !== 'rain' ? [sx / w, sr / w] : null, night: L === 'night' });
       if (props.includes('neon')) for (let i = 0; i < 7; i++) {
         // neon from across the water, drawn down the surface
         const col = i % 2 ? (pal?.accent2 || '#35e8ff') : (pal?.accent || '#ff3fa4'), rx = ox + ow * (.05 + rnd() * .9), len = oh * (.08 + rnd() * .22);
@@ -593,11 +611,13 @@ export function scene(desc, w = 768, h = 1024) {
       const c1 = pal?.accent || '#ff3fa4', c2 = pal?.accent2 || '#35e8ff', px0 = ox + ow * .76, base = hz + oh * .16, top = hz - oh * .2, sw = ow * .3, sh = oh * .085;
       x.fillStyle = mix(near, '#000000', .35); x.fillRect(px0 - ow * .007, top, ow * .014, base - top);
       x.fillStyle = mix(near, '#000000', .5); x.beginPath(); x.roundRect(px0 - sw / 2, top - sh, sw, sh, sh * .25); x.fill();
+      live({ k: 'neon', box: fr(px0 - sw / 2, top - sh, sw, sh), c: c1 });
       neon(c2, () => { x.lineWidth = Math.max(1.5, ow * .006); x.beginPath(); x.roundRect(px0 - sw / 2 + 3, top - sh + 3, sw - 6, sh - 6, sh * .2); x.stroke(); }, ow * .03);
       const word = desc.sign; x.font = '800 ' + Math.round(Math.min(sh * .55, sw * 1.5 / Math.max(3, word.length))) + 'px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
       neon(c1, () => x.fillText(word, px0, top - sh / 2 + 1), ow * .04);
       neon(c1, () => { x.lineWidth = Math.max(2, ow * .008); x.beginPath(); x.moveTo(px0 + sw * .3, top + oh * .03); x.lineTo(px0 - sw * .1, top + oh * .03); x.lineTo(px0 - sw * .1, top + oh * .09); x.moveTo(px0 - sw * .1 - ow * .025, top + oh * .065); x.lineTo(px0 - sw * .1, top + oh * .095); x.lineTo(px0 - sw * .1 + ow * .025, top + oh * .065); x.stroke(); }, ow * .03);
     }
+    if ((L === 'night' || L === 'dusk') && ['fields', 'forest', 'hills'].includes(desc.land) && desc.weather !== 'rain' && desc.weather !== 'snow') live({ k: 'fireflies', box: fr(ox, hz - oh * .06, ow, (oy + oh - hz) * .55) });
     return hz;
   };
   let hz, win = null;
@@ -679,11 +699,14 @@ export function scene(desc, w = 768, h = 1024) {
         x.fillStyle = mix(wall, '#000000', .4); x.beginPath(); x.roundRect(w * .1 - fs * .62, y0 - fs * .3, fs * 1.24, span + fs * .6, fs * .2); x.fill();
         x.font = '800 ' + Math.round(fs) + 'px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
         neon(c1, () => { for (let k = 0; k < n; k++) x.fillText(word[k], w * .1, y0 + span * (k + .5) / n); }, w * .03);
-      } else neon(c1, () => sticker(x, desc.marks?.[1] || 'notes', w * .1, h * .26, w * .1, -.2), w * .04);
-      neon(c2, () => sticker(x, desc.marks?.[0] || 'star', w * .9, h * .26, w * .1, .2), w * .04);
+        live({ k: 'neon', box: fr(w * .1 - fs * .62, y0 - fs * .3, fs * 1.24, span + fs * .6), c: c1 });
+      } else { neon(c1, () => sticker(x, desc.marks?.[1] || 'notes', w * .1, h * .26, w * .1, -.2), w * .04); live({ k: 'neon', box: fr(w * .05, h * .26 - w * .05, w * .1, w * .1), c: c1 }); }
+      neon(c2, () => sticker(x, desc.marks?.[0] || 'star', w * .9, h * .26, w * .1, .2), w * .04); live({ k: 'neon', box: fr(w * .85, h * .26 - w * .05, w * .1, w * .1), c: c2 });
     }
     mark(notes.furnish);
-    const wx = w * .2, wy = h * .12, ww = w * .6, wh = h * .42; win = [wx, wy, ww, wh]; hz = drawOutdoor(wx, wy, ww, wh);
+    const wx = w * .2, wy = h * .12, ww = w * .6, wh = h * .42; win = [wx, wy, ww, wh]; inWin = true; hz = drawOutdoor(wx, wy, ww, wh); inWin = false;
+    live({ k: 'window', box: fr(wx, wy, ww, wh), bars: [.022, .012], inner: props.includes('curtains') ? [.16, .84] : null });
+    if (props.includes('train')) live({ k: 'rush', box: fr(wx, wy + wh * .45, ww, wh * .55), win: true });
     x.strokeStyle = mix(wall, '#000', .35); x.lineWidth = w * .022; x.strokeRect(wx, wy, ww, wh); x.lineWidth = w * .012; x.beginPath(); x.moveTo(wx + ww / 2, wy); x.lineTo(wx + ww / 2, wy + wh); x.moveTo(wx, wy + wh / 2); x.lineTo(wx + ww, wy + wh / 2); x.stroke();
     if (props.includes('curtains')) {
       // drapes from a pelmet, gathered at a tie-back, falling to the floor
@@ -720,6 +743,7 @@ export function scene(desc, w = 768, h = 1024) {
       const top = horizon + h * .015, deep = h * (.1 + low * .2), tint = L === 'day' ? '255 246 222' : L === 'dawn' ? '255 208 196' : '255 186 110';
       const tl = [wx + dx * .4, top], tr = [wx + ww + dx * .4, top], bl = [wx + dx + spread - w * .06, top + deep], br = [wx + ww + dx + spread + w * .06, top + deep];
       const at = (/** @type {number} */ s, /** @type {number} */ t) => { const a = tl[0] + (tr[0] - tl[0]) * s, b = bl[0] + (br[0] - bl[0]) * s; return [a + (b - a) * t, top + deep * t]; };
+      live({ k: 'motes', box: fr(Math.min(tl[0], bl[0]), wy + wh * .55, Math.max(tr[0], br[0]) - Math.min(tl[0], bl[0]), top + deep - wy - wh * .55) });
       const a = L === 'day' ? .22 : .34, fade = x.createLinearGradient(0, top, 0, top + deep); fade.addColorStop(0, `rgb(${tint} / ${a})`); fade.addColorStop(1, `rgb(${tint} / ${a * .4})`);
       x.save(); x.globalCompositeOperation = 'screen'; x.fillStyle = fade;
       for (const [s0, s1] of [[0, .47], [.53, 1]]) for (const [t0, t1] of [[0, .46], [.54, 1]]) {
@@ -732,6 +756,7 @@ export function scene(desc, w = 768, h = 1024) {
     if (props.includes('mirrorball')) {
       // a mirror ball, and the light it throws all over the room
       const bx = w * .5, by = h * .1, br = w * .07;
+      live({ k: 'specks', at: [bx / w, by / h], r: br / w, c: [pal?.accent || '#ff5fa2', pal?.accent2 || '#5fd8ff', '#ffffff'] });
       x.strokeStyle = mix(wall, '#000000', .45); x.lineWidth = 2; x.beginPath(); x.moveTo(bx, 0); x.lineTo(bx, by - br); x.stroke();
       x.save(); x.globalCompositeOperation = 'lighter';
       for (let i = 0; i < 110; i++) { const a = rnd() * Math.PI * 2, d = w * (.12 + rnd() * .75); x.fillStyle = alpha([pal?.accent || '#ff5fa2', pal?.accent2 || '#5fd8ff', '#ffffff'][i % 3], .3 + rnd() * .4); x.beginPath(); x.ellipse(bx + Math.cos(a) * d, by + Math.abs(Math.sin(a)) * d * 1.15, w * (.005 + rnd() * .006), w * .0035, a, 0, Math.PI * 2); x.fill(); }
@@ -744,6 +769,7 @@ export function scene(desc, w = 768, h = 1024) {
       // a chandelier: arms of brass, five candles, and their glow
       const cx = w * .5, cy = h * .075, arm = w * .14, brass = pal ? mix(pal.accent2, '#d6a540', .6) : '#d6a540';
       const tips = [-1, -.5, 0, .5, 1].map(k => [cx + k * arm, cy + h * .045 - Math.abs(k) * h * .012]);
+      live({ k: 'flames', pts: tips.map(([tx, ty]) => [tx / w, (ty - h * .025) / h]) });
       x.strokeStyle = brass; x.lineWidth = 2; x.beginPath(); x.moveTo(cx, 0); x.lineTo(cx, cy + h * .05); x.stroke();
       x.lineWidth = w * .006; for (const [tx, ty] of tips) { x.beginPath(); x.moveTo(cx, cy + h * .05); x.quadraticCurveTo(tx, cy + h * .075, tx, ty); x.stroke(); }
       x.save(); x.globalCompositeOperation = 'lighter';
@@ -778,8 +804,8 @@ export function scene(desc, w = 768, h = 1024) {
     }
   } else { hz = drawOutdoor(0, 0, w, h); mark(notes.land); }
 
-  for (const thing of desc.things) drawThing(x, thing, w, h, desc.inside ? horizon + h * .06 : hz, rnd, desc);
-  if (desc.who) {
+  if (!desc.bare) for (const thing of desc.things) drawThing(x, thing, w, h, desc.inside ? horizon + h * .06 : hz, rnd, desc);
+  if (desc.who && !desc.bare) {
     // the sitter: a silhouette in front, rimmed with light after dark, wearing what the words say
     const person = desc.who === 'person', size = w * (person ? .7 : .44), cx = w * (person ? .5 : .44), base = person ? h * 1.02 : desc.inside ? h * .97 : Math.min(h * .93, hz + h * .3);
     const tone = pal ? mix(luminance(pal.ink) < luminance(pal.ground) ? pal.ink : pal.ground, '#000000', .3) : (L === 'night' ? '#0b0d18' : '#2a2320');
@@ -794,25 +820,76 @@ export function scene(desc, w = 768, h = 1024) {
   }
   const listed = desc.things.map((/** @type {string} */ k) => THING[k]).filter(Boolean);
   if (listed.length) mark(cap(listed.join(', ')) + (desc.inside ? (desc.things.includes('glass') ? ' on the bar' : ' on the table') : ''));
+  if (['rain', 'snow', 'petals'].includes(desc.weather)) life.push({ k: desc.weather, box: win ? fr(win[0], win[1], win[2], win[3]) : [0, 0, 1, 1], night: L === 'night', win: !!win });
   x.save();
   if (win) { x.beginPath(); x.rect(win[0], win[1], win[2], win[3]); x.clip(); } // indoors, the weather stays outside the window
+  if (!desc.quiet) {
   if (desc.weather === 'rain') { x.strokeStyle = L === 'night' ? 'rgb(220 230 255 / .45)' : 'rgb(60 70 95 / .35)'; x.lineWidth = 1.2; for (let i = 0; i < 220; i++) { const rx = rnd() * w, ry = rnd() * h, rl = 14 + rnd() * 20; x.beginPath(); x.moveTo(rx, ry); x.lineTo(rx - 4, ry + rl); x.stroke(); } }
   if (desc.weather === 'snow') { x.fillStyle = 'rgb(255 255 255 / .85)'; for (let i = 0; i < 260; i++) { x.beginPath(); x.arc(rnd() * w, rnd() * h, .8 + rnd() * 2.6, 0, Math.PI * 2); x.fill(); } }
   if (desc.weather === 'petals') { for (let i = 0; i < 46; i++) { x.fillStyle = rnd() < .5 ? '#f6b6c8' : '#fbd7e1'; sticker(x, 'petal', rnd() * w, rnd() * h, 10 + rnd() * 10, rnd() * 6); } }
   if (win && desc.weather === 'rain') for (let i = 0; i < 26; i++) { const dx = win[0] + rnd() * win[2], dy = win[1] + rnd() * win[3], dr = 1.5 + rnd() * w * .006; x.fillStyle = 'rgb(255 255 255 / .25)'; x.beginPath(); x.arc(dx, dy, dr, 0, Math.PI * 2); x.fill(); x.fillStyle = 'rgb(255 255 255 / .6)'; x.beginPath(); x.arc(dx - dr * .3, dy - dr * .3, dr * .3, 0, Math.PI * 2); x.fill(); }
+  }
   x.restore();
   mark(notes.weather);
+  if (desc.arch) life.push({ k: 'arch' });
   if (desc.arch) { const m = make(w, h), mc = m.getContext('2d'); mc.fillStyle = desc.ramp ? desc.ramp[4] : desc.pal ? desc.pal.ground : '#f6efe2'; mc.fillRect(0, 0, w, h); mc.globalCompositeOperation = 'destination-out'; mc.beginPath(); mc.moveTo(w * .1, h); mc.lineTo(w * .1, h * .4); mc.arc(w / 2, h * .4, w * .4, Math.PI, 0); mc.lineTo(w * .9, h); mc.fill(); x.drawImage(m, 0, 0); }
   if (desc.zoom > 1) {
     const z = desc.zoom, was = copy(c), k = (1 - 1 / z) / 2; x.drawImage(was, w * k, h * k, w / z, h / z, 0, 0, w, h);
     const s = desc.sunAt; if (s) desc.sunAt = { ...s, x: (s.x - k) * z, y: (s.y - k) * z, r: s.r * z, box: [(s.box[0] - k) * z, (s.box[1] - k) * z, s.box[2] * z, s.box[3] * z] };
+    for (const o of life) zoomHint(o, z, k);
   }
+  if (desc.quiet) { vignette(c, .35); return c; }
   const grainy = x.getImageData(0, 0, w, h), gd = grainy.data;
   for (let i = 0; i < gd.length; i += 4) { const n = (rnd() - .5) * 14; gd[i] += n; gd[i + 1] += n; gd[i + 2] += n; }
   x.putImageData(grainy, 0, 0);
   vignette(c, .35);
   return c;
 }
+
+/** A hint where a zoomed picture shows it: about the middle, z times nearer. @param {any} o @param {number} z @param {number} k */
+function zoomHint(o, z, k) {
+  const X = (/** @type {number} */ v) => (v - k) * z;
+  if (o.box) o.box = [X(o.box[0]), X(o.box[1]), o.box[2] * z, o.box[3] * z];
+  for (const key of ['at', 'sun']) if (o[key]) o[key] = [X(o[key][0]), X(o[key][1])];
+  if (o.pts) o.pts = o.pts.map((/** @type {number[]} */ p) => [X(p[0]), X(p[1])]);
+  if (o.rects) o.rects = o.rects.map((/** @type {any[]} */ q) => [X(q[0]), X(q[1]), q[2] * z, q[3] * z, q[4], q[5]]);
+  if (o.path) o.path = [X(o.path[0]), o.path[1] * z];
+  if (o.avoid) o.avoid = [X(o.avoid[0]), X(o.avoid[1]), o.avoid[2] * z];
+  if (typeof o.r === 'number') o.r *= z;
+  if (o.k === 'arch') o.zoom = [z, k];
+}
+
+/**
+ * What can move in a scene, and what stands in front of it: the hints the painter leaves as it paints (stars, water,
+ * rain, steam, a lamp), in fractions of the picture, and a small mask of what was painted over the place (the things in
+ * it, and the sitter), found by painting it again without them. Painted at the picture's own size, since lit windows are
+ * counted by the pixel. The picture itself is not touched.
+ * @param {any} desc @param {number} w @param {number} h @returns {{ hints: any[], front: HTMLCanvasElement, bare: HTMLCanvasElement | null, cut: HTMLCanvasElement | null }}
+ */
+export function lifeIn(desc, w, h) {
+  const again = (/** @type {any} */ more) => ({ ...desc, things: [...(desc.things || [])], layers: null, quiet: true, ...more });
+  const full = again({}), whole = scene(full, w, h);
+  const sw = 160, sh = Math.max(1, Math.round(sw * h / w));
+  const a = ctx2d(scene(again({}), sw, sh)).getImageData(0, 0, sw, sh).data, b = ctx2d(scene(again({ bare: true }), sw, sh)).getImageData(0, 0, sw, sh).data;
+  const front = make(sw, sh), fx = ctx2d(front), m = fx.createImageData(sw, sh);
+  for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 24) m.data[i + 3] = 255;
+  fx.putImageData(m, 0, 0);
+  // what moves itself (a boat, balloons, a heart): cut along where it differs from the place without it, at full size,
+  // and the place without it, to show through as it moves
+  const moving = (full.life || []).filter(o => MOVES.has(o.k));
+  if (!moving.length) return { hints: full.life || [], front, bare: null, cut: null };
+  const bare = scene(again({ bare: true }), w, h), cut = make(w, h), A = ctx2d(whole), Bc = ctx2d(bare), C = ctx2d(cut);
+  for (const o of moving) {
+    const x0 = Math.max(0, Math.floor(o.box[0] * w)), y0 = Math.max(0, Math.floor(o.box[1] * h)), x1 = Math.min(w, Math.ceil((o.box[0] + o.box[2]) * w)), y1 = Math.min(h, Math.ceil((o.box[1] + o.box[3]) * h));
+    if (x1 <= x0 || y1 <= y0) continue;
+    const pa = A.getImageData(x0, y0, x1 - x0, y1 - y0).data, pb = Bc.getImageData(x0, y0, x1 - x0, y1 - y0).data, mm = C.createImageData(x1 - x0, y1 - y0);
+    for (let i = 0; i < pa.length; i += 4) if (Math.abs(pa[i] - pb[i]) + Math.abs(pa[i + 1] - pb[i + 1]) + Math.abs(pa[i + 2] - pb[i + 2]) > 6) mm.data[i + 3] = 255;
+    C.putImageData(mm, x0, y0);
+  }
+  return { hints: full.life || [], front, bare, cut };
+}
+/** Hints for things that move themselves: cut out of the picture and moved whole. */
+const MOVES = new Set(['bob', 'sway', 'beat']);
 
 /**
  * A sitter as one flat shape, drawn in a 100-unit box (feet at the bottom) at ox, oy and size s.
@@ -854,10 +931,12 @@ function drawThing(x, thing, w, h, ground, rnd, desc) {
     x.fillStyle = dark ? '#1a1d2e' : '#6b5a4c'; x.beginPath(); x.ellipse(bx, ground + 6, w * .14, h * .025, 0, 0, Math.PI * 2); x.fill();
     for (let i = 0; i < 5; i++) { x.fillStyle = i % 2 ? '#f4efe6' : '#c9372c'; const y0 = top + (ground - top) * i / 5, y1 = top + (ground - top) * (i + 1) / 5; x.beginPath(); x.moveTo(bx - bw * (.7 + i * .06), y0); x.lineTo(bx + bw * (.7 + i * .06), y0); x.lineTo(bx + bw * (.76 + i * .06), y1); x.lineTo(bx - bw * (.76 + i * .06), y1); x.fill(); }
     x.fillStyle = '#ffe9a8'; x.fillRect(bx - bw * .55, top - h * .035, bw * 1.1, h * .035); x.fillStyle = ink; x.beginPath(); x.moveTo(bx - bw * .8, top - h * .035); x.lineTo(bx, top - h * .07); x.lineTo(bx + bw * .8, top - h * .035); x.fill();
+    desc.life?.push({ k: 'lamp', at: [bx / w, (top - h * .018) / h], r: bw / w });
     const beam = x.createLinearGradient(bx, 0, w, 0); beam.addColorStop(0, 'rgb(255 236 170 / .55)'); beam.addColorStop(1, 'rgb(255 236 170 / 0)'); x.fillStyle = beam; x.beginPath(); x.moveTo(bx, top - h * .018); x.lineTo(w, top - h * .1); x.lineTo(w, top + h * .05); x.fill();
   } else if (thing === 'boat') {
     const bx = w * .66, by = ground + h * .1; x.fillStyle = ink; x.beginPath(); x.moveTo(bx - w * .1, by); x.lineTo(bx + w * .1, by); x.lineTo(bx + w * .07, by + h * .025); x.lineTo(bx - w * .07, by + h * .025); x.fill();
     x.fillStyle = '#f6efe0'; x.beginPath(); x.moveTo(bx, by - h * .14); x.lineTo(bx, by - h * .01); x.lineTo(bx + w * .08, by - h * .01); x.fill(); x.fillStyle = '#e8d7bd'; x.beginPath(); x.moveTo(bx - 3, by - h * .12); x.lineTo(bx - 3, by - h * .01); x.lineTo(bx - w * .06, by - h * .01); x.fill();
+    desc.life?.push({ k: 'bob', box: [(bx - w * .12) / w, (by - h * .16) / h, .24, .2] });
   } else if (thing === 'tree') {
     const tx = w * .7, tb = ground + h * .02; x.fillStyle = ink; x.fillRect(tx - 5, tb - h * .12, 10, h * .12);
     x.fillStyle = dark ? '#132418' : (desc.ramp ? desc.ramp[1] : '#2f6a3c'); for (let i = 0; i < 7; i++) { x.beginPath(); x.arc(tx + (rnd() - .5) * w * .14, tb - h * .15 - rnd() * h * .08, w * (.05 + rnd() * .04), 0, Math.PI * 2); x.fill(); }
@@ -903,17 +982,19 @@ function drawThing(x, thing, w, h, ground, rnd, desc) {
     x.beginPath(); x.moveTo(cx - cw / 2, cy - h * .07); x.quadraticCurveTo(cx - cw / 2, cy, cx, cy); x.quadraticCurveTo(cx + cw / 2, cy, cx + cw / 2, cy - h * .07); x.fill();
     x.strokeStyle = col; x.lineWidth = w * .014; x.beginPath(); x.arc(cx + cw * .55, cy - h * .045, w * .03, -1.3, 1.3); x.stroke();
     x.fillStyle = trim; x.fillRect(cx - cw / 2, cy - h * .07, cw, h * .007); x.fillStyle = mix(trim, '#000', .2); x.beginPath(); x.ellipse(cx, cy - h * .07, cw / 2, h * .01, 0, 0, Math.PI * 2); x.fill();
+    desc.life?.push({ k: 'steam', at: [cx / w, (cy - h * .085) / h], r: cw / w });
     x.strokeStyle = 'rgb(255 255 255 / .5)'; x.lineWidth = 2; for (let i = 0; i < 2; i++) { x.beginPath(); const sx = cx - 10 + i * 20; x.moveTo(sx, cy - h * .09); x.bezierCurveTo(sx - 10, cy - h * .11, sx + 10, cy - h * .13, sx, cy - h * .16); x.stroke(); }
   } else if (thing === 'flowers') {
     for (let i = 0; i < 70; i++) { const fx = rnd() * w, fy = ground + Math.pow(rnd(), .7) * (h - ground); x.fillStyle = ['#f6b6c8', '#ffd36e', '#f4f1ea', desc.ramp ? desc.ramp[3] : desc.pal ? desc.pal.accent : '#e0718b'][i % 4]; sticker(x, 'flower', fx, fy, 6 + (fy - ground) / h * 40, rnd() * 3); }
   } else if (thing === 'heart') {
     x.fillStyle = desc.ramp ? desc.ramp[2] : desc.pal ? desc.pal.accent : '#e0607e'; sticker(x, 'heart', w * .5, ground - h * .18, w * .32, 0);
+    desc.life?.push({ k: 'beat', box: [.31, (ground - h * .18 - w * .19) / h, .38, w * .38 / h] });
   } else if (thing === 'castle') {
     const cx = w * .5, cb = ground, cw = w * .34; x.fillStyle = dark ? '#1b1a2c' : '#d9cfc0';
     x.fillRect(cx - cw / 2, cb - h * .16, cw, h * .16); for (const tx of [-cw / 2, cw / 2 - w * .06]) { x.fillRect(cx + tx, cb - h * .24, w * .06, h * .24); x.beginPath(); x.moveTo(cx + tx - 4, cb - h * .24); x.lineTo(cx + tx + w * .03, cb - h * .3); x.lineTo(cx + tx + w * .06 + 4, cb - h * .24); x.fillStyle = '#c9506a'; x.fill(); x.fillStyle = dark ? '#1b1a2c' : '#d9cfc0'; }
     x.fillStyle = dark ? '#ffd27a' : '#6b5a7a'; x.beginPath(); x.arc(cx, cb - h * .05, w * .035, Math.PI, 0); x.fillRect(cx - w * .035, cb - h * .05, w * .07, h * .05); x.fill();
   } else if (thing === 'balloon') {
-    for (let i = 0; i < 3; i++) { const bx = w * (.3 + i * .2 + rnd() * .05), by = h * (.18 + rnd() * .15); x.fillStyle = ['#e0607e', '#ffd36e', '#5aa0e8'][i]; x.beginPath(); x.ellipse(bx, by, w * .045, h * .042, 0, 0, Math.PI * 2); x.fill(); x.strokeStyle = 'rgb(0 0 0 / .3)'; x.beginPath(); x.moveTo(bx, by + h * .042); x.quadraticCurveTo(bx - 8, by + h * .1, bx, by + h * .16); x.stroke(); }
+    for (let i = 0; i < 3; i++) { const bx = w * (.3 + i * .2 + rnd() * .05), by = h * (.18 + rnd() * .15); x.fillStyle = ['#e0607e', '#ffd36e', '#5aa0e8'][i]; x.beginPath(); x.ellipse(bx, by, w * .045, h * .042, 0, 0, Math.PI * 2); x.fill(); x.strokeStyle = 'rgb(0 0 0 / .3)'; x.beginPath(); x.moveTo(bx, by + h * .042); x.quadraticCurveTo(bx - 8, by + h * .1, bx, by + h * .16); x.stroke(); desc.life?.push({ k: 'sway', box: [(bx - w * .06) / w, (by - h * .05) / h, .12, .22], pivot: [bx / w, (by + h * .16) / h] }); }
   }
 }
 

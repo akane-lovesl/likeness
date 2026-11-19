@@ -14,8 +14,9 @@ import * as P from '../studio/painter.js';
 import { selectAt, brush, loadSegmenter } from '../studio/segment.js';
 import { pinMark } from './cards.js';
 import { studio } from '../studio/studio.js';
-import { proofOf, standStage, standWords, makingOf } from '../studio/local.js';
+import { proofOf, standStage, standWords, makingOf, lifeOf } from '../studio/local.js';
 import { film, canFilm } from './reel.js';
+import { alive } from './life.js';
 
 let open = null;
 
@@ -101,7 +102,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
 
   function shut(fromHistory = false) {
     if (!open) return;
-    open = null; removeEventListener('popstate', onPop); ro.disconnect(); filming?.abort();
+    open = null; removeEventListener('popstate', onPop); ro.disconnect(); filming?.abort(); lifeTicket++; living?.stop(); living = null;
     if (!fromHistory && history.state?.focus) history.back();
     el.classList.remove('is-in');
     const target = fromImg?.isConnected ? fromImg.getBoundingClientRect() : null;
@@ -137,11 +138,12 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     pic.append(view, rec); el.classList.add('is-filming');
     try {
       const making = await makingOf(print, from ? { blob: from.blob, handle: from.handle } : null), final = await P.fromBlob(print.blob, W);
+      const life = await lifeOf(print, from ? { blob: from.blob, handle: from.handle } : null).catch(() => null);
       const css = getComputedStyle(document.documentElement), v = (/** @type {string} */ n, /** @type {string} */ or) => css.getPropertyValue(n).trim() || or;
       const asks = lineage(print).map(p => String(p.prompt || '').replace(/@([A-Z]{1,2})\b/g, '$1').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(-3);
       await document.fonts?.ready;
       const day = new Date(print.createdAt || Date.now()).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
-      const blob = making && await film({ asks: asks.length ? asks : ['A picture'], day, start: making.start, frames: making.frames, final, end: 'Likeness · a sketch, drawn on this device' }, view,
+      const blob = making && await film({ asks: asks.length ? asks : ['A picture'], day, start: making.start, frames: making.frames, final, end: 'Likeness · a sketch, drawn on this device', life }, view,
         { ground: v('--ground', '#f4efe6'), ink: v('--ink', '#1d1a17'), accent: v('--accent', '#d4452f'), display: v('--font-display', 'serif'), hand: v('--font-hand', 'cursive'), mono: v('--font-mono', 'monospace'), signal: ctl.signal });
       if (blob) {
         const href = URL.createObjectURL(blob), a = h('a', { href, download: `likeness-${print.handle.toLowerCase()}-making.${blob.type.includes('mp4') ? 'mp4' : 'webm'}` });
@@ -255,6 +257,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
   // a picture put somewhere from a photo has its place in its recipe: the sun moves over that place, the person stays.
   // Not in a profile picture's square, where the sky is mostly cut away
   const recipe = print.provenance?.recipe, from = recipe && printById(recipe.from);
+  let living = /** @type {{ stop: () => void } | null} */ (null), lifeTicket = 0;
   let resetSun = /** @type {(() => void) | null} */ (null), resetWalk = /** @type {(() => void) | null} */ (null);
   if (studio.mode === 'showcase' && (print.provenance?.scene || (from && recipe.scene && !recipe.profile))) holdTheSun(print.provenance?.scene || recipe.scene);
   function holdTheSun(kept) {
@@ -274,9 +277,9 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     if (seen < 3) { localStorage.setItem('likeness:sun', String(seen + 1)); knob.append(h('span.sun__hint', null, 'Drag the sun')); }
     place();
     resetSun = () => { if (moved) { sun = home.slice(); moved = false; place(); settle(); } };
-    knob.addEventListener('pointerdown', e => { resetWalk?.(); e.stopPropagation(); e.preventDefault(); try { knob.setPointerCapture(e.pointerId); } catch { /* fine */ } knob.classList.add('is-held'); knob.querySelector('.sun__hint')?.remove(); });
+    knob.addEventListener('pointerdown', e => { resetWalk?.(); e.stopPropagation(); e.preventDefault(); try { knob.setPointerCapture(e.pointerId); } catch { /* fine */ } knob.classList.add('is-held'); el.classList.add('is-relighting'); knob.querySelector('.sun__hint')?.remove(); });
     knob.addEventListener('pointermove', e => { if (!knob.classList.contains('is-held')) return; const r = pic.getBoundingClientRect(); move(((e.clientX - r.left) / r.width - b[0]) / b[2], ((e.clientY - r.top) / r.height - b[1]) / b[3]); });
-    const letGo = () => { if (!knob.classList.contains('is-held')) return; knob.classList.remove('is-held'); settle(); };
+    const letGo = () => { if (!knob.classList.contains('is-held')) return; knob.classList.remove('is-held'); el.classList.remove('is-relighting'); settle(); };
     knob.addEventListener('pointerup', letGo); knob.addEventListener('pointercancel', letGo);
     knob.addEventListener('keydown', e => {
       const step = /** @type {Record<string, number[]>} */ ({ ArrowLeft: [-.04, 0], ArrowRight: [.04, 0], ArrowUp: [0, -.06], ArrowDown: [0, .06] })[e.key];
@@ -310,6 +313,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
       sunDock.hidden = !moved; dock.hidden = moved;
       go.replaceChildren('Paint it ' + words(), h('span', { html: icon('arrow') }));
       if (moved) paint(print.w || 768, print.h || 1024); else view.classList.remove('is-in');
+      liven(moved ? { sun } : {});
     }
     function putBack() { sun = home.slice(); moved = false; place(); settle(); sound.play('tap'); }
     function paintIt() {
@@ -409,6 +413,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     /** Put down: show the picture exactly, look and all, and offer to keep them there. */
     function settle() {
       walkDock.hidden = !moved; dock.hidden = moved;
+      liven(moved ? { stand: at } : {});
       if (!moved) { view.classList.remove('is-in'); return; }
       const mine = ++ticket;
       proofOf({ text: `@${print.handle}, ${standWords(at)}`, intent: ask(), stand: at }, ins(), 384, Math.round(384 * (print.h || 4) / (print.w || 3))).then(c => {
@@ -422,5 +427,21 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
       shut();
     }
   }
+  /*
+   * Alive. A picture the device painted knows what is in it, so while it is looked at, what could move does: stars, the
+   * water, rain, the lamp going round, steam off the cup. Played over it, behind whoever stands in it; the picture itself
+   * stays as it is. Again after the sun is moved or someone is, as it shows then.
+   */
+  async function liven(/** @type {{ sun?: number[] | null, stand?: { x: number, s: number } | null }} */ o = {}) {
+    const mine = ++lifeTicket; living?.stop(); living = null;
+    if (reduced) return;
+    await new Promise(r => setTimeout(r, 60));
+    if (mine !== lifeTicket || open !== el) return;
+    const life = await lifeOf(print, from ? { blob: from.blob, handle: from.handle } : null, o).catch(e => { console.warn('life', e); return null; });
+    if (!life || mine !== lifeTicket || open !== el) return;
+    living = alive(pic, life, layer);
+  }
+  setTimeout(() => { if (open === el && !lifeTicket) liven(); }, 520);
+
   return { close: shut };
 }

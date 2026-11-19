@@ -146,6 +146,34 @@ test('the sun can be held: drag it under the sea and the sketch is painted again
   await expect(made(page, 'Sketch')).toHaveCount(1);
 });
 
+test('a painted picture lives while it is looked at, the night it is dragged into too, and holds still for anyone who asks for less motion', async ({ page }) => {
+  await open(page);
+  await samples(page);
+  await page.locator('figure.print').first().click();
+  const life = page.locator('.focus__life.is-in');
+  await expect(life).toHaveCount(1);
+  const frame = () => life.evaluate(c => /** @type {HTMLCanvasElement} */ (c).toDataURL());
+  const a = await frame();
+  await page.waitForTimeout(500);
+  expect(await frame()).not.toBe(a);
+  // the sun taken down under the sea: once let go, the night lives too
+  const sun = page.locator('button.sun');
+  await sun.hover();
+  const b = await sun.boundingBox();
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 - 20, b.y + b.height / 2 + 220, { steps: 10 });
+  await expect(page.locator('.focus.is-relighting')).toHaveCount(1);
+  await page.mouse.up();
+  await expect(page.locator('.focus.is-relighting')).toHaveCount(0);
+  await expect(life).toHaveCount(1);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await page.locator('figure.print').first().click();
+  await expect(page.locator('button.sun')).toBeVisible();
+  await page.waitForTimeout(1500);
+  await expect(page.locator('.focus__life')).toHaveCount(0);
+});
+
 test('a picture put somewhere gets a new backdrop: “@A on a beach in Lisbon”', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

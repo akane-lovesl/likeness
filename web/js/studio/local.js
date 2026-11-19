@@ -35,7 +35,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
     const after = recipeAfter(rec, spec, it, words, seed);
     if (after) {
       const src = await canvasOf(rec.from), mask = await subjectOf(source), made = remake(after.rec, src, mask, !!layers, seed), who = inputs[it.subject]?.handle || 'it';
-      return { canvas: made.canvas, note: 'made again from ' + (source.handle || 'the photo') + '’s photo', layers: made.layers, shows: [], scene: null, changes: [], painted: [], alpha: false, recipe: after.rec,
+      return { canvas: made.canvas, note: 'made again from ' + (source.handle || 'the photo') + '’s photo', layers: made.layers, shows: [], scene: null, changes: [], painted: [], alpha: !!after.rec.cut, recipe: after.rec,
         say: recipeSay(who, after, made, words), next: made.desc ? [made.desc.light === 'night' ? 'In daylight' : 'Make it night', 'Somewhere else', after.rec.look ? 'Warmer' : 'In watercolour'] : ['Somewhere else', 'In watercolour', 'Warmer'] };
     }
   }
@@ -167,7 +167,7 @@ function namesPlace(words) { const d = P.sceneFrom(words); return d.land !== 'hi
  * How a picture made here from a photo can be made again: the photo it came from, the place it was put (a scene, with
  * every change asked of it since), what they wear, a look over it and any adjustments. A later ask changes the recipe
  * and the picture is made again from the photo, so nothing is ever cut out of a picture that was itself cut out.
- * @typedef {{ from: string, scene: { words: string, seed: number, edits: any[] } | null, ramp: string[] | null, dress: any, bare: boolean, look: string | null, adjust: string[] }} Recipe
+ * @typedef {{ from: string, scene: { words: string, seed: number, edits: any[] } | null, ramp: string[] | null, dress: any, bare: boolean, look: string | null, adjust: string[], cut?: boolean, plain?: string | null, profile?: boolean }} Recipe
  */
 /** Without a helmet, said any way. @param {string} words */
 const bareHeaded = words => /\b(?:without|no|minus|lose|take off|leave off|remove)\s+(?:a |an |the |any |his |her |their |its |my )?helmet|helmetless|bare[- ]?headed|\btake (?:the |her |his |their |its |my )?helmet off/i.test(words);
@@ -190,7 +190,7 @@ function remake(rec, src, mask, frames, seed) {
   const desc = rec.scene ? P.sceneAgain(rec.scene) : null;
   if (desc && rec.ramp && !desc.ramp && !desc.pal) desc.ramp = rec.ramp;
   if (desc && frames) desc.layers = [];
-  const bd = desc ? P.scene(desc, src.width, src.height) : null, because = desc && !rec.bare ? AIRLESS[desc.land] || '' : '';
+  const bd = desc ? P.scene(desc, src.width, src.height) : rec.plain ? P.plainBackdrop(src.width, src.height, rec.plain) : rec.cut ? P.make(src.width, src.height) : null, because = desc && !rec.bare ? AIRLESS[desc.land] || '' : '';
   const plan = rec.dress || because ? { ...(rec.dress || { pieces: [], persona: null, colours: {}, place: null, glow: null, trim: false, sparkle: false, confetti: false, off: [] }) } : null;
   if (plan) plan.pieces = [...plan.pieces, ...(because && !plan.pieces.includes('helmet') ? ['helmet'] : [])];
   const pieces = frames ? /** @type {any[]} */ ([]) : null;
@@ -204,6 +204,12 @@ function remake(rec, src, mask, frames, seed) {
     layers = [found(src, mask), ...(desc?.layers || []).map((/** @type {any} */ l) => ({ label: l.label, canvas: P.composite(small, mask, l.canvas) })), ...(pieces || []).map(f => ({ ...f, reveal: 'fade' }))];
     if (look || rec.adjust?.length) layers.push({ label: look ? 'All of it in ' + look.name : cap(P.adjustmentsIn(rec.adjust.join(' '))?.said.join(', ') || 'Adjusted'), canvas: half(canvas) });
   }
+  // a profile picture: the square around the face, found in the photo itself, so a helmet or a crown is not taken for it
+  if (rec.profile) {
+    const box = P.portraitBox(src, mask), size = Math.max(256, Math.min(768, src.width)), sq = P.make(size, size);
+    layers?.push({ label: 'A square around the face', canvas: half(P.squareOn(canvas, box)), reveal: 'fade' });
+    sq.getContext('2d').drawImage(canvas, box.sx, box.sy, box.side, box.side, 0, 0, size, size); canvas = sq;
+  }
   return { canvas, desc, plan: plan?.pieces.length ? plan : null, because: plan?.pieces.includes('helmet') && because && !rec.dress?.pieces?.includes('helmet') ? because : '', layers };
 }
 const cap = (/** @type {string} */ s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -216,11 +222,18 @@ const ELSEWHERE = ['on the moon', 'a beach in Lisbon at golden hour', 'a lavende
  */
 function recipeAfter(rec, spec, it, words, seed) {
   const r = /** @type {Recipe} */ (JSON.parse(JSON.stringify(rec))), t = words.toLowerCase(), did = /** @type {Record<string, any>} */ ({});
-  if (it.pins?.length || /\b(?:transparent|cut (?:it |her |him |them )?out|sticker|profile (?:pic|photo|picture|image)|avatar|pfp|head ?shot)\b/.test(t)) return null;
+  if (it.pins?.length) return null;
+  // the background taken away, or one plain colour behind them; a profile picture, whatever is behind
+  const bg = /\b(?:background|backdrop|bg)\b/.test(t), colour = bg ? Object.keys(P.COLOUR_WORDS).find(k => new RegExp('\\b' + k + '\\b').test(t)) : undefined;
+  const cut = /\btransparent\b|\bcut (?:it |her |him |them |@[a-z]{1,2} )?out\b|\bsticker\b|\b(?:remove|delete|erase|lose|drop|get rid of|take away|without|no)\b[^.]*\b(?:background|backdrop|bg)\b/.test(t);
+  if (cut && !colour) { r.scene = null; r.plain = null; r.cut = true; did.cut = true; }
+  else if (bg && (colour || /\b(?:plain|blank|clean|solid|simple|studio|neutral|seamless)\b/.test(t))) { r.scene = null; r.cut = false; r.plain = P.COLOUR_WORDS[/** @type {keyof typeof P.COLOUR_WORDS} */ (colour || 'white')] || '#f4f1ec'; did.plain = colour || 'white'; }
+  if (/profile (?:pic(?:ture)?|photo|image)|\bavatar\b|\bpfp\b|head ?shot/.test(t)) { r.profile = true; did.profile = true; }
+  if (did.cut || did.plain) return { rec: r, did };
   // a new place: said, chosen from the ideas, or just "somewhere else"
   const anew = /\b(?:somewhere else|another place|elsewhere|a different place|somewhere new|take (?:her|him|them|me) somewhere)\b/.test(t);
   const where = spec.backdrop?.words || it.where || (anew ? ELSEWHERE.filter(p => p !== r.scene?.words)[Math.abs(seed) % (ELSEWHERE.length - 1)] : null);
-  if (where) { r.scene = { words: where, seed, edits: [] }; r.ramp = spec.backdrop?.ramp || null; did.place = true; }
+  if (where) { r.scene = { words: where, seed, edits: [] }; r.ramp = spec.backdrop?.ramp || null; r.cut = false; r.plain = null; did.place = true; }
   // what they wear: someone new to be changes the costume; a piece asked for is added; "without the helmet" takes it off
   const add = D.dressFrom(words), off = D.takenOff(words);
   if (add?.persona) { r.dress = add; did.dress = true; if (!where && add.place && !r.scene && !namesPlace(words)) { r.scene = { words: add.place, seed, edits: [] }; did.place = true; } }
@@ -246,6 +259,9 @@ function placeSaid(words) { const m = words.match(/\b(in|at|on|by|under|inside|a
 /** What a recipe's new ask did, in a line. */
 function recipeSay(/** @type {string} */ who, /** @type {any} */ after, /** @type {any} */ made, /** @type {string} */ words) {
   const d = after.did, there = made.desc ? (/\bmars\b/i.test(after.rec.scene?.words || '') ? 'on Mars' : THERE[made.desc.land] || '') : '';
+  if (d.cut) return `${who}, cut out: the background is gone.`;
+  if (d.plain) return `${who}, on plain ${d.plain}${d.profile ? ', as a profile picture' : ''}.`;
+  if (d.profile && !d.place && !d.dress) return `${who}, as a profile picture: a square around the face${made.plan ? ', ' + D.pieceList(made.plan.pieces) + ' and all' : ''}.`;
   if (d.place || d.dress) {
     if (made.plan) return dressSay(who, made.plan, made.desc, made.because, after.rec.scene?.words || '').replace(/\.$/, after.rec.bare && made.desc && AIRLESS[made.desc.land] ? ', without a helmet.' : '.');
     return `${who}, ${there || (made.desc ? 'somewhere new: ' + (after.rec.scene?.words || '') : 'as they were')}${after.rec.bare && made.desc && AIRLESS[made.desc.land] ? ', without a helmet' : ''}.`;

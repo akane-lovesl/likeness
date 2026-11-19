@@ -88,9 +88,12 @@ export function figureOf(mask, w, h) {
   let y1 = mh - 1; while (y1 > y0 && L[y1] < 0) y1--;
   if (y1 - y0 < 6) return guess;
   const width = (/** @type {number} */ y) => (L[y] < 0 ? 0 : R[y] - L[y] + 1);
-  // the head: as wide as it gets, then the neck, the narrowest row before the shoulders spread out
+  // the head: as wide as it gets, then the neck, the narrowest row before the shoulders spread out. A bun or a hat's tip
+  // above it is too narrow to be a head, so the looking starts below that
+  let maxW = 0; for (let y = y0; y <= y1; y++) maxW = Math.max(maxW, width(y));
+  let ys = y0; while (ys < y1 && width(ys) < maxW * .28) ys++;
   let widest = 0, neck = -1, narrow = 1e9;
-  for (let y = y0; y <= y1; y++) {
+  for (let y = ys; y <= y1; y++) {
     const wy = width(y);
     if (neck < 0 && wy >= widest) widest = wy;
     else if (wy < widest * .85 && wy < narrow) { narrow = wy; neck = y; }
@@ -136,8 +139,11 @@ export function dressUp(src, mask, plan, backdrop = null, frames = null, seed = 
   if (mask && plan.pieces.includes('cape')) capeFront(x, f, colour('cape', '#c8202a'), mask, w, h, plan.trim);
   for (const p of back) step(LABELS[p]);
   if (plan.glow && mask && !back.length) step('A light along the outline');
-  const hair = hairOf(src, f);
+  const hair = hairOf(src, f), dome = plan.pieces.includes('helmet') ? domeOf(f) : null;
   for (const p of FRONT.filter(q => plan.pieces.includes(q))) {
+    // under a helmet, what is worn on the head is inside the glass
+    const inside = dome && p !== 'helmet' && p !== 'halo';
+    if (inside) { x.save(); x.beginPath(); x.arc(dome.cx, dome.cy, dome.R * .96, 0, Math.PI * 2); x.clip(); }
     if (p === 'crown') crown(x, f, colour('crown', '#e2ad35'));
     if (p === 'halo') halo(x, f, colour('halo', '#ffe7a0'));
     if (p === 'party') partyHat(x, f, colour('party', '#e8456b'));
@@ -147,6 +153,7 @@ export function dressUp(src, mask, plan, backdrop = null, frames = null, seed = 
     if (p === 'horns') horns(x, f, colour('horns', '#b3261e'));
     if (p === 'ears') catEars(x, f, hair);
     if (p === 'helmet') helmet(x, f);
+    if (inside) x.restore();
     step(LABELS[p]);
   }
   if (plan.sparkle) sparkles(x, f, w, h, r);
@@ -274,9 +281,11 @@ function catEars(/** @type {CanvasRenderingContext2D} */ x, /** @type {Figure} *
   }
 }
 
+/** Where a helmet's glass is: round the head, a little bigger than it. @param {Figure} f */
+const domeOf = f => ({ cx: f.cx, cy: f.top + f.headH * .5, R: Math.max(f.headW * .74, f.headH * .64) });
 /** A glass bubble around the head, sitting in a collar on the shoulders. */
 function helmet(/** @type {CanvasRenderingContext2D} */ x, /** @type {Figure} */ f) {
-  const R = Math.max(f.headW * .74, f.headH * .64), cx = f.cx, cy = f.top + f.headH * .5;
+  const { R, cx, cy } = domeOf(f);
   x.save();
   const g = x.createRadialGradient(cx - R * .2, cy - R * .25, R * .1, cx, cy, R); g.addColorStop(0, 'rgb(220 240 255 / 0)'); g.addColorStop(.72, 'rgb(190 220 255 / .07)'); g.addColorStop(1, 'rgb(170 205 255 / .34)');
   x.fillStyle = g; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.fill();

@@ -15,19 +15,19 @@
 .book.is-away { opacity: 0; scale: 1.05; pointer-events: none; visibility: hidden; transition: opacity .45s var(--lk-ease), scale .6s var(--lk-ease), visibility 0s .6s; }
 .lb-light { position: absolute; left: 50%; top: 40%; width: 150cqw; height: 150cqw; margin: -75cqw 0 0 -75cqw; border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, rgb(242 197 138 / .15), rgb(242 197 138 / .04) 55%, transparent); animation: lk-breathe 9s ease-in-out infinite; }
-.lb-bar { position: relative; z-index: 2; display: flex; align-items: center; gap: 2.6cqw; padding: 5.2cqw 5cqw 0; }
+.lb-bar { position: relative; z-index: 2; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2.6cqw; padding: 5.2cqw 5cqw 0; }
 .lb-bar__mark { font: italic 400 6.4cqw/1 var(--font-display); letter-spacing: -.01em; font-variation-settings: 'opsz' 96, 'SOFT' 100; }
 .lb-bar__edition, .mr-bar__edition { font: 500 2.1cqw/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--lk-soft); border: 1px solid var(--lk-line); border-radius: 99cqw; padding: 1.2cqw 2.2cqw; white-space: nowrap; }
 /* whose faces the looks are on: the drawn sitters', or yours once there is a photo of you */
-.lb-whose { margin-left: auto; display: flex; gap: .4cqw; padding: .6cqw; border-radius: 99cqw; border: 1px solid var(--lk-line); background: var(--lk-glass); backdrop-filter: blur(10px); animation: lk-rise .6s var(--lk-ease) backwards; }
+.lb-whose { grid-column: 2 / 4; grid-row: 2; justify-self: end; display: flex; gap: .4cqw; padding: .6cqw; border-radius: 99cqw; border: 1px solid var(--lk-line); background: var(--lk-glass); backdrop-filter: blur(10px); animation: lk-rise .6s var(--lk-ease) backwards; }
 .lb-whose[hidden] { display: none; }
-.lb-whose:not([hidden]) + .lb-bar__desk { margin-left: 0; }
+.lb-bar > .lb-bar__edition { justify-self: start; }
 .book .lb-whose button { display: flex; align-items: center; gap: 1.3cqw; height: 8cqw; padding: 0 2.8cqw; border-radius: 99cqw; font: 500 2.2cqw/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--lk-soft); transition: background .3s, color .3s; }
 .book .lb-whose button[aria-pressed="true"] { background: var(--lk-accent); color: var(--lk-on-accent); }
 .lb-whose__me { width: 5.8cqw; height: 5.8cqw; margin-left: -1.7cqw; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px rgb(0 0 0 / .25); }
 .lb-whose__me:not([src]) { display: none; }
 .lb-card--you .lb-card__me { display: none; }
-.lb-bar__desk { margin-left: auto; width: 10.5cqw; height: 10.5cqw; border-radius: 50%; display: grid; place-items: center; padding: 0; border: 1px solid var(--lk-line); background: var(--lk-glass); backdrop-filter: blur(10px); }
+.lb-bar__desk { grid-column: 3; grid-row: 1; width: 10.5cqw; height: 10.5cqw; border-radius: 50%; display: grid; place-items: center; padding: 0; border: 1px solid var(--lk-line); background: var(--lk-glass); backdrop-filter: blur(10px); }
 
 .lb-orbit { position: relative; perspective: 150cqw; perspective-origin: 50% 44%; touch-action: pan-y; cursor: grab; outline: none; user-select: none; }
 .lb-orbit:active { cursor: grabbing; }

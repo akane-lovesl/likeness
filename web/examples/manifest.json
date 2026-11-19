@@ -1,5 +1,263 @@
 {
-  "by": null,
-  "note": "Rendered on the workstation by relay packet 0004: portraits of people who do not exist, each with looks and angles. Empty until then.",
-  "people": []
+  "by": "Codex · GPT Image",
+  "kind": "render",
+  "note": "Portraits of people who do not exist, made by the studio's engine for the Lookbook (likeness examples).",
+  "people": [
+    {
+      "id": "ama",
+      "name": "Ama",
+      "portrait": "ama/portrait.webp",
+      "looks": [
+        {
+          "part": "colour",
+          "style": "honey",
+          "words": "honey-blonde balayage",
+          "image": "ama/colour-honey.webp",
+          "angles": [
+            "ama/colour-honey-right.webp",
+            "ama/colour-honey-profile.webp",
+            "ama/colour-honey-left.webp"
+          ]
+        },
+        {
+          "part": "lips",
+          "style": "berry",
+          "words": "a deep berry lip",
+          "image": "ama/lips-berry.webp",
+          "angles": []
+        },
+        {
+          "part": "lashes",
+          "style": "wing",
+          "words": "a fine black winged liner",
+          "image": "ama/lashes-wing.webp",
+          "angles": []
+        }
+      ]
+    },
+    {
+      "id": "sofia",
+      "name": "Sofía",
+      "portrait": "sofia/portrait.webp",
+      "looks": [
+        {
+          "part": "bangs",
+          "style": "curtain",
+          "words": "curtain bangs, parted in the middle, sweeping softly out to the cheekbones",
+          "image": "sofia/bangs-curtain.webp",
+          "angles": [
+            "sofia/bangs-curtain-right.webp",
+            "sofia/bangs-curtain-profile.webp",
+            "sofia/bangs-curtain-left.webp"
+          ]
+        },
+        {
+          "part": "bangs",
+          "style": "birkin",
+          "words": "long, soft Birkin bangs that brush the lashes",
+          "image": "sofia/bangs-birkin.webp",
+          "angles": []
+        },
+        {
+          "part": "colour",
+          "style": "copper",
+          "words": "rich copper hair",
+          "image": "sofia/colour-copper.webp",
+          "angles": []
+        }
+      ]
+    },
+    {
+      "id": "kenji",
+      "name": "Kenji",
+      "portrait": "kenji/portrait.webp",
+      "looks": [
+        {
+          "part": "beard",
+          "style": "trimmed",
+          "words": "a short, neatly trimmed beard",
+          "image": "kenji/beard-trimmed.webp",
+          "angles": [
+            "kenji/beard-trimmed-right.webp",
+            "kenji/beard-trimmed-profile.webp",
+            "kenji/beard-trimmed-left.webp"
+          ]
+        },
+        {
+          "part": "beard",
+          "style": "moustache",
+          "words": "a moustache",
+          "image": "kenji/beard-moustache.webp",
+          "angles": []
+        },
+        {
+          "part": "cut",
+          "style": "shag",
+          "words": "a layered shag with movement",
+          "image": "kenji/cut-shag.webp",
+          "angles": []
+        }
+      ]
+    },
+    {
+      "id": "noor",
+      "name": "Noor",
+      "portrait": "noor/portrait.webp",
+      "looks": [
+        {
+          "part": "brows",
+          "style": "feathered",
+          "words": "fluffy brushed-up feathered brows",
+          "image": "noor/brows-feathered.webp",
+          "angles": [
+            "noor/brows-feathered-right.webp",
+            "noor/brows-feathered-profile.webp",
+            "noor/brows-feathered-left.webp"
+          ]
+        },
+        {
+          "part": "lashes",
+          "style": "smoky",
+          "words": "soft smoky eyes",
+          "image": "noor/lashes-smoky.webp",
+          "angles": []
+        },
+        {
+          "part": "bangs",
+          "style": "wispy",
+          "words": "wispy see-through bangs, light and separated",
+          "image": "noor/bangs-wispy.webp",
+          "angles": []
+        }
+      ]
+    },
+    {
+      "id": "maeve",
+      "name": "Maeve",
+      "portrait": "maeve/portrait.webp",
+      "looks": [
+        {
+          "part": "cut",
+          "style": "pixie",
+          "words": "a short pixie cut",
+          "image": "maeve/cut-pixie.webp",
+          "angles": [
+            "maeve/cut-pixie-right.webp",
+            "maeve/cut-pixie-profile.webp",
+            "maeve/cut-pixie-left.webp"
+          ]
+        },
+        {
+          "part": "colour",
+          "style": "platinum",
+          "words": "icy platinum blonde hair",
+          "image": "maeve/colour-platinum.webp",
+          "angles": []
+        },
+        {
+          "part": "lips",
+          "style": "red",
+          "words": "a classic matte red lip",
+          "image": "maeve/lips-red.webp",
+          "angles": []
+        }
+      ]
+    },
+    {
+      "id": "mateus",
+      "name": "Mateus",
+      "portrait": "mateus/portrait.webp",
+      "looks": [
+        {
+          "part": "beard",
+          "style": "full",
+          "words": "a full, well-groomed beard",
+          "image": "mateus/beard-full.webp",
+          "angles": [
+            "mateus/beard-full-right.webp",
+            "mateus/beard-full-profile.webp",
+            "mateus/beard-full-left.webp"
+          ]
+        },
+        {
+          "part": "cut",
+          "style": "buzz",
+          "words": "a close buzz cut",
+          "image": "mateus/cut-buzz.webp",
+          "angles": []
+        },
+        {
+          "part": "colour",
+          "style": "silver",
+          "words": "silver-grey hair",
+          "image": "mateus/colour-silver.webp",
+          "angles": []
+        }
+      ]
+    },
+    {
+      "id": "ingrid",
+      "name": "Ingrid",
+      "portrait": "ingrid/portrait.webp",
+      "looks": [
+        {
+          "part": "cut",
+          "style": "bob",
+          "words": "a sleek chin-length bob",
+          "image": "ingrid/cut-bob.webp",
+          "angles": [
+            "ingrid/cut-bob-right.webp",
+            "ingrid/cut-bob-profile.webp",
+            "ingrid/cut-bob-left.webp"
+          ]
+        },
+        {
+          "part": "brows",
+          "style": "arched",
+          "words": "high, defined arched brows",
+          "image": "ingrid/brows-arched.webp",
+          "angles": []
+        },
+        {
+          "part": "lips",
+          "style": "nude",
+          "words": "a soft nude lip",
+          "image": "ingrid/lips-nude.webp",
+          "angles": []
+        }
+      ]
+    },
+    {
+      "id": "priya",
+      "name": "Priya",
+      "portrait": "priya/portrait.webp",
+      "looks": [
+        {
+          "part": "bangs",
+          "style": "blunt",
+          "words": "blunt bangs cut straight across, just above the brows",
+          "image": "priya/bangs-blunt.webp",
+          "angles": [
+            "priya/bangs-blunt-right.webp",
+            "priya/bangs-blunt-profile.webp",
+            "priya/bangs-blunt-left.webp"
+          ]
+        },
+        {
+          "part": "colour",
+          "style": "rose",
+          "words": "soft rose-gold pastel hair",
+          "image": "priya/colour-rose.webp",
+          "angles": []
+        },
+        {
+          "part": "lashes",
+          "style": "bright",
+          "words": "lifted, curled lashes with a touch of mascara",
+          "image": "priya/lashes-bright.webp",
+          "angles": []
+        }
+      ]
+    }
+  ]
 }

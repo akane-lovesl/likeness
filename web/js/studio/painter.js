@@ -205,13 +205,12 @@ function notesFor(d) {
  * things added, colours named, closer or further. Returns the changes in words; none when nothing was understood.
  * @param {any} desc @param {string} text
  */
-export function changeScene(desc, text) {
+export function changeScene(desc, text, { light = true } = {}) {
   const t = String(text || '').toLowerCase(), said = /** @type {string[]} */ ([]);
   const set = (/** @type {string} */ k, /** @type {any} */ v, /** @type {string} */ words) => { if (desc[k] !== v) { desc[k] = v; said.push(words); } };
-  if (/\b(night|midnight|after dark|dark(?:er)?)\b/.test(t)) set('light', 'night', 'now at night');
-  else if (/\b(dawn|sunrise|morning|first light)\b/.test(t)) set('light', 'dawn', 'at first light');
-  else if (/golden|sunset|dusk|evening/.test(t)) set('light', 'dusk', 'in the golden hour');
-  else if (/\b(day|daytime|noon|daylight|sunny|sunshine|brighter)\b/.test(t)) set('light', 'day', 'in daylight');
+  const hour = !light ? null : /\b(night|midnight|after dark|dark(?:er)?)\b/.test(t) ? ['night', 'now at night'] : /\b(dawn|sunrise|morning|first light)\b/.test(t) ? ['dawn', 'at first light']
+    : /golden|sunset|dusk|evening/.test(t) ? ['dusk', 'in the golden hour'] : /\b(day|daytime|noon|daylight|sunny|sunshine|brighter)\b/.test(t) ? ['day', 'in daylight'] : null;
+  if (hour) { if (desc.sun) { delete desc.sun; desc.blend = null; desc.light = ''; } set('light', hour[0], hour[1]); }
   if (/\b(?:no|stop|without|less)\b[^.]*\b(?:rain|snow)|\bdry\b|clear (?:sky|skies|up)/.test(t)) set('weather', '', 'the weather cleared');
   else if (/rain|drizzle|storm|shower/.test(t)) set('weather', 'rain', 'rain');
   else if (/snow|blizzard|winter/.test(t)) set('weather', 'snow', 'snow falling');
@@ -235,12 +234,36 @@ export function changeScene(desc, text) {
 /**
  * A device sketch's scene, read again: its words, painted from its seed (or another, for a new take), with every
  * change asked of it since, in order.
- * @param {{ words: string, seed: number, edits?: string[] }} kept
+ * @param {{ words: string, seed: number, edits?: (string | { sun: number[] })[] }} kept
  */
 export function sceneAgain(kept, seed = kept.seed) {
   const desc = sceneFrom(kept.words, null, seed);
-  for (const e of kept.edits || []) changeScene(desc, e);
+  for (const e of kept.edits || []) typeof e === 'string' ? changeScene(desc, e) : e?.sun ? setSun(desc, e.sun) : null;
   return desc;
+}
+
+/**
+ * The hour, from where the sun is: [across, down] in the sky, down running 0 at the top to 1 at the horizon and past it
+ * below. High is day; low in the east (the left) is first light, low in the west the golden hour; under the horizon it
+ * is night, the moon up across the sky. Between two hours both are painted and mixed, so the light changes smoothly.
+ * @param {any} desc @param {number[]} sun
+ */
+export function setSun(desc, sun) {
+  const u = Math.min(.97, Math.max(.03, sun[0])), v = Math.min(1.9, Math.max(.04, sun[1])), e = 1 - v, side = u < .5 ? 'dawn' : 'dusk';
+  const ease = (/** @type {number} */ t) => t * t * (3 - 2 * t);
+  desc.sun = [u, v];
+  if (e >= .6) { desc.light = 'day'; desc.blend = null; }
+  else if (e >= .32) { desc.light = 'day'; desc.blend = { light: side, t: ease((.6 - e) / .28) }; }
+  else if (e >= 0) { desc.light = side; desc.blend = null; }
+  else if (e >= -.22) { desc.light = side; desc.blend = { light: 'night', t: ease(-e / .22) }; }
+  else { desc.light = 'night'; desc.blend = null; }
+  return desc;
+}
+/** The hour a sun's place makes, in words: "at golden hour", "just before dawn". @param {number[]} sun */
+export function hourWords(sun) {
+  const e = 1 - sun[1], east = sun[0] < .5;
+  return e >= .6 ? 'in full daylight' : e >= .32 ? (east ? 'on a bright morning' : 'in the afternoon') : e >= .1 ? (east ? 'in the early morning' : 'at golden hour')
+    : e >= 0 ? (east ? 'at sunrise' : 'at sunset') : e >= -.22 ? (east ? 'just before dawn' : 'at dusk') : 'at night';
 }
 
 /** The sitter, in words: "a cat in a hat", "someone in a crown". */
@@ -271,17 +294,24 @@ export function describeScene(d) {
 
 /** A flat, poster-like scene from words. Not a render: a sketch for the idea's shape and colour. Pass desc.layers (an array) to keep each layer as it is laid down, with its note. */
 export function scene(desc, w = 768, h = 1024) {
+  if (desc.blend?.light && desc.blend.t > .01) {
+    // between two hours (the sun part way down the sky): both painted from the same seed, the second laid over the first
+    const { blend, ...one } = desc, a = scene(one, w, h), b = scene({ ...one, light: blend.light, layers: null }, w, h), ax = a.getContext('2d');
+    ax.globalAlpha = Math.min(1, blend.t); ax.drawImage(b, 0, 0); ax.globalAlpha = 1;
+    desc.sunAt = one.sunAt;
+    return a;
+  }
   const c = make(w, h), x = c.getContext('2d'), rnd = rng(desc.seed || 7), L = desc.light, horizon = h * (desc.inside ? .62 : .6);
   // lit windows, glints on water and a field's ridge are counted by the pixel: they draw from their own stream, so the
   // composition (which takes from rnd) comes out the same at any size, and a small proof agrees with the full sketch
-  const spark = rng((desc.seed || 7) + 104729);
+  const spark = rng((desc.seed || 7) + 104729), twinkle = rng((desc.seed || 7) + 7919);
   const notes = notesFor(desc), mark = (/** @type {string} */ label) => { if (desc.layers && label) desc.layers.push({ label, canvas: copy(c, Math.round(w / 2), Math.round(h / 2)) }); };
   const skies = { day: ['#9ccaf0', '#d8ecf7', '#fff4e2'], dawn: ['#7e9ed8', '#f2b8b0', '#ffe2bd'], dusk: ['#2a1d52', '#a8467a', '#f39a5a'], night: ['#04061a', '#15204a', '#2b3a72'] };
   let sky = skies[L];
   if (desc.ramp) sky = L === 'night' ? [desc.ramp[0], desc.ramp[1], desc.ramp[2]] : [desc.ramp[2], desc.ramp[3], desc.ramp[4]];
   else if (desc.pal) {
     // the words' own colours wash the sky: neon over a night city, azulejo blue over a Lisbon morning
-    const p = desc.pal, tint = L === 'night' ? [mix(p.ground, '#000000', .2), p.ground2, mix(p.ground2, p.accent, .4)]
+    const p = desc.pal, tint = L === 'night' ? [mix(p.ground, '#000000', .2), p.ground2, mix(p.ground2, p.accent, .4)].map(c => luminance(c) > .25 ? mix(c, '#0a0c24', .72) : c)
       : L === 'dusk' ? [mix(p.ground2, p.accent2, .35), mix(p.accent, '#ffffff', .35), mix(p.accent2, '#ffffff', .4)]
       : L === 'dawn' ? [mix(p.accent2, '#ffffff', .5), mix(p.accent, '#ffffff', .7), mix(p.ground, '#ffffff', .3)]
       : [mix(p.accent, '#ffffff', .55), mix(p.accent, '#ffffff', .8), mix(p.ground, '#ffffff', .4)];
@@ -326,7 +356,7 @@ export function scene(desc, w = 768, h = 1024) {
     }
     const hz = oy + oh * .6;
     const g = x.createLinearGradient(0, oy, 0, hz); g.addColorStop(0, sky[0]); g.addColorStop(.6, sky[1]); g.addColorStop(1, sky[2]); x.fillStyle = g; x.fillRect(ox, oy, ow, oh);
-    if (L === 'night') for (let i = 0; i < 160 * ow / w; i++) { x.globalAlpha = .3 + rnd() * .7; x.fillStyle = '#fff'; x.fillRect(ox + rnd() * ow, oy + rnd() * (hz - oy), rnd() < .1 ? 2 : 1, rnd() < .1 ? 2 : 1); }
+    if (L === 'night') for (let i = 0; i < 160 * ow / w; i++) { x.globalAlpha = .3 + twinkle() * .7; x.fillStyle = '#fff'; x.fillRect(ox + twinkle() * ow, oy + twinkle() * (hz - oy), twinkle() < .1 ? 2 : 1, twinkle() < .1 ? 2 : 1); }
     x.globalAlpha = 1;
     if (desc.aurora) {
       // curtains of light, green rising into violet, rippling across the sky
@@ -341,14 +371,21 @@ export function scene(desc, w = 768, h = 1024) {
       }
       x.restore();
     }
-    const sx = ox + ow * (.62 + rnd() * .2), sy = oy + (hz - oy) * (L === 'day' ? .32 : .72), sr = ow * (L === 'night' ? .07 : .1);
+    // the sun, where it was put or where the words leave it (east, on the left, at first light), and after dark the moon
+    // across the sky from it, rising as the sun sinks. Its place always takes one draw, so the hour can change and
+    // nothing else in the scene moves.
+    const su = rnd(), along = L === 'dawn' ? .38 - su * .2 : .62 + su * .2;
+    const sun = desc.sun || (L === 'night' ? [1 - along, 1.28] : [along, L === 'day' ? .32 : .72]);
+    const body = L === 'night' ? [1 - sun[0], Math.max(.18, Math.min(.92, 2 - sun[1]))] : sun;
+    const sx = ox + ow * body[0], sy = oy + (hz - oy) * body[1], sr = ow * (L === 'night' ? .07 : .1);
+    desc.sunAt = { x: (ox + ow * sun[0]) / w, y: (oy + (hz - oy) * sun[1]) / h, r: ow * .1 / w, box: [ox / w, oy / h, ow / w, (hz - oy) / h], sun };
     if (desc.weather !== 'rain') {
     const glow = x.createRadialGradient(sx, sy, sr * .4, sx, sy, sr * 4); glow.addColorStop(0, L === 'night' ? 'rgb(255 250 230 / .4)' : 'rgb(255 236 190 / .7)'); glow.addColorStop(1, 'rgb(255 236 190 / 0)');
     x.fillStyle = glow; x.fillRect(ox, oy, ow, hz - oy);
     x.fillStyle = L === 'night' ? '#f4f0dc' : L === 'dusk' ? '#ffd28a' : '#fff6da'; x.beginPath(); x.arc(sx, sy, sr, 0, Math.PI * 2); x.fill();
     if (L === 'night') { x.fillStyle = sky[1]; x.beginPath(); x.arc(sx + sr * .45, sy - sr * .2, sr * .9, 0, Math.PI * 2); x.fill(); }
     }
-    if (L !== 'night') for (let i = 0; i < 4; i++) { const cx = ox + rnd() * ow, cy = oy + (hz - oy) * (.15 + rnd() * .45), cw = ow * (.18 + rnd() * .2); x.fillStyle = desc.weather === 'rain' ? 'rgb(120 128 142 / .55)' : 'rgb(255 255 255 / .55)'; for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(cx + (k - 2) * cw * .22, cy + Math.sin(k) * 6, cw * .22, cw * .12, 0, 0, Math.PI * 2); x.fill(); } }
+    for (let i = 0; i < 4; i++) { const cx = ox + rnd() * ow, cy = oy + (hz - oy) * (.15 + rnd() * .45), cw = ow * (.18 + rnd() * .2); if (L === 'night') continue; x.fillStyle = desc.weather === 'rain' ? 'rgb(120 128 142 / .55)' : 'rgb(255 255 255 / .55)'; for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(cx + (k - 2) * cw * .22, cy + Math.sin(k) * 6, cw * .22, cw * .12, 0, 0, Math.PI * 2); x.fill(); } }
     if (!desc.inside) mark(notes.sky);
     if (desc.skyOnly) return oy + oh;
     const far = mix(sky[1], sky[2], .3), mid = mix(sky[0], '#203040', L === 'night' ? .3 : .45), near = mix(sky[0], '#101820', L === 'night' ? .55 : .7);
@@ -420,7 +457,7 @@ export function scene(desc, w = 768, h = 1024) {
         x.strokeStyle = 'rgb(70 95 120 / .35)'; x.lineWidth = 1; for (let i = 0; i < 9; i++) { let cx = ox + rnd() * ow, cy = hz + rnd() * (oy + oh - hz); x.beginPath(); x.moveTo(cx, cy); for (let k = 0; k < 4; k++) { cx += (rnd() - .5) * ow * .15; cy += (rnd() - .3) * oh * .05; x.lineTo(cx, cy); } x.stroke(); }
       } else {
       x.strokeStyle = 'rgb(255 255 255 / .35)'; x.lineWidth = 1.2; for (let i = 0; i < 40; i++) { const ly = hz + Math.pow(rnd(), 1.6) * (oy + oh - hz), lw = 10 + rnd() * 40; x.globalAlpha = .2 + rnd() * .5; x.beginPath(); x.moveTo(ox + rnd() * ow, ly); x.lineTo(ox + rnd() * ow + lw, ly); x.stroke(); }
-      x.globalAlpha = .5; x.fillStyle = L === 'night' ? '#f4f0dc' : '#ffe2a0'; for (let ly = hz + 4; ly < oy + oh; ly += 7) { const wv = sr * (1.4 - (ly - hz) / oh) * (.5 + spark()); x.fillRect(sx - wv / 2, ly, wv, 2); }
+      x.globalAlpha = .5; x.fillStyle = L === 'night' ? '#f4f0dc' : '#ffe2a0'; if (body[1] < 1) for (let ly = hz + 4; ly < oy + oh; ly += 7) { const wv = sr * (1.4 - (ly - hz) / oh) * (.5 + spark()); x.fillRect(sx - wv / 2, ly, wv, 2); }
       x.globalAlpha = 1;
       if (props.includes('neon')) for (let i = 0; i < 7; i++) {
         // neon from across the water, drawn down the surface
@@ -555,6 +592,19 @@ export function scene(desc, w = 768, h = 1024) {
     }
     const fg = x.createLinearGradient(0, horizon, 0, h); fg.addColorStop(0, floor); fg.addColorStop(1, mix(floor, '#000', .35)); x.fillStyle = fg; x.fillRect(0, horizon, w, h - horizon);
     x.fillStyle = mix(floor, '#000', .25); x.fillRect(w * .12, horizon + h * .06, w * .76, h * .025);
+    if (L !== 'night' && desc.weather !== 'rain' && desc.sunAt && desc.sunAt.sun[1] < 1) {
+      // the sun comes in: the window laid across the table, bars and all, away from the sun, and longer as it sinks
+      const [su2, sv2] = desc.sunAt.sun, low = Math.max(0, Math.min(1, sv2)), dx = (.5 - su2) * w * (.3 + low * .5), spread = (.5 - su2) * w * .25;
+      const top = horizon + h * .015, deep = h * (.1 + low * .2), tint = L === 'day' ? '255 246 222' : L === 'dawn' ? '255 208 196' : '255 186 110';
+      const tl = [wx + dx * .4, top], tr = [wx + ww + dx * .4, top], bl = [wx + dx + spread - w * .06, top + deep], br = [wx + ww + dx + spread + w * .06, top + deep];
+      const at = (/** @type {number} */ s, /** @type {number} */ t) => { const a = tl[0] + (tr[0] - tl[0]) * s, b = bl[0] + (br[0] - bl[0]) * s; return [a + (b - a) * t, top + deep * t]; };
+      const a = L === 'day' ? .22 : .34, fade = x.createLinearGradient(0, top, 0, top + deep); fade.addColorStop(0, `rgb(${tint} / ${a})`); fade.addColorStop(1, `rgb(${tint} / ${a * .4})`);
+      x.save(); x.globalCompositeOperation = 'screen'; x.fillStyle = fade;
+      for (const [s0, s1] of [[0, .47], [.53, 1]]) for (const [t0, t1] of [[0, .46], [.54, 1]]) {
+        const p = [at(s0, t0), at(s1, t0), at(s1, t1), at(s0, t1)]; x.beginPath(); x.moveTo(p[0][0], p[0][1]); for (const q of p.slice(1)) x.lineTo(q[0], q[1]); x.closePath(); x.fill();
+      }
+      x.restore();
+    }
     mark(notes.view);
     if (!desc.things.some(k => k === 'teacup' || k === 'glass')) desc.things.push('teacup');
     if (props.includes('mirrorball')) {
@@ -631,7 +681,10 @@ export function scene(desc, w = 768, h = 1024) {
   x.restore();
   mark(notes.weather);
   if (desc.arch) { const m = make(w, h), mc = m.getContext('2d'); mc.fillStyle = desc.ramp ? desc.ramp[4] : desc.pal ? desc.pal.ground : '#f6efe2'; mc.fillRect(0, 0, w, h); mc.globalCompositeOperation = 'destination-out'; mc.beginPath(); mc.moveTo(w * .1, h); mc.lineTo(w * .1, h * .4); mc.arc(w / 2, h * .4, w * .4, Math.PI, 0); mc.lineTo(w * .9, h); mc.fill(); x.drawImage(m, 0, 0); }
-  if (desc.zoom > 1) { const z = desc.zoom, was = copy(c); x.drawImage(was, w * (1 - 1 / z) / 2, h * (1 - 1 / z) / 2, w / z, h / z, 0, 0, w, h); }
+  if (desc.zoom > 1) {
+    const z = desc.zoom, was = copy(c), k = (1 - 1 / z) / 2; x.drawImage(was, w * k, h * k, w / z, h / z, 0, 0, w, h);
+    const s = desc.sunAt; if (s) desc.sunAt = { ...s, x: (s.x - k) * z, y: (s.y - k) * z, r: s.r * z, box: [(s.box[0] - k) * z, (s.box[1] - k) * z, s.box[2] * z, s.box[3] * z] };
+  }
   const grainy = x.getImageData(0, 0, w, h), gd = grainy.data;
   for (let i = 0; i < gd.length; i += 4) { const n = (rnd() - .5) * 14; gd[i] += n; gd[i + 1] += n; gd[i + 2] += n; }
   x.putImageData(grainy, 0, 0);

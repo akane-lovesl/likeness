@@ -29,8 +29,8 @@
 .focus__pindock { position: relative; z-index: 2; display: flex; gap: 2.4cqw; padding: 1.4cqw 4cqw calc(4cqw + env(safe-area-inset-bottom)); opacity: 0; }
 .focus__pindock .btn { flex: 1; }
 .focus__cancel { color: #fff; border-color: rgb(255 255 255 / .3); background: rgb(255 255 255 / .06); flex: .6 !important; }
-.focus__send span { display: inline-grid; }
-.focus__send svg { width: 4.4cqw; height: 4.4cqw; }
+.focus__send span, .focus__go span { display: inline-grid; }
+.focus__send svg, .focus__go svg { width: 4.4cqw; height: 4.4cqw; }
 
 /* Pins and their marks. */
 .pin-shade { position: absolute; inset: 0; pointer-events: none; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 45%, transparent) 20%, rgb(255 255 255 / .7) 50%, color-mix(in srgb, var(--accent) 45%, transparent) 80%) 0 0 / 300% 100%; animation: sheen calc(var(--tempo) * 2.6s) linear infinite; mix-blend-mode: screen; }
@@ -46,6 +46,25 @@
 .bubble input::placeholder { color: var(--soft); font-style: italic; }
 .bubble .icon-btn { width: 8.4cqw; height: 8.4cqw; color: var(--soft); }
 .bubble .icon-btn svg { width: 4.4cqw; height: 4.4cqw; }
+
+/* The sun: on a sketch the device made, a handle on the hour. */
+.focus__relit { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: var(--print-radius); opacity: 0; pointer-events: none; transition: opacity var(--t-quick) var(--ease); }
+.focus__relit.is-in { opacity: 1; }
+.sun { position: absolute; z-index: 2; width: var(--d); aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: none; translate: -50% -50%; cursor: grab; touch-action: none; }
+.sun::before { content: ''; position: absolute; inset: 0; border-radius: 50%; border: .45cqw solid rgb(255 255 255 / .85); box-shadow: 0 0 3cqw rgb(255 236 190 / .5), inset 0 0 2cqw rgb(255 236 190 / .3); opacity: .7; transition: opacity var(--t-quick), scale var(--t-quick) var(--ease-pop); animation: beckon calc(var(--tempo) * 1.5s) var(--ease) .8s 2 backwards; }
+.sun:hover::before, .sun:focus-visible::before { opacity: 1; scale: 1.08; }
+.sun.is-held { cursor: grabbing; }
+.sun.is-held::before { animation: none; opacity: 0; }
+.sun.is-down::before { inset: 12%; border-width: .35cqw; border-style: dashed; box-shadow: none; opacity: .5; }
+.focus__undo { flex: none !important; width: 14cqw; padding: 0; display: grid; place-items: center; }
+.focus__undo svg { width: 5.4cqw; height: 5.4cqw; }
+.focus__go { min-width: 0; white-space: nowrap; }
+.sun__say { position: absolute; left: 50%; bottom: calc(100% + 1.6cqw); translate: -50% 0; white-space: nowrap; padding: 1cqw 2.4cqw; border-radius: 99cqw; background: rgb(12 10 9 / .6); color: #fff; font: 500 calc(2.3cqw * var(--m-scale)) / 1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; opacity: 0; scale: .9; transition: opacity var(--t-quick), scale var(--t-quick) var(--ease-pop); pointer-events: none; }
+.sun.is-held .sun__say { opacity: 1; scale: 1; }
+.sun__hint { position: absolute; left: 50%; top: calc(100% + 1.8cqw); translate: -50% 0; white-space: nowrap; font-family: var(--font-hand); font-size: 5.4cqw; line-height: 1; color: #fff; text-shadow: 0 .3cqw 1.6cqw rgb(0 0 0 / .8); pointer-events: none; animation: sun-hint calc(var(--tempo) * 4.2s) var(--ease) .9s both; }
+.focus[data-mode='pin'] .sun { display: none; }
+@keyframes beckon { 0% { scale: 1; opacity: .7; } 35% { scale: 1.32; opacity: 1; } 100% { scale: 1; opacity: .7; } }
+@keyframes sun-hint { 0% { opacity: 0; transform: translateY(1.5cqw) rotate(-4deg); } 15%, 80% { opacity: 1; transform: rotate(-4deg); } 100% { opacity: 0; transform: rotate(-4deg); } }
 
 /* Lineage: where this picture came from, step by step */
 .focus__hint--lineage { display: grid; justify-items: center; gap: 1.6cqw; font-style: normal; }

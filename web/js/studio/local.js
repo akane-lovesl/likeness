@@ -70,9 +70,9 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
     }
     default: {
       if (was) {
-        const edited = editedScene(was, words), desc = edited.desc, first = edited.first; changes = edited.changes;
+        const sun = Array.isArray(spec.sun) ? spec.sun : null, edited = editedScene(was, words, sun), desc = edited.desc, first = edited.first; changes = edited.changes;
         if (changes.length) {
-          again(desc, { ...was, edits: [...(was.edits || []), words] });
+          again(desc, { ...was, edits: [...(was.edits || []), words, ...(sun ? [{ sun }] : [])] });
           if (lookFromWords(words, LOOKS, { moods: false })) scene.look = lookFromWords(words, LOOKS, { moods: false })?.id;
           const medium = lookFromWords(words, LOOKS, { moods: false }) || first;
           if (medium) { out = P.grade(out, medium, .6, seed); kept?.push({ label: 'All of it in ' + medium.name, canvas: P.copy(out, out.width / 2, out.height / 2) }); }
@@ -93,11 +93,17 @@ function freshScene(spec, words, seed) {
   if (!desc.pal && !desc.ramp && spec.room?.colors) desc.pal = spec.room.colors;
   return { look, desc };
 }
-/** A sketch's scene with an edit applied, as far as the painter understands it (changes lists what it did). */
-function editedScene(was, words) {
+/**
+ * A sketch's scene with an edit applied, as far as the painter understands it (changes lists what it did). A sun put
+ * somewhere by hand sets the hour, whatever the words say about it.
+ * @param {any} was @param {string} words @param {number[] | null} [sun]
+ */
+function editedScene(was, words, sun = null) {
   const desc = P.sceneAgain(was), first = was.look ? LOOKS.find(l => l.id === was.look) : null;
   if (first?.ramp && !desc.pal) desc.ramp = first.ramp;
-  return { desc, first, changes: P.changeScene(desc, words) };
+  const changes = P.changeScene(desc, words, { light: !sun });
+  if (sun) { P.setSun(desc, sun); changes.unshift(P.hourWords(sun)); }
+  return { desc, first, changes };
 }
 const thumbs = new WeakMap();
 const thumbOf = async (/** @type {any} */ input) => { if (!thumbs.has(input.blob)) thumbs.set(input.blob, await P.fromBlob(input.blob, 256)); return thumbs.get(input.blob); };
@@ -117,7 +123,7 @@ export async function proofOf(spec, inputs, w = 192, h = 256) {
     return look ? P.grade(c, look, .6, spec.seed) : c;
   }
   if (was?.scene && (it.op === 'edit' || it.op === 'restyle')) {
-    const { desc, first, changes } = editedScene(was.scene, words);
+    const { desc, first, changes } = editedScene(was.scene, words, Array.isArray(spec.sun) ? spec.sun : null);
     if (changes.length) { const c = P.scene(desc, w, h), medium = lookFromWords(words, LOOKS, { moods: false }) || first; return medium ? P.grade(c, medium, .6, 1) : c; }
   }
   if (was?.blob && it.op === 'restyle' && it.look) return P.grade(await thumbOf(was), it.look, it.look.strength ?? .9, 1);

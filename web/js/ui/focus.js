@@ -13,6 +13,8 @@ import { sky } from '../room/sky.js';
 import * as P from '../studio/painter.js';
 import { selectAt, brush, loadSegmenter } from '../studio/segment.js';
 import { pinMark } from './cards.js';
+import { studio } from '../studio/studio.js';
+import { proofOf } from '../studio/local.js';
 
 let open = null;
 
@@ -207,6 +209,72 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
     const ready = pins.filter(p => p.note); if (!ready.length) return;
     onSend({ text: `Changes to @${print.handle}`, intent: { op: 'region', subject: print.id, refs: [], look: null, n: 1, pace: null, pins: ready.map(p => ({ print: print.id, n: p.n, note: p.note, mask: p.mask })) }, pace: settings.get('pace', 'fine') });
     shut();
+  }
+
+  /*
+   * The sun. On a sketch the device made, the light is something to hold: drag the sun and the scene is painted again
+   * under your finger, from first light through the golden hour to night, the moon rising as it sinks. Let go, and it
+   * offers to paint it so, or to put the sun back. Only where the device does the painting: anywhere else, a preview
+   * drawn here would promise a picture the studio will not make.
+   */
+  if (studio.mode === 'showcase' && print.provenance?.scene) holdTheSun(print.provenance.scene);
+  function holdTheSun(kept) {
+    const tall = (/** @type {number} */ w) => Math.round(w * (print.h || 4) / (print.w || 3));
+    let at = null;
+    try { const d = P.sceneAgain(kept); P.scene(d, 96, tall(96)); at = d.sunAt; } catch { at = null; }
+    if (!at) return;
+    const b = at.box, home = at.sun.slice(), low = Math.min(1.85, (1 - b[1]) / b[3] - .03);
+    let sun = home.slice(), busy = false, moved = false, queued = /** @type {number[] | null} */ (null);
+    const words = () => P.hourWords(sun), relight = () => ({ op: 'edit', subject: print.id, refs: [], look: null, n: 1, pins: [] });
+    const view = h('canvas.focus__relit'), say = h('span.sun__say');
+    const knob = h('button.sun', { type: 'button', style: { '--d': Math.max(at.r * 2.2, .12) * 100 + '%' } }, say);
+    const go = h('button.btn.btn--accent.focus__go', { onclick: () => paintIt() });
+    const sunDock = h('div.focus__pindock.focus__sundock', { hidden: true }, h('button.btn.btn--quiet.focus__cancel.focus__undo', { 'aria-label': 'Put the sun back', title: 'Put the sun back', html: icon('undo'), onclick: () => putBack() }), go);
+    pic.insertBefore(view, layer); layer.append(knob); el.append(sunDock);
+    const seen = Number(localStorage.getItem('likeness:sun') || 0);
+    if (seen < 3) { localStorage.setItem('likeness:sun', String(seen + 1)); knob.append(h('span.sun__hint', null, 'Drag the sun')); }
+    place();
+    knob.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); try { knob.setPointerCapture(e.pointerId); } catch { /* fine */ } knob.classList.add('is-held'); knob.querySelector('.sun__hint')?.remove(); });
+    knob.addEventListener('pointermove', e => { if (!knob.classList.contains('is-held')) return; const r = pic.getBoundingClientRect(); move(((e.clientX - r.left) / r.width - b[0]) / b[2], ((e.clientY - r.top) / r.height - b[1]) / b[3]); });
+    const letGo = () => { if (!knob.classList.contains('is-held')) return; knob.classList.remove('is-held'); settle(); };
+    knob.addEventListener('pointerup', letGo); knob.addEventListener('pointercancel', letGo);
+    knob.addEventListener('keydown', e => {
+      const step = /** @type {Record<string, number[]>} */ ({ ArrowLeft: [-.04, 0], ArrowRight: [.04, 0], ArrowUp: [0, -.06], ArrowDown: [0, .06] })[e.key];
+      if (step) { e.preventDefault(); move(sun[0] + step[0], sun[1] + step[1]); settle(); }
+      else if (e.key === 'Enter' && moved) { e.preventDefault(); paintIt(); }
+    });
+    function move(/** @type {number} */ u, /** @type {number} */ v) {
+      const was = words();
+      sun = [Math.min(.96, Math.max(.04, u)), Math.min(low, Math.max(.06, v))];
+      moved = Math.hypot(sun[0] - home[0], sun[1] - home[1]) > .02;
+      place(); paint(384, tall(384));
+      if (words() !== was) sound.play('tap');
+    }
+    function place() {
+      knob.style.left = (b[0] + sun[0] * b[2]) * 100 + '%'; knob.style.top = (b[1] + sun[1] * b[3]) * 100 + '%';
+      knob.classList.toggle('is-down', sun[1] > 1); say.textContent = words();
+      knob.setAttribute('aria-label', `The sun, ${words()}. Drag it, or use the arrow keys, to change the hour.`);
+    }
+    async function paint(/** @type {number} */ w, /** @type {number} */ hh) {
+      if (busy) { queued = [w, hh]; return; }
+      busy = true;
+      await new Promise(r => requestAnimationFrame(r));
+      const c = await proofOf({ text: `@${print.handle} ${words()}`, intent: relight(), sun }, { [print.id]: { blob: print.blob, handle: print.handle, scene: kept } }, w, hh).catch(() => null);
+      busy = false;
+      if (c && open === el) { view.width = c.width; view.height = c.height; view.getContext('2d').drawImage(c, 0, 0); view.classList.toggle('is-in', moved); }
+      if (queued) { const [qw, qh] = queued; queued = null; paint(qw, qh); }
+    }
+    /** Let go: offer to paint it so, sharp this time, or put it back. */
+    function settle() {
+      sunDock.hidden = !moved; dock.hidden = moved;
+      go.replaceChildren('Paint it ' + words(), h('span', { html: icon('arrow') }));
+      if (moved) paint(print.w || 768, print.h || 1024); else view.classList.remove('is-in');
+    }
+    function putBack() { sun = home.slice(); moved = false; place(); settle(); sound.play('tap'); }
+    function paintIt() {
+      onSend({ text: `@${print.handle} ${words()}`, intent: relight(), pace: settings.get('pace', 'fine'), sun: sun.map(n => Math.round(n * 1000) / 1000) });
+      shut();
+    }
   }
   return { close: shut };
 }

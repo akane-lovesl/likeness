@@ -127,6 +127,25 @@ test('the proof sketches the words as they are typed, and sends the arrangement 
   await expect(made(page, 'Sketch')).toHaveCount(1, { timeout: 30_000 });
 });
 
+test('the sun can be held: drag it under the sea and the sketch is painted again at night', async ({ page }) => {
+  await open(page);
+  await samples(page);
+  await page.locator('figure.print').first().click();
+  const sun = page.locator('button.sun');
+  await expect(sun).toBeVisible();
+  await sun.hover();   // waits for the picture to finish flying in
+  const b = await sun.boundingBox();
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 - 20, b.y + b.height / 2 + 220, { steps: 10 });
+  await expect(page.locator('.focus__relit.is-in')).toBeVisible();
+  await page.mouse.up();
+  const paint = page.locator('.focus__sundock .focus__go');
+  await expect(paint).toHaveText(/Paint it at night/);
+  await paint.click();
+  await expect(page.getByText('A, painted again: at night.')).toBeVisible({ timeout: 30_000 });
+  await expect(made(page, 'Sketch')).toHaveCount(1);
+});
+
 test('the look camera shows the world in a look, and the shutter sends it to be painted', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

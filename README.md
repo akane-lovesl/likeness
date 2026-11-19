@@ -16,7 +16,7 @@ It is a phone-shaped web app and a small studio server. Codex CLI with GPT Image
 | **Live · Simulator** | `likeness serve --engine simulator`: Pillow stand-ins, also stamped on the picture | Simulated |
 | **Live · Workstation** | `likeness serve` with Codex CLI and GPT Image | Render |
 
-The edition is in the header of every screen, and every picture says how it was made. A face turned on the device says so while it is turned. Every angle needs a studio: the showcase says so rather than pretending.
+The header identifies the edition. Example portraits carry their source in the catalog and show it in the mirror. The mirror also shows when a face turns on the device. Every angle uses the connected studio.
 
 ## Run it
 

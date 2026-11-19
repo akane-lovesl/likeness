@@ -27,7 +27,8 @@ OPS = {
     "remove": "Remove what the words (or the marked regions) point at, and fill the space so nobody could tell.",
     "vary": "Make variations of the subject picture: the same subject, different takes on it.",
     "angles": ("Show the person in the subject picture from other angles, one picture each, in this order unless the words say otherwise: "
-               "three-quarter view from their right, profile, three-quarter view from their left. Keep them exactly: the same face, hair, "
+               "three-quarter view with the nose pointing toward the right edge, full profile toward that same edge, "
+               "then three-quarter view with the nose pointing toward the left edge. Keep them exactly: the same face, hair, "
                "make-up, clothes, light and backdrop. Only the camera moves."),
 }
 PIN_MARKS = "①②③④⑤⑥⑦⑧⑨"
@@ -50,6 +51,8 @@ def turn_brief(turn: Turn, inputs: Inputs, files: dict[str, str], *, size: str, 
         lines.append(f"- Region {PIN_MARKS[n - 1]} ({mask}; white = change, black = keep): {note or 'change this'}")
     if files.get("edit"):
         lines.append(f"- The same regions as one edit mask, in the convention image-edit tools expect (transparent = change): {files['edit']}")
+        if turn.intent.op == "region":
+            lines.append("Keep the source crop, scale and alignment so the edited areas line up. The studio composites them onto the original. Do not resize or composite the tool's output yourself.")
     if inputs.subject_mask is not None:
         lines.append(f"- The subject to keep is marked in {files['subject']} (white = keep in front).")
     if turn.look:
@@ -64,7 +67,8 @@ def turn_brief(turn: Turn, inputs: Inputs, files: dict[str, str], *, size: str, 
               "How to work:",
               '1. First reply with one line: PLAN {"summary": "<one short sentence: what you will do>", "prompt": "<the image prompt you will use>"}',
               f"2. Make the picture{'s' if turn.n > 1 else ''}. {image_hint}",
-              f"3. Save {'each' if turn.n > 1 else 'it'} as PNG: " + ", ".join(f"out/{i + 1}.png" for i in range(turn.n)) + ". Exactly these names; nothing else in out/.",
+              "3. If the image tool saves the PNG files itself, leave them where it saves them. The studio collects those files in generation order. "
+              "Otherwise write only these PNGs: " + ", ".join(f"out/{i + 1}.png" for i in range(turn.n)) + ".",
               f'4. Last, reply with one line: DONE {{"reply": "<one or two warm sentences to the person, in this voice: {", ".join(turn.room.voice[:3]) if turn.room and turn.room.voice else "warm, brief, precise"}>", "suggestions": ["<three short things they might ask next, at most five words each>"]}}',
               'If it cannot be done, reply with one line instead: FAILED {"message": "<why, plainly>", "hint": "<what the person could change>"}',
               "Do not ask questions; decide. Do not change files outside out/."]

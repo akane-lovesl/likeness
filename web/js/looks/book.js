@@ -105,7 +105,12 @@ function lookbook() {
     cards = list; step = 360 / Math.max(5, list.length);
     els = list.map((c, i) => {
       const card = h('button.lb-card', { type: 'button', role: 'option', 'aria-label': titleOf(c), style: { '--d': (60 + i * 55) + 'ms' }, onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0) tap(i); } });
-      if (c.kind === 'photo') { c.seen ||= seen.get(c.person.portrait); card.append(...photoCard(c), h('span.lb-card__glint'), h('span.lb-card__tag', null, tagOf(c))); if (c.seen) card.classList.add('has-face'); }
+      if (c.kind === 'photo') {
+        c.seen ||= seen.get(c.person.portrait);
+        const label = tagOf(c);
+        card.append(...photoCard(c), h('span.lb-card__glint'), h('span.lb-card__tag', { hidden: label === 'GPT Image' }, label));
+        if (c.seen) card.classList.add('has-face');
+      }
       else if (c.kind === 'sitter') card.append(sitterCard(c), h('span.lb-card__tag', null, c.sitter.id === 'you' ? 'Sketch' : 'Drawn'));
       else card.append(h('div.lb-card__plate', { html: plateSVG(c.part, c.style) }), h('span.lb-card__tag', null, 'Drawn'));
       const yours = c.kind === 'sitter' && c.sitter.id === 'you';
@@ -337,7 +342,12 @@ function lookbook() {
     if (on && c.heard && style === was.style && JSON.stringify(shape) === JSON.stringify(was.shape)) return;
     c.heard = on; c.sketch = on ? style : undefined; c.shape = on ? shape : undefined;
     card.classList.toggle('is-sketched', on);
-    const tag = card.querySelector('.lb-card__tag'); if (tag) tag.textContent = tagOf(c);
+    const tag = card.querySelector('.lb-card__tag');
+    if (tag) {
+      const label = tagOf(c);
+      tag.textContent = label;
+      tag.toggleAttribute('hidden', label === 'GPT Image');
+    }
     card.setAttribute('aria-label', titleOf(c));
     if (!on) { dressing.set(card, (dressing.get(card) || 0) + 1); morphs.set(card, (morphs.get(card) || 0) + 1); card.querySelector('.lb-card__sketch')?.remove(); card.querySelector('.lb-card__wash')?.remove(); return; }
     // asked for now, so drawn now

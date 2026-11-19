@@ -15,13 +15,13 @@ A personal image studio, phone-shaped. It has two halves: a web app (`web/`: pla
 - **On me.** The same thing on your own face, from a photo or from the **live mirror**: the front camera, with the look sketched on you as you move. *Every side of you* catches the front and both sides as you turn your head. Then the ring deals every look on you, and **Show** makes a card to hand a stylist.
 - **The desk.** Behind it all is a studio you talk to: pictures with handles (@A), looks (#Velvet Hour), pins, backdrops, variations, rooms (whole themes, invented from words) and today's sky.
 
-`README.md` tells it in full. There are three editions, and every picture says which one made it:
+`README.md` tells it in full. There are three editions. The Lookbook cards show the style and the person's name, with the picture's source recorded in the catalog and shown in the mirror.
 
 | Edition | What makes the pictures | Label |
 |---|---|---|
 | **Showcase** | the device draws sketches | *Sketch* (the drawn sitters in the ring: *Drawn*) |
 | **Live · Simulator** | stand-ins | *Simulated* |
-| **Live · Workstation** | GPT Image | *Render* (the ring's people: *GPT Image*) |
+| **Live · Workstation** | GPT Image | *Render* on the desk, *GPT Image* in the mirror |
 
 This computer is where the third one comes alive.
 
@@ -144,7 +144,7 @@ Every row below must hold. Where one does not, fix it: the code, the words or th
 
 | | What must hold |
 |---|---|
-| **First sight** | Within a few seconds it is clear what Likeness does: real faces, a look sweeping across each, its name beneath, an honest *GPT Image* label. A second or two in, the faces are read on the device: each card closes on the head and leans in on its part, and the look sweeps in close. It must read at a glance. The ring turns by itself and under a finger. Touching a part (Bangs, Brows…) deals only that part's looks. |
+| **First sight** | Within a few seconds it is clear what Likeness does: real faces, a look sweeping across each, and its name beneath. A second or two in, the faces are read on the device: each card closes on the head and leans in on its part, and the look sweeps in close. It must read at a glance. The ring turns by itself and under a finger. Touching a part such as Bangs or Brows deals only that part's looks. |
 | **Words** | On the Lookbook, *curtain bangs, a lot longer, parted left* turns the ring to a face wearing that look and draws it on the real face as said. The card says *Sketch* until the words are gone, then the render comes back. *Copper, a shade deeper* washes the hair. Left alone, the line acts things out by itself. A sketch over a real face must look deliberate and beautiful; if it doesn't, change how it is drawn (`dress` in `web/js/looks/book.js`, the strokes in `web/js/looks/markup.js`). |
 | **The mirror** | On an example person, their looks show as takes, and their three angles turn under a finger. Dragged sideways, a portrait turns on the device (*Turned on this device*) and springs back. The cheek's edge stays clean, the hair comes round, and the wall stays straight. |
 | **On me, from a photo** | Use a drawn sitter as the photo. The face is read: a line of light, its points, its outlines, then the parts named in the margins. Pick a look and shape it by its handles; the words write themselves. **Try on** brings four GPT Image takes inside the part's mask, scrubbed with a finger. While GPT Image works, the wait plays out in the frame: a light over the part, Codex's own words and an honest time left, and previews developing inside the part if its image tool streams them. Keep one, and **Every angle** brings three more as the frame turns. |
@@ -153,7 +153,7 @@ Every row below must hold. Where one does not, fix it: the code, the words or th
 | **The ring becomes you** | With a photo of you kept, the ring deals every look on you, labelled *Sketch*, and *Them · You* switches between the people and you. A card opens your photo in the mirror wearing that look, and **Try on** from there makes renders. |
 | **Show it** | On your photo, **Show** and then **Save the card** give a 1080 × 1350 picture you would hand a stylist. Its foot says truly what each picture is. |
 | **The desk** | 0003's step 6 walk-through still holds with the finished app: words, a picture brought in, @ and #, pins, backdrops, variations, every angle, rooms (invented, and *Take me there*), today's sky, Kept and the taste note, paces, Stop, a reload mid-turn, and a failure. |
-| **Honest labels** | The showcase (`npm run serve`) sketches, and says *Sketch* wherever it does. The example people in it are real renders, and say so. The simulator stamps its stand-ins. Nothing GPT Image did not make is called Render. |
+| **Honest labels** | The showcase (`npm run serve`) labels its sketches. The mirror identifies the example portraits as renders. The simulator stamps its stand-ins. Only pictures made with GPT Image are called renders. |
 | **Feel** | Waiting feels alive: notes, the plan, the fuse, previews. Nothing stutters or jumps. With animations turned off in Windows (*reduce motion*), the app is calm. |
 
 The code was written on a small computer with no graphics chip, using only drawn faces. Some things could not be judged there and need your eyes here:

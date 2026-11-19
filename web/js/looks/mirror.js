@@ -262,6 +262,7 @@ export function openMirror(o) {
   /** A part, chosen: it is outlined on the face, and its styles come up in place of the parts. @param {string} id */
   function choose(id) {
     const p = partById(id); if (!p) return;
+    stopGreeting();
     part = id; read.classList.toggle('is-quiet', fresh().some(q => q.part === id));
     chips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.part === id))); lit();
     stylesRow.replaceChildren(h('button.mr-styles__back', { type: 'button', 'aria-label': 'Every part', html: icon('back'), onclick: () => unchoose() }),
@@ -537,9 +538,11 @@ export function openMirror(o) {
   // a tap picks the part under it, and holding shows the face as it was
   let hold = 0, comparing = false, turning = /** @type {null | Turning} */ (null), showingNow = false, sway = 0, p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
   let leaning = false, ready = false, pitchNow = 0, stampWas = /** @type {[string, string] | null} */ (null);
+  let greeting = 0;
   drag(frame, {
     start: e => {
       if (/** @type {HTMLElement} */ (e.target).closest('button')) return false;
+      stopGreeting();
       anim?.stop(); if (turning) { p0 = turning.p; return; }
       if (turn && face) { ready = false; mount().then(ok => { ready = ok; }).catch(() => {}); }
       hold = setTimeout(() => { if (leaning || (shown < 0 && !picks.length)) return; comparing = true; frame.classList.add('is-comparing'); over.src = origin.url; over.classList.add('is-held'); }, 280);
@@ -604,20 +607,26 @@ export function openMirror(o) {
   }
   /** The mirror, once it has read you: the face turns a little one way, then the other, and comes back to you. */
   async function hello() {
-    if (!turn || reduced || !(await mount())) return;
+    if (!turn || reduced || part) return;
+    if (!(await mount()) || current !== self || part || turning || leaning || showingNow || busy) return;
     ready = true;
     const keys = [[0, 0, 0], [640, .22, .03], [1400, -.16, -.015], [1950, 0, 0]], t0 = performance.now();
     const ease = (/** @type {number} */ u) => u * u * (3 - 2 * u);
-    await new Promise(done => {
-      const tick = (/** @type {number} */ now) => {
-        const t = now - t0; if (!el.isConnected || leaning) { done(undefined); return; }
-        let k = 1; while (k < keys.length - 1 && t > keys[k][0]) k++;
-        const [ta, ya, pa] = keys[k - 1], [tb, yb, pb] = keys[k], u = ease(clamp((t - ta) / (tb - ta)));
-        lean(ya + (yb - ya) * u, pa + (pb - pa) * u);
-        if (t < keys[keys.length - 1][0]) requestAnimationFrame(tick); else { lean(0, 0); done(undefined); }
-      };
-      requestAnimationFrame(tick);
-    });
+    const tick = (/** @type {number} */ now) => {
+      const t = now - t0;
+      if (t >= keys[keys.length - 1][0]) { stopGreeting(); return; }
+      let k = 1; while (k < keys.length - 1 && t > keys[k][0]) k++;
+      const [ta, ya, pa] = keys[k - 1], [tb, yb, pb] = keys[k], u = ease(clamp((t - ta) / (tb - ta)));
+      lean(ya + (yb - ya) * u, pa + (pb - pa) * u);
+      greeting = requestAnimationFrame(tick);
+    };
+    greeting = requestAnimationFrame(tick);
+  }
+  function stopGreeting() {
+    if (!greeting) return;
+    cancelAnimationFrame(greeting);
+    greeting = 0;
+    lean(0, 0);
   }
 
   /** Tries the picks (and any words) on: four takes from a live studio, a sketch here. */
@@ -882,6 +891,7 @@ export function openMirror(o) {
    */
   async function showing(on) {
     if (on === showingNow || (on && (!face || !picks.length))) return;
+    stopGreeting();
     showingNow = on;
     if (on && part) unchoose();
     if (on) showWords.replaceChildren(...picks.map((q, i) => h('li.mr-show__word', { style: { '--d': (140 + i * 90) + 'ms' } },
@@ -912,7 +922,8 @@ export function openMirror(o) {
     const c = card({ front: { pic: s.canvas, face: s.face }, sides: /** @type {any} */ (sides), picks, stamp, date: new Date() });
     const blob = await P.toBlob(c, 'image/png'), name = 'likeness-' + new Date().toISOString().slice(0, 10) + '.png';
     const file = new File([blob], name, { type: 'image/png' });
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e instanceof DOMException && e.name === 'AbortError') return; } }
+    const handheld = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (handheld && navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e instanceof DOMException && e.name === 'AbortError') return; } }
     const a = /** @type {HTMLAnchorElement} */ (h('a', { href: URL.createObjectURL(blob), download: name })); document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 8000);
     toast('The card is saved');
@@ -926,7 +937,7 @@ export function openMirror(o) {
 
   function close(now = false) {
     if (current !== self) return; current = null;
-    stops.forEach(f => f()); stopTurning(); cancelAnimationFrame(sway);
+    stops.forEach(f => f()); stopGreeting(); stopTurning(); cancelAnimationFrame(sway);
     if (now || reduced) { el.remove(); return; }
     el.classList.remove('is-in'); el.classList.add('is-out'); setTimeout(() => el.remove(), 420);
   }

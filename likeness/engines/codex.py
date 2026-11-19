@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
+import io
 import json
 import os
 import re
@@ -103,6 +105,7 @@ class Follow:
         self.work = work
         self.prompt = ""
         self.planned = False
+        self.thread_id = ""
         self.reply: dict | None = None
         self.failed: tuple[str, str] | None = None
         self.error = ""
@@ -128,7 +131,11 @@ class Follow:
         if isinstance(event.get("msg"), dict):
             return self._legacy(event["msg"])
         kind = event.get("type", "")
-        if kind.startswith("item."):
+        if kind == "thread.started":
+            thread_id = str(event.get("thread_id") or "")
+            if re.fullmatch(r"[A-Za-z0-9_-]{8,128}", thread_id):
+                self.thread_id = thread_id
+        elif kind.startswith("item."):
             self._item(event.get("item") or {}, kind.split(".", 1)[1])
         elif kind == "turn.failed":
             self.error = str((event.get("error") or {}).get("message") or "Codex stopped.")
@@ -206,42 +213,62 @@ class Follow:
 
 
 class Watcher:
-    """Pictures landing in out/, each taken once it has stopped growing and opens cleanly."""
+    """Collect complete images from the job and this Codex thread, once per image."""
 
     def __init__(self, folder: Path, n: int) -> None:
         self.folder, self.n = folder, n
-        self.sizes: dict[str, tuple[int, int]] = {}
-        self.taken: set[str] = set()
+        self.sizes: dict[Path, tuple[int, int]] = {}
+        self.taken: set[Path] = set()
+        self.hashes: set[bytes] = set()
         self.used: set[int] = set()
 
     def _index(self, name: str) -> int:
         numbered = NUMBERED.match(name)
-        if numbered and 0 < int(numbered.group(1)) <= max(self.n, 9) and int(numbered.group(1)) - 1 not in self.used:
+        if numbered and 0 < int(numbered.group(1)) <= self.n and int(numbered.group(1)) - 1 not in self.used:
             index = int(numbered.group(1)) - 1
         else:
-            index = next(i for i in range(64) if i not in self.used)
+            index = next(i for i in range(self.n) if i not in self.used)
         self.used.add(index)
         return index
 
-    def ready(self, final: bool = False) -> list[tuple[int, Image.Image]]:
+    def ready(self, generated: Path | None = None, loose: tuple[Path, ...] = (), *, final: bool = False) -> list[tuple[int, Image.Image]]:
+        candidates = sorted(self.folder.iterdir()) if self.folder.is_dir() else []
+        if generated and generated.is_dir():
+            stamped = []
+            for path in generated.iterdir():
+                try:
+                    stamped.append((path.stat().st_mtime_ns, path))
+                except OSError:
+                    continue
+            candidates.extend(path for _, path in sorted(stamped))
+        candidates.extend(loose)
         found = []
-        for path in sorted(self.folder.iterdir()) if self.folder.exists() else []:
-            if path.suffix.lower() not in PICTURES or path.name in self.taken:
-                continue
-            stat = path.stat()
-            mark = (stat.st_size, stat.st_mtime_ns)
-            if not final and self.sizes.get(path.name) != mark:
-                self.sizes[path.name] = mark
+        for path in candidates:
+            if len(self.used) >= self.n:
+                break
+            if path.suffix.lower() not in PICTURES or path in self.taken:
                 continue
             try:
-                with Image.open(path) as image:
+                stat = path.stat()
+            except OSError:
+                continue
+            mark = (stat.st_size, stat.st_mtime_ns)
+            if not final and self.sizes.get(path) != mark:
+                self.sizes[path] = mark
+                continue
+            try:
+                raw = path.read_bytes()
+                digest = hashlib.sha256(raw).digest()
+                if digest in self.hashes:
+                    self.taken.add(path)
+                    continue
+                with Image.open(io.BytesIO(raw)) as image:
                     image.load()
                     picture = ImageOps.exif_transpose(image).convert("RGB")
             except Exception:
-                if final:
-                    self.taken.add(path.name)
                 continue
-            self.taken.add(path.name)
+            self.taken.add(path)
+            self.hashes.add(digest)
             found.append((self._index(path.name), picture))
         return found
 
@@ -343,7 +370,11 @@ class Codex:
         follow = Follow(work)
         follow.spill = folder / "tool"
         argv = self.argv(folder, pace, attach if self.config.get("attach", True) else [])
-        code = self._run(argv, text, folder, follow, work, turn.n, float(pace.get("timeout") or 600))
+        region = None
+        if turn.intent.op == "region" and files.get("edit"):
+            with Image.open(folder / files["edit"]) as guide:
+                region = guide.convert("RGB"), ImageOps.invert(guide.getchannel("A"))
+        code = self._run(argv, text, folder, follow, work, turn.n, float(pace.get("timeout") or 600), region)
         if follow.failed:
             raise EngineError(*follow.failed)
         if not work.results:
@@ -359,7 +390,8 @@ class Codex:
         reply = follow.reply or {}
         work.reply(str(reply.get("reply") or ""), [str(s) for s in reply.get("suggestions") or []])
 
-    def _run(self, argv: list[str], text: str, folder: Path, follow: Follow, work: Work, n: int, timeout: float) -> int:
+    def _run(self, argv: list[str], text: str, folder: Path, follow: Follow, work: Work, n: int, timeout: float,
+             region: tuple[Image.Image, Image.Image] | None = None) -> int:
         events = (folder / "events.jsonl").open("w", encoding="utf-8")
         errors = (folder / "stderr.log").open("w", encoding="utf-8")
         try:
@@ -387,6 +419,18 @@ class Codex:
         for thread in threads:
             thread.start()
         watcher, deadline = Watcher(folder / "out", n), time.monotonic() + timeout
+        generated_root = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "generated_images"
+
+        def deliver(*, final: bool = False) -> None:
+            thread_id = follow.thread_id
+            generated = generated_root / thread_id if thread_id else None
+            for index, picture in watcher.ready(generated, tuple(follow.loose), final=final):
+                if region is not None:
+                    original, mask = region
+                    edit = picture.resize(original.size, Image.Resampling.LANCZOS)
+                    picture = Image.composite(edit, original, mask)
+                work.result(index, picture, follow.prompt)
+
         try:
             while proc.poll() is None:
                 if work.job.stop.is_set():
@@ -395,15 +439,10 @@ class Codex:
                 if time.monotonic() > deadline:
                     kill(proc)
                     raise EngineError("The studio took too long and was stopped.", "Try the Quick pace, or fewer pictures at once.")
-                for index, picture in watcher.ready():
-                    work.result(index, picture, follow.prompt)
+                deliver()
                 time.sleep(0.3)
             threads[1].join(10)
-            if len(watcher.taken) < n:   # an image tool that saved elsewhere: bring its pictures in
-                for i, loose in enumerate(follow.loose[: n - len(watcher.taken)]):
-                    shutil.copy(loose, folder / "out" / f"loose-{i}{loose.suffix.lower()}")
-            for index, picture in watcher.ready(final=True):
-                work.result(index, picture, follow.prompt)
+            deliver(final=True)
             return proc.returncode or 0
         finally:
             kill(proc)

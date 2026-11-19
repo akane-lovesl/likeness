@@ -23,6 +23,18 @@ test('Stop reaches the studio', async ({ page }) => {
   await expect(made(page, 'Simulated')).toHaveCount(0);
 });
 
+test('a trip is drawn on the device even here, and its sheet says it is a sketch', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').first().click();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('button.bring__opt').first().click()]);
+  await chooser.setFiles('tests/fixtures/sitters/ruth.jpg');
+  await expect(page.locator('figure.print')).toHaveCount(1);
+  await say(page, 'take @A on a trip');
+  await expect(page.getByText(/A, on a trip: Lisbon at dawn/)).toBeVisible({ timeout: 40_000 });
+  await expect(made(page, 'Sketch')).toHaveCount(1);
+  await expect(made(page, 'Simulated')).toHaveCount(0);
+});
+
 test('a pinned change goes up with its mask and comes back simulated', async ({ page }) => {
   await open(page);
   await samples(page);

@@ -14,8 +14,8 @@ import * as P from '../studio/painter.js';
 import { selectAt, brush, loadSegmenter } from '../studio/segment.js';
 import { pinMark } from './cards.js';
 import { studio } from '../studio/studio.js';
-import { proofOf, standStage, standWords, makingOf, lifeOf } from '../studio/local.js';
-import { film, canFilm } from './reel.js';
+import { proofOf, standStage, standWords, makingOf, lifeOf, tripOf } from '../studio/local.js';
+import { film, travel, canFilm } from './reel.js';
 import { alive } from './life.js';
 
 let open = null;
@@ -121,37 +121,58 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
   }
   /** Save: the picture, or, for one the device made, a short film of its making. */
   function save() {
-    if (!(studio.mode === 'showcase' && canFilm() && (print.provenance?.scene || (recipe && from)))) return saveImage();
+    // the films the device can make of this picture: the making of it, or the trip it is of
+    const films = canFilm() ? [
+      ...(trip && from ? [{ id: 'trip', b: 'The trip', s: 'A short film: the world changing behind them, place by place' }] : []),
+      ...(!trip && studio.mode === 'showcase' && (print.provenance?.scene || (recipe && from)) ? [{ id: 'film', b: 'How it was made', s: 'A short film of its making, played as it saves' }] : []),
+    ] : [];
+    if (!films.length) return saveImage();
     sheet(close => [
       h('div.sheet__head', null, h('h2.t-title', null, 'Save')),
       h('div.bring', null,
         h('button.bring__opt', { onclick: () => close('image') }, h('span', { html: icon('image') }), h('b', null, 'The picture'), h('span.t-soft', null, 'As it is, to keep or to send')),
-        h('button.bring__opt', { onclick: () => close('film') }, h('span', { html: icon('film') }), h('b', null, 'How it was made'), h('span.t-soft', null, 'A short film of its making, played as it saves'))),
-    ], { label: 'Save' }).then(pick => { if (pick === 'image') saveImage(); else if (pick === 'film') saveFilm(); });
+        ...films.map(f => h('button.bring__opt', { onclick: () => close(f.id) }, h('span', { html: icon('film') }), h('b', null, f.b), h('span.t-soft', null, f.s)))),
+    ], { label: 'Save' }).then(pick => { if (pick === 'image') saveImage(); else if (pick === 'film') saveFilm(); else if (pick === 'trip') saveTrip(); });
   }
   let filming = /** @type {AbortController | null} */ (null);
-  /** The film plays over the picture as it records: what was asked, each step with its note, the picture. */
-  async function saveFilm() {
+  const asksOf = () => lineage(print).map(p => String(p.prompt || '').replace(/@([A-Z]{1,2})\b/g, '$1').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(-3);
+  const dayOf = () => new Date(print.createdAt || Date.now()).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  /**
+   * A film the device makes, played over the picture as it records, then saved on the device.
+   * @param {(view: HTMLCanvasElement, look: import('./reel.js').Look) => Promise<Blob | null>} make @param {number} w @param {number} hh @param {string} name @param {string} saved @param {string} [cls]
+   */
+  async function roll(make, w, hh, name, saved, cls = '') {
     if (filming) return;
-    const ctl = filming = new AbortController(), W = 540, H = Math.round(W * (print.h || 4) / (print.w || 3));
-    const view = h('canvas.focus__film', { width: W, height: H }), rec = h('span.focus__rec', null, 'Filming');
+    const ctl = filming = new AbortController(), view = h('canvas.focus__film' + cls, { width: w, height: hh }), rec = h('span.focus__rec', null, 'Filming');
     pic.append(view, rec); el.classList.add('is-filming');
     try {
-      const making = await makingOf(print, from ? { blob: from.blob, handle: from.handle } : null), final = await P.fromBlob(print.blob, W);
-      const life = await lifeOf(print, from ? { blob: from.blob, handle: from.handle } : null).catch(() => null);
-      const css = getComputedStyle(document.documentElement), v = (/** @type {string} */ n, /** @type {string} */ or) => css.getPropertyValue(n).trim() || or;
-      const asks = lineage(print).map(p => String(p.prompt || '').replace(/@([A-Z]{1,2})\b/g, '$1').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(-3);
       await document.fonts?.ready;
-      const day = new Date(print.createdAt || Date.now()).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
-      const blob = making && await film({ asks: asks.length ? asks : ['A picture'], day, start: making.start, frames: making.frames, final, end: 'Likeness · a sketch, drawn on this device', life }, view,
-        { ground: v('--ground', '#f4efe6'), ink: v('--ink', '#1d1a17'), accent: v('--accent', '#d4452f'), display: v('--font-display', 'serif'), hand: v('--font-hand', 'cursive'), mono: v('--font-mono', 'monospace'), signal: ctl.signal });
+      const css = getComputedStyle(document.documentElement), v = (/** @type {string} */ n, /** @type {string} */ or) => css.getPropertyValue(n).trim() || or;
+      const blob = await make(view, { ground: v('--ground', '#f4efe6'), ink: v('--ink', '#1d1a17'), accent: v('--accent', '#d4452f'), display: v('--font-display', 'serif'), hand: v('--font-hand', 'cursive'), mono: v('--font-mono', 'monospace'), signal: ctl.signal });
       if (blob) {
-        const href = URL.createObjectURL(blob), a = h('a', { href, download: `likeness-${print.handle.toLowerCase()}-making.${blob.type.includes('mp4') ? 'mp4' : 'webm'}` });
+        const href = URL.createObjectURL(blob), a = h('a', { href, download: name + '.' + (blob.type.includes('mp4') ? 'mp4' : 'webm') });
         document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(href), 60_000);
-        toast('Saved the film of its making');
+        toast(saved);
       }
     } catch (e) { console.warn('film', e); toast('The film could not be made here'); }
     finally { filming = null; el.classList.remove('is-filming'); view.remove(); rec.remove(); }
+  }
+  /** The making: what was asked, each step with its note, the picture. */
+  function saveFilm() {
+    const W = 540, source = from ? { blob: from.blob, handle: from.handle } : null;
+    return roll(async (view, look) => {
+      const making = await makingOf(print, source), final = await P.fromBlob(print.blob, W), life = await lifeOf(print, source).catch(() => null), asks = asksOf();
+      return making && film({ asks: asks.length ? asks : ['A picture'], day: dayOf(), start: making.start, frames: making.frames, final, end: 'Likeness · a sketch, drawn on this device', life }, view, look);
+    }, W, Math.round(W * (print.h || 4) / (print.w || 3)), `likeness-${print.handle.toLowerCase()}-making`, 'Saved the film of its making');
+  }
+  /** The trip: them at home, then each place swung in behind them while they stand still, alive a moment, then home. */
+  function saveTrip() {
+    if (!from) return;
+    const W = 540;
+    return roll(async (view, look) => {
+      const t = await tripOf(print, { blob: from.blob, handle: from.handle }, W), asks = asksOf();
+      return t && travel({ asks: asks.length ? asks : ['A trip'], day: dayOf(), stops: t.stops, home: t.home, me: t.me, end: 'Likeness · sketches, drawn on this device' }, view, look);
+    }, W, Math.round(W * (from.h || 4) / (from.w || 3)), `likeness-${print.handle.toLowerCase()}-trip`, 'Saved the trip', '.is-trip');
   }
   function saveImage() {
     const a = h('a', { href: url, download: `likeness-${print.handle.toLowerCase()}-${new Date(print.createdAt).toISOString().slice(0, 10)}.${print.blob.type === 'image/png' ? 'png' : 'jpg'}` });
@@ -256,10 +277,10 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
    */
   // a picture put somewhere from a photo has its place in its recipe: the sun moves over that place, the person stays.
   // Not in a profile picture's square, where the sky is mostly cut away
-  const recipe = print.provenance?.recipe, from = recipe && printById(recipe.from);
+  const recipe = print.provenance?.recipe, trip = print.provenance?.trip, from = (recipe || trip) && printById((recipe || trip).from);
   let living = /** @type {{ stop: () => void } | null} */ (null), lifeTicket = 0;
   let resetSun = /** @type {(() => void) | null} */ (null), resetWalk = /** @type {(() => void) | null} */ (null);
-  if (studio.mode === 'showcase' && (print.provenance?.scene || (from && recipe.scene && !recipe.profile))) holdTheSun(print.provenance?.scene || recipe.scene);
+  if (studio.mode === 'showcase' && (print.provenance?.scene || (from && recipe?.scene && !recipe.profile))) holdTheSun(print.provenance?.scene || recipe?.scene);
   function holdTheSun(kept) {
     const tall = (/** @type {number} */ w) => Math.round(w * (print.h || 4) / (print.w || 3));
     let at = null;
@@ -328,7 +349,7 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
    * two layers, the place and the person; let go, and it shows the picture exactly and offers to keep them there.
    */
   let grab = /** @type {((e: PointerEvent) => boolean) | null} */ (null);
-  if (studio.mode === 'showcase' && from && (recipe.scene || recipe.plain || recipe.cut) && !recipe.profile) holdThePerson();
+  if (studio.mode === 'showcase' && from && recipe && (recipe.scene || recipe.plain || recipe.cut) && !recipe.profile) holdThePerson();
   function holdThePerson() {
     /** @type {any} */ let stage = null;
     let at = { x: 0, s: 1 }, held = /** @type {any} */ (null), moved = false, lift = 0, liftRaf = 0, alpha = /** @type {Uint8ClampedArray | null} */ (null), ticket = 0;

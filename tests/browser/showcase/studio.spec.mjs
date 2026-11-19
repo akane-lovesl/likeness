@@ -243,6 +243,25 @@ test('someone put somewhere can be picked up and walked back into the place', as
   expect(film.suggestedFilename()).toMatch(/^likeness-c-making\.(webm|mp4)$/);
 });
 
+test('a trip: someone taken to four places at once, a sheet that lives, and a film where the world changes behind them', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').first().click();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('button.bring__opt').first().click()]);
+  await chooser.setFiles('tests/fixtures/sitters/tomas.jpg');
+  await expect(page.locator('figure.print')).toHaveCount(1);
+  await page.locator('.composer textarea').fill('take @A to Lisbon, Kyoto and the moon');
+  await expect(page.locator('.plan-pill[data-k="op"]')).toHaveText('A trip for A');
+  await page.locator('.composer textarea').fill('take @A on a trip');
+  await page.locator('button.send').click();
+  await expect(page.getByText('A, on a trip: Lisbon at dawn, Tokyo at night, the moon in a helmet, and under the sea in a helmet.')).toBeVisible({ timeout: 40_000 });
+  await expect(made(page, 'Sketch')).toHaveCount(1);
+  await page.locator('figure.print').last().click();
+  await expect(page.locator('.focus__life.is-in')).toHaveCount(1);
+  await page.locator('.tool', { hasText: 'Save' }).click();
+  const [film] = await Promise.all([page.waitForEvent('download', { timeout: 90_000 }), page.locator('.bring__opt', { hasText: 'The trip' }).click()]);
+  expect(film.suggestedFilename()).toMatch(/^likeness-b-trip\.(mp4|webm)$/);
+});
+
 test('the device does what it honestly can to a photo, and says plainly when it cannot', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

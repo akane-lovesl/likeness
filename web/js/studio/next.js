@@ -12,6 +12,7 @@ const POOL = {
   remove: ['Bring it back', 'Try a backdrop', 'Clean up more'],
   backdrop: ['Somewhere else', 'Golden hour light', 'Make it night', 'Closer in', 'Somewhere dreamier'],
   vary: ['More like the first', 'In watercolour', 'Wilder', 'Make it night'],
+  trip: ['Another trip', 'In watercolour', 'Take them to Paris, Kyoto and Mars'],
 };
 const ANYWHERE = ['Try a backdrop', 'Three variations', 'Golden hour light', 'Make it night', 'In watercolour', 'As a postcard', 'Softer light'];
 /** Ideas that would only say again what was just said: no "Make it night" after "midnight", no rain after "rainy". */

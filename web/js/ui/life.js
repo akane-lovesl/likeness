@@ -12,7 +12,7 @@ import { reduced } from '../core/motion.js';
  * front: what stands in front of the place (painted things, and whoever is in it), a small mask; person: just them. For
  * what moves whole: cut, where each such thing is in the picture; bare, the place without them; picture, the picture.
  */
-/** @typedef {{ draw: (x: CanvasRenderingContext2D, t: number) => void, front?: boolean, win?: boolean }} Effect */
+/** @typedef {{ draw: (x: CanvasRenderingContext2D, t: number) => void, front?: boolean, win?: boolean, pane?: any, clip?: number[] | null }} Effect */
 
 const TAU = Math.PI * 2;
 /** A small seeded stream of numbers in [0, 1). @param {number} s */
@@ -33,11 +33,12 @@ const FRONT = new Set(['rain', 'snow', 'petals', 'fireflies', 'motes', 'specks',
 
 /**
  * One hint, made ready to play in a picture W × H: what it draws at a time t (in seconds). Sizes are for a picture 360
- * wide, scaled by S.
- * @param {any} o @param {number} W @param {number} H @param {number} seed @returns {Effect | null}
+ * wide, scaled by S; a hint from a picture that is only part of this one (a frame on a contact sheet) says how much of
+ * it its own picture is (s across, sy down), and is sized for that.
+ * @param {any} o @param {number} W0 @param {number} H0 @param {number} seed @returns {Effect | null}
  */
-function effect(o, W, H, seed) {
-  const S = W / 360, r = rng(seed), box = () => [o.box[0] * W, o.box[1] * H, o.box[2] * W, o.box[3] * H];
+function effect(o, W0, H0, seed) {
+  const W = W0, H = H0, VW = W0 * (o.s || 1), VH = H0 * (o.sy || 1), S = VW / 360, r = rng(seed), box = () => [o.box[0] * W, o.box[1] * H, o.box[2] * W, o.box[3] * H];
   switch (o.k) {
     case 'stars': {
       // a few stars, each brightening now and then into a little cross of light
@@ -156,13 +157,13 @@ function effect(o, W, H, seed) {
       // the light going round: dim, then full in your face, then dim
       const cx = o.at[0] * W, cy = o.at[1] * H, per = 5.5;
       return { draw(x, t) {
-        const v = Math.cos(t * TAU / per), i = Math.pow(Math.max(0, v), 10), dim = .16 + .1 * Math.max(0, v), R = W * (.035 + .13 * i);
+        const v = Math.cos(t * TAU / per), i = Math.pow(Math.max(0, v), 10), dim = .16 + .1 * Math.max(0, v), R = VW * (.035 + .13 * i);
         x.save(); x.globalCompositeOperation = 'lighter';
         const g = x.createRadialGradient(cx, cy, 0, cx, cy, R); g.addColorStop(0, `rgb(255 244 200 / ${clamp(dim + i * .7).toFixed(3)})`); g.addColorStop(1, 'rgb(255 236 170 / 0)');
         x.fillStyle = g; x.fillRect(cx - R, cy - R, R * 2, R * 2);
         if (i > .02) {
-          const L = W * .3 * i, s = x.createLinearGradient(cx - L, cy, cx + L, cy); s.addColorStop(0, 'rgb(255 240 190 / 0)'); s.addColorStop(.5, `rgb(255 244 210 / ${(i * .55).toFixed(3)})`); s.addColorStop(1, 'rgb(255 240 190 / 0)');
-          x.fillStyle = s; x.fillRect(cx - L, cy - W * .006, L * 2, W * .012);
+          const L = VW * .3 * i, s = x.createLinearGradient(cx - L, cy, cx + L, cy); s.addColorStop(0, 'rgb(255 240 190 / 0)'); s.addColorStop(.5, `rgb(255 244 210 / ${(i * .55).toFixed(3)})`); s.addColorStop(1, 'rgb(255 240 190 / 0)');
+          x.fillStyle = s; x.fillRect(cx - L, cy - VW * .006, L * 2, VW * .012);
         }
         x.restore();
       } };
@@ -247,7 +248,7 @@ function effect(o, W, H, seed) {
     }
     case 'steam': {
       // three wisps off the cup, curling as they rise and thin out
-      const cx = o.at[0] * W, cy = o.at[1] * H, rise = H * .13, wide = o.r * W * .2;
+      const cx = o.at[0] * W, cy = o.at[1] * H, rise = VH * .13, wide = o.r * W * .2;
       return { draw(x, t) {
         x.lineCap = 'round';
         for (let i = 0; i < 3; i++) {
@@ -264,7 +265,7 @@ function effect(o, W, H, seed) {
       return { draw(x, t) {
         x.save(); x.globalCompositeOperation = 'lighter';
         pts.forEach((/** @type {number[]} */ [px, py], /** @type {number} */ i) => {
-          const a = .22 + .1 * Math.sin(t * 13 + i * 2.1) + .08 * Math.sin(t * 7.7 + i), R = W * .05 * (1 + .12 * Math.sin(t * 9 + i)), g = x.createRadialGradient(px, py, 0, px, py, R);
+          const a = .22 + .1 * Math.sin(t * 13 + i * 2.1) + .08 * Math.sin(t * 7.7 + i), R = VW * .05 * (1 + .12 * Math.sin(t * 9 + i)), g = x.createRadialGradient(px, py, 0, px, py, R);
           g.addColorStop(0, `rgb(255 220 150 / ${a.toFixed(3)})`); g.addColorStop(1, 'rgb(255 214 140 / 0)'); x.fillStyle = g; x.fillRect(px - R, py - R, R * 2, R * 2);
         });
         x.restore();
@@ -277,7 +278,7 @@ function effect(o, W, H, seed) {
         x.save(); x.globalCompositeOperation = 'lighter';
         for (const q of sp) {
           const ang = q.th + t * .32, face = Math.cos(ang); if (face <= 0) continue;
-          x.fillStyle = rgba(q.c, face * .42); x.beginPath(); x.ellipse(cx + Math.sin(ang) * q.d * W * .62, cy + q.y * q.d * H * .75, W * .011 * (.5 + face * .5), W * .007, 0, 0, TAU); x.fill();
+          x.fillStyle = rgba(q.c, face * .42); x.beginPath(); x.ellipse(cx + Math.sin(ang) * q.d * VW * .62, cy + q.y * q.d * VH * .75, VW * .011 * (.5 + face * .5), VW * .007, 0, 0, TAU); x.fill();
         }
         x.restore();
       } };
@@ -325,7 +326,7 @@ export function lifeFor(life, W, H) {
   const win = life.hints.find(o => o.k === 'window'), arch = life.hints.find(o => o.k === 'arch');
   const effects = /** @type {Effect[]} */ ([]);
   if (!life.hints.some(o => o.k !== 'window' && o.k !== 'arch')) return null;
-  life.hints.forEach((o, i) => { const e = effect(o, W, H, 101 + i * 7919); if (e) effects.push({ ...e, front: FRONT.has(o.k), win: !!o.win }); });
+  life.hints.forEach((o, i) => { const e = effect(o, W, H, 101 + i * 7919); if (e) effects.push({ ...e, front: FRONT.has(o.k), win: !!o.win, pane: o.win ? o.pane || win : null, clip: o.clip || null }); });
   const back = effects.filter(e => !e.front), front = effects.filter(e => e.front), sprites = spritesOf(life, W, H);
   const layer = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return { c, x: /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')) }; };
   const B = back.length ? layer() : null, F = front.length ? layer() : null, M = sprites.length ? layer() : null;
@@ -333,10 +334,10 @@ export function lifeFor(life, W, H) {
   const scaled = (/** @type {HTMLCanvasElement | null | undefined} */ m) => { if (!m) return null; const s = layer(); s.x.drawImage(m, 0, 0, W, H); return s.c; };
   const frontMask = B ? scaled(life.front) : null, personMask = M ? scaled(life.person) : null;
   /** Indoors, what is outside shows only through the glass: four panes, the bars between, the curtains either side. */
-  const panes = (/** @type {CanvasRenderingContext2D} */ x) => {
-    if (!win) return;
-    const [wx, wy, ww, wh] = [win.box[0] * W, win.box[1] * H, win.box[2] * W, win.box[3] * H], f = win.bars[0] * W / 2, b = win.bars[1] * W / 2;
-    const l = win.inner ? wx + ww * win.inner[0] : wx + f, rr = win.inner ? wx + ww * win.inner[1] : wx + ww - f, mx = wx + ww / 2, my = wy + wh / 2, t0 = wy + f, b0 = wy + wh - f;
+  const panes = (/** @type {CanvasRenderingContext2D} */ x, /** @type {any} */ pane) => {
+    if (!pane) return;
+    const [wx, wy, ww, wh] = [pane.box[0] * W, pane.box[1] * H, pane.box[2] * W, pane.box[3] * H], f = pane.bars[0] * W * (pane.s || 1) / 2, b = pane.bars[1] * W * (pane.s || 1) / 2;
+    const l = pane.inner ? wx + ww * pane.inner[0] : wx + f, rr = pane.inner ? wx + ww * pane.inner[1] : wx + ww - f, mx = wx + ww / 2, my = wy + wh / 2, t0 = wy + f, b0 = wy + wh - f;
     x.beginPath(); x.rect(l, t0, mx - b - l, my - b - t0); x.rect(mx + b, t0, rr - mx - b, my - b - t0); x.rect(l, my + b, mx - b - l, b0 - my - b); x.rect(mx + b, my + b, rr - mx - b, b0 - my - b); x.clip();
   };
   const arched = (/** @type {CanvasRenderingContext2D} */ x) => {
@@ -344,7 +345,14 @@ export function lifeFor(life, W, H) {
     x.save(); if (arch.zoom) { const [z, k] = arch.zoom; x.setTransform(z, 0, 0, z, -k * W * z, -k * H * z); }
     x.beginPath(); x.moveTo(W * .1, H); x.lineTo(W * .1, H * .4); x.arc(W / 2, H * .4, W * .4, Math.PI, 0); x.lineTo(W * .9, H); x.closePath(); x.restore(); x.clip();
   };
-  const play = (/** @type {CanvasRenderingContext2D} */ x, /** @type {Effect[]} */ list, /** @type {number} */ t) => { for (const e of list) { x.save(); if (e.win) panes(x); e.draw(x, t); x.restore(); } };
+  const play = (/** @type {CanvasRenderingContext2D} */ x, /** @type {Effect[]} */ list, /** @type {number} */ t) => {
+    for (const e of list) {
+      x.save();
+      if (e.clip) { x.beginPath(); x.rect(e.clip[0] * W, e.clip[1] * H, e.clip[2] * W, e.clip[3] * H); x.clip(); }
+      if (e.win) panes(x, e.pane);
+      e.draw(x, t); x.restore();
+    }
+  };
   return { draw(x, t, alpha = 1) {
     if (alpha <= 0) return;
     if (M) {

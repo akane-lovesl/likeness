@@ -9,7 +9,7 @@ import { app, addItem, patchItem, addPrint, printById, handleOf, settings } from
 import { atmosphere } from '../room/theme.js';
 import { skyFor } from '../room/atmosphere.js';
 import { studio } from '../studio/studio.js';
-import { sketch } from '../studio/local.js';
+import { sketch, local, tripAspect } from '../studio/local.js';
 import { describeIntent } from '../studio/intent.js';
 import { nextIdeas } from '../studio/next.js';
 import { placeIn } from '../room/maker.js';
@@ -134,10 +134,12 @@ export async function runTurn(t) {
   const room = atmosphere.room, n = t.n || t.intent.n || 1, id = uid('j-');
   const inputs = {};
   for (const pid of [t.intent.subject, ...t.intent.refs.map(r => r.id), ...(t.intent.pins || []).map(p => p.print)].filter(Boolean)) {
-    const p = printById(pid); if (p) inputs[pid] = { blob: p.blob, handle: p.handle, w: p.w, h: p.h, scene: p.provenance?.scene || null, recipe: p.provenance?.recipe || null };
+    const p = printById(pid); if (p) inputs[pid] = { blob: p.blob, handle: p.handle, w: p.w, h: p.h, scene: p.provenance?.scene || null, recipe: p.provenance?.recipe || null, trip: p.provenance?.trip || null };
   }
   const subject = t.intent.subject && printById(t.intent.subject);
-  const ar = subject?.w ? `${subject.w} / ${subject.h}` : '3 / 4';
+  // a trip's card takes the shape of its sheet from the start
+  const stopsN = (t.intent.places?.length || 0) >= 2 ? Math.min(6, t.intent.places.length) : 4, photo = subject?.provenance?.trip ? printById(subject.provenance.trip.from) || subject : subject;
+  const ar = t.intent.op === 'trip' ? tripAspect(stopsN, photo?.w ? photo.h / photo.w : 4 / 3) : subject?.w ? `${subject.w} / ${subject.h}` : '3 / 4';
   const est = estimate(studio.mode, t.intent.op, t.pace, n);
   const spec = { id, seed: Number.isFinite(t.seed) ? t.seed : null, sun: Array.isArray(t.sun) ? t.sun : null, stand: t.stand && typeof t.stand.x === 'number' ? { x: t.stand.x, s: t.stand.s } : null, text: t.text, intent: t.intent, pace: t.pace, n, room, mood: skyFor().mood?.id || null, backdrop: t.backdrop || null, subjectMask: t.subjectMask || null, taste: settings.get('taste', '').trim() };
   if (t.subjectMask) spec.subjectMaskBlob = await new Promise(r => t.subjectMask.toBlob(r, 'image/png'));
@@ -155,8 +157,11 @@ export async function runTurn(t) {
     }).catch(() => {});
   }
   // a picture the device made from a photo is made again from that photo: the photo goes along, unasked
-  if (!studio.live) for (const v of Object.values(inputs)) { const from = v.recipe?.from, s = from && !inputs[from] && printById(from); if (s) inputs[from] = { blob: s.blob, handle: s.handle, w: s.w, h: s.h, scene: null, recipe: s.provenance?.recipe || null }; }
-  await develop(item, studio.engine.turn(spec, inputs), { learn: true });
+  // the photo a picture made here was made from goes along with it; and a trip is drawn on the device in every edition,
+  // stamped as a sketch, since a studio is asked for one picture at a time
+  const trip = t.intent.op === 'trip';
+  if (!studio.live || trip) for (const v of Object.values(inputs)) { const from = v.recipe?.from || v.trip?.from, s = from && !inputs[from] && printById(from); if (s) inputs[from] = { blob: s.blob, handle: s.handle, w: s.w, h: s.h, scene: null, recipe: s.provenance?.recipe || null, trip: null }; }
+  await develop(item, (trip ? local : studio.engine).turn(spec, inputs), { learn: !trip || !studio.live });
   return item;
 }
 

@@ -27,8 +27,8 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
   const variant = l => (i === 0 ? l : { ...l, ramp: l.ramp?.map(c => c), keep: Math.min(1, (l.keep ?? .2) + i * .15), bloom: (l.bloom || 0) + i * .08 });
   const words = spec.text || '';
   let out, note = '', kept = null, shows = [], scene = null, changes = /** @type {string[]} */ ([]), painted = /** @type {string[]} */ ([]);
-  let say = /** @type {string | null} */ (null), next = /** @type {string[] | null} */ (null), alpha = false, recipe = /** @type {Recipe | null} */ (null);
-  const took = (/** @type {any} */ pe) => { out = pe.canvas; note = pe.note; say = pe.say; next = pe.next || null; alpha = !!pe.alpha; recipe = pe.recipe || null; if (layers && pe.layers) kept = pe.layers; };
+  let say = /** @type {string | null} */ (null), next = /** @type {string[] | null} */ (null), alpha = false, recipe = /** @type {Recipe | null} */ (null), trip = /** @type {any} */ (null);
+  const took = (/** @type {any} */ pe) => { out = pe.canvas; note = pe.note; say = pe.say; next = pe.next || null; alpha = !!pe.alpha; recipe = pe.recipe || null; trip = pe.trip || null; if (layers && pe.layers) kept = pe.layers; };
   // a picture made here from a photo is made again from that photo, with this ask in its recipe
   const rec = it.subject && inputs[it.subject]?.recipe, source = rec && inputs[rec.from];
   if (rec && source && ['edit', 'restyle', 'backdrop', 'remove'].includes(it.op)) {
@@ -74,6 +74,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
       else if (THERE[made.desc?.land] || /\bmars\b/i.test(where)) say = `${inputs[it.subject]?.handle || 'it'}, ${/\bmars\b/i.test(where) ? 'on Mars' : THERE[made.desc.land]}${/\bwithout\b[^.]*\bhelmet|helmetless/i.test(words) ? ', without a helmet' : ''}.`;
       break;
     }
+    case 'trip': { took(await voyage(spec, it, inputs, seed, layers)); break; }
     case 'vary': {
       if (was) { const s = was.seed + 7919 * (i + 1); again(P.sceneAgain(was, s), { ...was, seed: s }); note = 'the same words, painted again'; break; }
       const pool = LOOKS.filter(l => !l.halftone && !l.pixel), look = it.look || pick(pool, rnd());
@@ -113,7 +114,7 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
   }
   // anything else done to a picture shows as before and after
   if (layers && !kept && subject && out && out !== subject) kept = [{ label: 'As it was', canvas: half(subject), reveal: 'fade' }, { label: note.charAt(0).toUpperCase() + note.slice(1), canvas: half(out) }];
-  return { canvas: out, note, layers: kept, shows, scene, changes, painted, say, next, alpha, recipe };
+  return { canvas: out, note, layers: kept, shows, scene, changes, painted, say, next, alpha, recipe, trip };
 }
 
 /**
@@ -180,6 +181,165 @@ function placed(src, mask, where, words, seed, ramp = null, frames = false, from
   const plan = D.dressFrom(words);
   /** @type {Recipe} */ const recipe = { from, scene: where ? { words: where, seed, edits: [] } : null, ramp, dress: plan, bare: bareHeaded(words), look: null, adjust: [], seed };
   return { ...remake(recipe, src, mask, frames, seed), recipe };
+}
+/**
+ * Where a trip goes when it is not told: four places as far apart as the device can paint, then others for the next
+ * one. Each as it is painted, as the sheet writes it under the picture, and as it is said.
+ */
+const TRIPS = /** @type {[string, string, string][]} */ ([
+  ['a beach in Lisbon at dawn', 'Lisbon, at dawn', 'Lisbon at dawn'],
+  ['a Tokyo street at night with neon signs', 'Tokyo, at night', 'Tokyo at night'],
+  ['on the moon', 'The moon', 'the moon'],
+  ['under the sea', 'Under the sea', 'under the sea'],
+  ['fields of lavender at golden hour', 'Lavender, at golden hour', 'the lavender at golden hour'],
+  ['the northern lights over a frozen lake', 'The northern lights', 'under the northern lights'],
+  ['above the clouds at sunrise', 'Above the clouds', 'above the clouds'],
+  ['a desert at sunset', 'The desert, at sunset', 'the desert at sunset'],
+  ['a rainy street in Paris at night', 'Paris, in the rain', 'Paris in the rain'],
+  ['Mars', 'Mars', 'Mars'],
+]);
+/** The sheet a trip is laid out on: two to a row, the name and the route above, each place written under its picture. @param {number} n @param {number} aspect */
+function tripLayout(n, aspect) {
+  const cells = n + (n % 2), SW = 1080, m = 50, g = 34, head = 156, under = 72, foot = 64, cw = (SW - m * 2 - g) / 2, ch = Math.round(cw * aspect);
+  const rows = Math.ceil(cells / 2), SH = Math.round(head + rows * (ch + under) + (rows - 1) * g + foot);
+  return { SW, SH, m, head, under, cw, ch, rects: Array.from({ length: cells }, (_, i) => [m + (i % 2) * (cw + g), head + Math.floor(i / 2) * (ch + under + g), cw, ch]) };
+}
+/** The shape of a trip's sheet, for its card to take before anything is on it. @param {number} n @param {number} aspect */
+export const tripAspect = (n, aspect) => { const L = tripLayout(n, aspect); return L.SW + ' / ' + L.SH; };
+/** The room's paper and hands, for what the device lays out itself. */
+function paperLook() {
+  const css = getComputedStyle(document.documentElement), v = (/** @type {string} */ n, /** @type {string} */ or) => css.getPropertyValue(n).trim() || or;
+  return { ground: v('--ground', '#f4efe6'), ink: v('--ink', '#1d1a17'), accent: v('--accent', '#d4452f'), display: v('--font-display', 'Georgia, serif'), hand: v('--font-hand', 'cursive'), mono: v('--font-mono', 'monospace') };
+}
+/**
+ * A trip's contact sheet: on the room's paper, "A trip" and the route across the top with the day, then each picture
+ * with a white edge and a shadow, written under in the room's hand. Places not yet painted are empty frames.
+ * @param {ReturnType<typeof tripLayout>} L @param {{ canvas: CanvasImageSource | null, caption: string }[]} cells @param {string} route @param {string} day
+ */
+function tripSheet(L, cells, route, day) {
+  const look = paperLook(), c = P.make(L.SW, L.SH), x = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')), r = rng(4242);
+  x.fillStyle = look.ground; x.fillRect(0, 0, L.SW, L.SH);
+  // a little tooth to the paper
+  for (let i = 0; i < 2600; i++) { x.fillStyle = r() < .5 ? 'rgb(0 0 0 / .035)' : 'rgb(255 255 255 / .05)'; x.fillRect(r() * L.SW, r() * L.SH, 1 + r() * 2, 1 + r() * 2); }
+  // the name and the route, centred, clear of the corner a picture's handle sits on; the day at the foot
+  x.fillStyle = look.ink; x.textBaseline = 'alphabetic'; x.textAlign = 'center';
+  x.font = '400 66px ' + look.display; x.fillText('A trip', L.SW / 2, 92);
+  x.font = '500 19px ' + look.mono; x.letterSpacing = '3px'; x.fillStyle = look.accent;
+  let line = route.toUpperCase(); while (line.length > 8 && x.measureText(line).width > L.SW - 260) line = line.slice(0, -2).trimEnd() + '…';
+  x.fillText(line, L.SW / 2, 130);
+  x.textAlign = 'left'; x.fillStyle = look.ink; x.globalAlpha = .5; x.fillText(day.toUpperCase(), L.m, L.SH - 26); x.letterSpacing = '0px'; x.globalAlpha = 1;
+  cells.forEach((cell, i) => {
+    const [rx, ry, rw, rh] = L.rects[i];
+    if (cell.canvas) {
+      x.save(); x.shadowColor = 'rgb(0 0 0 / .22)'; x.shadowBlur = 22; x.shadowOffsetY = 8; x.fillStyle = '#fbf8f2'; x.fillRect(rx - 7, ry - 7, rw + 14, rh + 14); x.restore();
+      x.drawImage(cell.canvas, rx, ry, rw, rh);
+    } else {
+      x.save(); x.strokeStyle = look.ink; x.globalAlpha = .2; x.lineWidth = 2; x.setLineDash([10, 9]); x.strokeRect(rx, ry, rw, rh); x.restore();
+    }
+    x.fillStyle = look.ink; x.globalAlpha = cell.canvas ? .88 : .3; x.font = '38px ' + look.hand; x.textAlign = 'left'; x.fillText(cell.caption, rx + 2, ry + rh + 52);
+    x.globalAlpha = cell.canvas ? 1 : .3; x.fillStyle = look.accent; x.font = '500 17px ' + look.mono; x.textAlign = 'right'; x.fillText(String(i + 1).padStart(2, '0'), rx + rw, ry + rh + 48);
+    x.globalAlpha = 1;
+  });
+  x.textAlign = 'left';
+  return c;
+}
+/**
+ * A trip: whoever is in the photo taken to each place in turn, in what the words dress them in, and a helmet wherever
+ * there is no air; laid out as a contact sheet with each place written under it. Odd numbers end at home, the photo as
+ * it was. Places named are taken as named; otherwise the studio picks, never the same kind of place twice, and another
+ * trip goes where the last did not. With frames: the empty sheet, then each place as it is put down.
+ * @param {any} spec @param {any} it @param {Record<string, any>} inputs @param {number} seed @param {boolean} frames
+ */
+async function voyage(spec, it, inputs, seed, frames) {
+  const inp = inputs[it.subject], was = inp?.trip || inp?.recipe || null, fromId = was?.from && inputs[was.from] ? was.from : it.subject, source = inputs[fromId];
+  const src = await P.fromBlob(source.blob, P.MAX), mask = await subjectOf(source), words = spec.text || '', who = source.handle || 'it';
+  // the room's hands, loaded before anything is written in them
+  const look = paperLook(); await Promise.all([look.display, look.hand, look.mono].map(f => document.fonts?.load('40px ' + f).catch(() => null)));
+  // where to: the places named, then the studio's picks, not the same kind of place twice
+  const landOf = (/** @type {string} */ w) => { const d = P.sceneFrom(w, null, 1); return d.inside ? 'inside:' + w : d.land + (/\bmars\b/i.test(w) ? ':mars' : ''); };
+  const stops = /** @type {{ words: string, caption: string, said: string, seed: number }[]} */ ([]), lands = new Set();
+  for (const p of it.places || []) { const bare = p.replace(/^(?:on|in|at|to)\s+/i, ''); stops.push({ words: p, caption: cap(bare), said: bare, seed: 0 }); lands.add(landOf(p)); }
+  if (stops.length < 2) {
+    const been = new Set((inp?.trip?.places || []).map((/** @type {any} */ p) => p.words)), r = rng(seed), left = TRIPS.filter(([w]) => !been.has(w));
+    while (stops.length < 4 && left.length) {
+      const [w, caption, said] = left.splice(been.size ? Math.floor(r() * left.length) : 0, 1)[0], land = landOf(w);
+      if (lands.has(land)) continue;
+      lands.add(land); stops.push({ words: w, caption, said, seed: 0 });
+    }
+  }
+  stops.forEach((s, i) => { s.seed = seed + i * 31; });
+  const dress = D.dressFrom(words) || was?.dress || null, bare = bareHeaded(words) || !!was?.bare;
+  const aspect = src.height / src.width, L = tripLayout(stops.length, aspect), home = stops.length % 2 === 1;
+  const day = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }), route = stops.map(s => s.caption.split(',')[0]).join('  ·  ');
+  const cells = /** @type {{ canvas: CanvasImageSource | null, caption: string }[]} */ ([...stops.map(s => ({ canvas: null, caption: s.caption })), ...(home ? [{ canvas: null, caption: 'And home' }] : [])]);
+  const layers = frames ? [{ label: 'The route: ' + stops.map(s => s.said).join(', '), canvas: half(tripSheet(L, cells, route, day)), reveal: 'fade' }] : null;
+  const helmeted = /** @type {boolean[]} */ ([]);
+  stops.forEach((s, i) => {
+    /** @type {Recipe} */ const rec = { from: fromId, scene: { words: s.words, seed: s.seed, edits: [] }, ramp: null, dress, bare, look: null, adjust: [], seed: s.seed };
+    const made = remake(rec, src, mask, false, s.seed);
+    helmeted.push(!!made.because);
+    cells[i].canvas = made.canvas;
+    layers?.push({ label: s.caption + (made.because ? ', in a helmet: ' + made.because : ''), canvas: half(tripSheet(L, cells, route, day)), reveal: 'sweep' });
+  });
+  if (home) { cells[cells.length - 1].canvas = src; layers?.push({ label: 'And home', canvas: half(tripSheet(L, cells, route, day)), reveal: 'fade' }); }
+  const list = stops.map((s, i) => s.said + (helmeted[i] ? ' in a helmet' : '')), spoken = list.length > 1 ? list.slice(0, -1).join(', ') + (list.length > 2 ? ',' : '') + ' and ' + list[list.length - 1] : list[0];
+  return {
+    canvas: tripSheet(L, cells, route, day), note: 'a trip: ' + stops.map(s => s.said).join(', '), layers, alpha: false, recipe: null,
+    say: who + (dress?.persona ? ', as ' + dress.persona.name : '') + ', on a trip: ' + spoken + '.', next: ['Another trip', 'Take them to Paris, Kyoto and Mars', 'In watercolour'],
+    trip: { from: fromId, places: stops, dress, bare, home, rects: L.rects, size: [L.SW, L.SH], paint: [src.width, src.height] },
+  };
+}
+/** A hint from a picture laid in a frame of a larger one (at: the frame, in fractions of it), as that one shows it. @param {any} o @param {number[]} at */
+function intoFrame(o, at) {
+  const [fx, fy, fw, fh] = at, X = (/** @type {number} */ v) => fx + v * fw, Y = (/** @type {number} */ v) => fy + v * fh, q = { ...o, s: fw, sy: fh, clip: at };
+  if (o.box) q.box = [X(o.box[0]), Y(o.box[1]), o.box[2] * fw, o.box[3] * fh];
+  for (const k of ['at', 'sun']) if (o[k]) q[k] = [X(o[k][0]), Y(o[k][1])];
+  if (o.pts) q.pts = o.pts.map((/** @type {number[]} */ p) => [X(p[0]), Y(p[1])]);
+  if (o.rects) q.rects = o.rects.map((/** @type {any[]} */ r) => [X(r[0]), Y(r[1]), r[2] * fw, r[3] * fh, r[4], r[5]]);
+  if (o.path) q.path = [X(o.path[0]), o.path[1] * fw];
+  if (o.avoid) q.avoid = [X(o.avoid[0]), Y(o.avoid[1]), o.avoid[2] * fw];
+  if (typeof o.r === 'number') q.r = o.r * fw;
+  return q;
+}
+/** One stop of a trip as a recipe: the place, and them dressed for it. @param {any} t @param {any} p @returns {Recipe} */
+const stopRecipe = (t, p) => ({ from: t.from, scene: { words: p.words, seed: p.seed, edits: [] }, ramp: null, dress: t.dress, bare: t.bare, look: null, adjust: [], seed: p.seed });
+/**
+ * A trip's sheet, alive: every frame on it playing what moves in its place, behind whoever stands in it there, and each
+ * kept to its own frame. Painted at the size each place was painted at, so a town's windows are where they were.
+ * @param {any} print @param {any} source
+ */
+async function tripLife(print, source) {
+  const t = print.provenance.trip, [SW, SH] = t.size || [print.w, print.h], [pw, ph] = t.paint || [768, 1024];
+  const src = await sizedOf(source, 256), mask = await subjectOf(source), hints = /** @type {any[]} */ ([]);
+  const front = P.make(320, Math.round(320 * SH / SW)), fc = /** @type {CanvasRenderingContext2D} */ (front.getContext('2d'));
+  t.places.forEach((/** @type {any} */ p, /** @type {number} */ i) => {
+    const [rx, ry, rw, rh] = t.rects[i], at = [rx / SW, ry / SH, rw / SW, rh / SH], rec = stopRecipe(t, p), desc = placeOf(rec);
+    if (!desc) return;
+    const L = P.lifeIn(desc, pw, ph), win = L.hints.find(o => o.k === 'window'), pane = win ? intoFrame(win, at) : null;
+    for (const o of L.hints) if (o.k !== 'arch' && o.k !== 'window') { const q = intoFrame(o, at); if (q.win) q.pane = pane; hints.push(q); }
+    const box = /** @type {[number, number, number, number]} */ ([at[0] * front.width, at[1] * front.height, at[2] * front.width, at[3] * front.height]);
+    fc.drawImage(L.front, ...box);
+    if (mask) { const { plan } = planFor(rec, desc); fc.drawImage(plan ? D.dressUp(src, mask, plan, P.make(src.width, src.height), null, p.seed).canvas : P.composite(src, mask, null), ...box); }
+  });
+  return hints.length ? { hints, front } : null;
+}
+/**
+ * A trip, to be travelled in a film: for each place, the place painted without them, them as they are dressed there,
+ * and what moves there; then home, the photo as it was, and them on nothing. At a width w.
+ * @param {any} print @param {any} source @param {number} w
+ */
+export async function tripOf(print, source, w) {
+  const t = print.provenance?.trip;
+  if (!t || !source?.blob) return null;
+  const big = await P.fromBlob(source.blob, P.MAX), sw = w, sh = Math.round(w * big.height / big.width), src = P.copy(big, sw, sh), mask = await subjectOf(source);
+  const me = mask ? P.composite(src, mask, null) : null;
+  const stops = t.places.map((/** @type {any} */ p) => {
+    const rec = stopRecipe(t, p), desc = placeOf(rec) || P.sceneFrom(p.words, null, p.seed), back = P.scene(desc, sw, sh), { plan } = planFor(rec, desc);
+    const person = mask ? (plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, p.seed).canvas : me) : null;
+    const L = P.lifeIn(desc, sw, sh); if (person) L.front.getContext('2d')?.drawImage(person, 0, 0, L.front.width, L.front.height);
+    return { back, person, life: { ...L, person, picture: back }, caption: p.caption };
+  });
+  return { stops, home: src, me };
 }
 /** What a recipe has them wear: what was asked, and a helmet where there is no air unless they go without. @param {Recipe} rec @param {any} desc */
 function planFor(rec, desc) {
@@ -284,6 +444,7 @@ export async function makingOf(print, source = null) {
  * @returns {Promise<import('../ui/life.js').Life | null>}
  */
 export async function lifeOf(print, source = null, o = {}) {
+  if (print.provenance?.trip) return source?.blob ? tripLife(print, source) : null;
   const rec = print.provenance?.recipe, kept = print.provenance?.scene;
   if (rec ? !rec.scene || rec.look || rec.profile || rec.adjust?.length || !source?.blob : !kept || kept.look) return null;
   const desc = rec ? placeOf(rec) : P.sceneAgain(kept);
@@ -494,7 +655,7 @@ export const local = {
     const gate = async ms => { await sleep(ms); if (cancelled.has(spec.id)) throw Object.assign(new Error('Stopped.'), { cancelled: true }); };
     // something new is painted in layers you can watch, each with its note; a picture you have develops as before
     const was = spec.intent.subject && inputs[spec.intent.subject];
-    const paints = !was || spec.intent.op === 'create' || (!!was.scene && ['edit', 'restyle', 'vary'].includes(spec.intent.op));
+    const paints = !was || spec.intent.op === 'create' || spec.intent.op === 'trip' || (!!was.scene && ['edit', 'restyle', 'vary'].includes(spec.intent.op));
     // the making starts at once, while the request is still being read: the reading is real time, not a pause
     const making = (async () => { const out = []; for (let i = 0; i < n; i++) out.push(await sketch(spec, inputs, i, P.MAX, { layers: true })); return out; })();
     making.catch(() => {});
@@ -532,7 +693,7 @@ export const local = {
     yield { type: 'stage', stage: 'finish' }; await gate(total * (most ? .04 : .08));
     for (let i = 0; i < n; i++) {
       const c = P.stamp(P.copy(made[i].canvas)), blob = await P.toBlob(c, made[i].alpha ? 'image/png' : 'image/jpeg');
-      yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + made[i].note, ...(made[i].scene ? { scene: made[i].scene } : {}), ...(made[i].recipe ? { recipe: made[i].recipe } : {}) } };
+      yield { type: 'result', index: i, blob, w: c.width, h: c.height, provenance: { kind: 'sketch', label: 'Sketch', detail: 'Drawn on this device · ' + made[i].note, ...(made[i].scene ? { scene: made[i].scene } : {}), ...(made[i].recipe ? { recipe: made[i].recipe } : {}), ...(made[i].trip ? { trip: made[i].trip } : {}) } };
     }
     const handle = id => inputs[id]?.handle || 'it';
     const said = made[0]?.say ? made[0].say : made[0]?.changes?.length ? `${handle(spec.intent.subject)}, painted again: ${made[0].changes.join(', ')}.`

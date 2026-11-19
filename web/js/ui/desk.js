@@ -131,7 +131,7 @@ export function deskScreen() {
     else if (lastPrints && lastPrints.type === 'prints') {
       // a photo you brought is usually of someone: the ideas are things to do with a person
       const photo = lastPrints.prints.some((/** @type {string} */ id) => ['upload', 'camera'].includes(printById(id)?.origin));
-      comp.setIdeas(photo ? ['Put them on the moon', 'Make them a superhero', 'In watercolour', 'As a profile picture'] : ['Make it a watercolour', 'Give it a new backdrop', 'Three variations', 'Golden hour light'], t => sendIdea(t, lastPrints.prints));
+      comp.setIdeas(photo ? ['Put them on the moon', 'Take them on a trip', 'Make them a superhero', 'In watercolour', 'As a profile picture'] : ['Make it a watercolour', 'Give it a new backdrop', 'Three variations', 'Golden hour light'], t => sendIdea(t, lastPrints.prints));
     }
     else if (last?.suggestions?.length) comp.setIdeas(last.suggestions.filter(s => !(s.room && atmosphere.room.said === s.room)), (t, el) => (t.room ? moveTo(t.room, el?.getBoundingClientRect() || null) : sendIdea(t.text || t, last.prints)));
     else comp.setIdeas([], () => {});

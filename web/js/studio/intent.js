@@ -41,6 +41,20 @@ function placedIn(t, looks) {
   // "in front of" always means a backdrop, and so does somewhere no map has; "on", "at", "in" only when what follows is a place
   return /in front of$/.test(prep) || FAR.test(where.toLowerCase()) || readVibe(where).some(x => x.cue.kind === 'place' || x.cue.kind === 'venue') ? where : null;
 }
+/**
+ * A trip: someone taken to several places in one go. "Take @A on a trip", "@A around the world", "another trip", or a
+ * list of places ("take her to Lisbon, Kyoto and the moon"). The places as they were named; the studio picks the rest.
+ */
+const TRIP = /\b(?:(?:on|for) (?:a |an )?(?:trip|journey|tour|holiday|vacation|adventure)|(?:another|a|the) (?:trip|journey|tour)|around the world|round the world|world ?tour|road ?trip|travel(?:s|ling|led|ing)?|postcards? from|take (?:me|us|her|him|them|it|@[a-z]{1,2}) (?:places|everywhere|travell?ing))\b/;
+/** The places in "to Lisbon, Kyoto and the moon", each as it was typed. @param {string} t */
+export function tripPlaces(t) {
+  const m = t.match(/\b(?:to|through|via)\s+((?:(?!\bas an?\b)[^.!?;])+)/i);
+  if (!m) return [];
+  return m[1].split(/\s*,\s*(?:and\s+|then\s+)?|\s+(?:and|then)\s+/i).map(s => s.trim()).filter(s => s && s.length < 60).slice(0, 6);
+}
+/** Whether a few words name a place: somewhere no map has, a name, or what reads as a place. @param {string} p */
+const placeish = p => FAR.test(p.toLowerCase()) || (/^[A-Z][a-z]/.test(p) && !/^(?:I|It|My|Your|His|Her|Their|Our|A|An|The)\b/.test(p)) || readVibe(p).some(x => x.cue.kind === 'place' || x.cue.kind === 'venue');
+
 /** "Take me to a rainy Tokyo jazz bar", "let's go somewhere cosy", "change the room to noir": the whole place, not a picture. */
 const ROOM = /^\s*(?:please\s+)?(?:(?:take|bring) (?:me|us) (?:to|into|(?=somewhere))|move (?:me |us )?(?:to|into)|let['’]?s go (?:to|into|(?=somewhere))|change the room to|switch the room to|make (?:this|the|my) (?:room|place|desk|app) (?:feel )?(?:like|into)|turn (?:this|the) (?:room|place|desk) into|redecorate (?:as|like)|room:)\s*(.+)$/i;
 
@@ -82,8 +96,12 @@ export function readIntent(text, ctx) {
   const where = subject && !pins.length ? placedIn(t, ctx.looks) : null; // "at sunset" there belongs to the place, not a look
   const look = ctx.look || (where ? null : lookFromWords(low, ctx.looks, { moods: !!subject })) || null; // with nothing to restyle, a mood is part of what to paint
 
+  // a trip: the words say so, or name two places or more to be taken to
+  const named = subject && !pins.length ? tripPlaces(t) : [], listed = named.filter(placeish);
+  const trip = !!subject && !pins.length && (TRIP.test(low) || (listed.length >= 2 && /\b(?:take|send|bring|fly|whisk)\b/.test(low)));
   let op = 'create';
   if (pins.length) op = 'region';
+  else if (trip) op = 'trip';
   else if (subject && (where || /(background|backdrop|behind (her|him|them|it|me)|scene behind|setting|surroundings|put (her|him|them|it|me) (in|on|at))/.test(low))) op = 'backdrop';
   else if (subject && /\b(remove|erase|get rid of|delete|take out|without)\b/.test(low)) op = 'remove';
   else if (subject && !look && /(variation|alternative|another take|different take|more like (this|that|it|the)|riff|remix|three takes|few takes)/.test(low)) op = 'vary';
@@ -96,11 +114,11 @@ export function readIntent(text, ctx) {
   const n = cm ? COUNT[cm[1]] : op === 'vary' ? 3 : 1;
   const pace = /\b(quick|quickly|fast|rough|draft)\b/.test(low) ? 'quick' : /\b(detailed|careful|carefully|best|high quality|masterpiece|perfect)\b/.test(low) ? 'deep' : null;
   // dressing up: who they are to be ("as a superhero"), or what they are to wear ("a crown")
-  const dressed = subject && ['edit', 'restyle', 'backdrop'].includes(op) ? dressFrom(t) : null, dress = dressed ? (dressed.persona ? 'as ' + dressed.persona.name : pieceList(dressed.pieces)) : '';
-  return { op, subject, refs: [...refs, ...others], look, n: Math.min(4, n), pace, pins, ...(op === 'backdrop' && where ? { where } : {}), ...(dress ? { dress } : {}) };
+  const dressed = subject && ['edit', 'restyle', 'backdrop', 'trip'].includes(op) ? dressFrom(t) : null, dress = dressed ? (dressed.persona ? 'as ' + dressed.persona.name : pieceList(dressed.pieces)) : '';
+  return { op, subject, refs: [...refs, ...others], look: op === 'trip' ? null : look, n: op === 'trip' ? 1 : Math.min(4, n), pace, pins, ...(op === 'backdrop' && where ? { where } : {}), ...(op === 'trip' ? { places: listed } : {}), ...(dress ? { dress } : {}) };
 }
 
-const LABEL = { room: 'Move to', create: 'Paint something new', edit: 'Change', restyle: 'Restyle', reference: 'Change', blend: 'Blend', region: 'Change part of', backdrop: 'New backdrop for', remove: 'Remove from', vary: 'Variations of' };
+const LABEL = { room: 'Move to', create: 'Paint something new', edit: 'Change', restyle: 'Restyle', reference: 'Change', blend: 'Blend', region: 'Change part of', backdrop: 'New backdrop for', remove: 'Remove from', vary: 'Variations of', trip: 'A trip for' };
 /** The reading as short phrases for the strip above the composer. */
 export function describeIntent(it, handleOf) {
   const h = id => handleOf(id) || '?', out = [];
@@ -111,6 +129,7 @@ export function describeIntent(it, handleOf) {
   if (it.op === 'region') out.push({ k: 'pin', text: it.pins.map(p => '①②③④⑤⑥⑦⑧⑨'[p.n - 1] || p.n).join(' ') });
   for (const r of it.refs) if (r.role !== 'with' || it.op !== 'blend') out.push({ k: 'ref', text: r.role === 'style' ? `${h(r.id)}’s style` : r.role === 'backdrop' ? `${h(r.id)} as backdrop` : `with ${h(r.id)}` });
   if (it.op === 'backdrop' && it.where) out.push({ k: 'look', text: it.where.length > 30 ? it.where.slice(0, 29) + '…' : it.where });
+  if (it.op === 'trip') { const to = (it.places || []).join(', '); out.push({ k: 'look', text: !to ? 'four places, alive' : to.length > 30 ? to.slice(0, 29) + '…' : to }); }
   if (it.look) out.push({ k: 'look', text: it.look.name });
   if (it.n > 1) out.push({ k: 'n', text: '×' + it.n });
   return out;

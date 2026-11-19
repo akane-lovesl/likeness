@@ -78,7 +78,8 @@ export function jobEl(item, { onOpen, onIdea, onRetry }) {
 function tick(card) {
   const { item } = card;
   if (!card.el.isConnected && card.el.parentNode === null && Date.now() - item.startedAt > 2000) { /* detached: keep counting quietly */ }
-  const elapsed = Date.now() - item.startedAt, p = progressAt(elapsed, item.eta), left = item.eta - elapsed;
+  // the fuse only ever burns forward, even when the estimate grows
+  const elapsed = Date.now() - item.startedAt, p = card.burnt = Math.max(card.burnt || 0, progressAt(elapsed, item.eta)), left = item.eta - elapsed;
   for (const f of card.frames) if (!f.done) f.fuse.set(p);
   card.eta.textContent = left > 1500 ? eta(left) + ' left' : elapsed > item.eta * 1.25 ? 'a little longer than usual' : 'nearly there';
 }

@@ -5,6 +5,7 @@
  */
 import { lookFromWords } from './looks.js';
 import { readVibe } from '../room/maker.js';
+import { dressFrom, pieceList } from './dress.js';
 
 const ORD = { first: 0, '1st': 0, second: 1, '2nd': 1, third: 2, '3rd': 2, fourth: 3, '4th': 3, fifth: 4, '5th': 4 };
 const COUNT = { two: 2, three: 3, four: 4, 'a couple of': 2, 'a few': 3, '2': 2, '3': 3, '4': 4 };
@@ -22,13 +23,23 @@ const SET_AFTER = /^\s*as (?:the |a )?(?:background|backdrop|setting|scene)/;
  * Someone put somewhere: "@A on a beach", "put her in front of a lighthouse at sunset", "@A in Paris at night". A new
  * backdrop when what follows reads as a place; a medium there makes it a restyle instead ("@A in watercolour").
  */
-const PLACED = /(?:^\s*(?:put (?:it|her|him|them|me) )?|(?:@[a-z]{1,2}\b|\b(?:her|him|them|me|us|it|she(?:['’]s| is)?|he(?:['’]s| is)?|they(?:['’]re| are)?))[,\s]+)(?:(?:standing|sitting|walking|posing|stood|sat|lying|out)\s+)?(?:in front of|on top of|on|at|in|into|onto|by|beside|under|among|inside|outside)\s+(.+)$/;
+const PLACED = /(?:^\s*(?:put (?:it|her|him|them|me) )?|(?:@[a-z]{1,2}\b|\b(?:her|him|them|me|us|it|she(?:['’]s| is)?|he(?:['’]s| is)?|they(?:['’]re| are)?))[,\s]+)(?:(?:standing|sitting|walking|posing|stood|sat|lying|out|floating|flying|swimming)\s+)?(?:in front of|on top of|on|at|in|into|onto|by|beside|under|among|inside|outside|above)\s+(.+)$/;
+/** Places no map has, which count as places all the same: the moon, Mars, space, the clouds, the bottom of the sea. */
+const FAR = /^(?:the\s+)?(?:moon|mars|space|outer space|stars|clouds|sky|heavens?|sea ?bed|ocean floor|deep sea|bottom of the (?:sea|ocean))\b/;
+const UNDERWATER = /(?:@[a-z]{1,2}\b|\b(?:her|him|them|me|us|it))[,\s]+(?:(?:swimming|diving|floating)\s+)?(?:underwater|under water)\b/;
 /** @param {string} t @param {any[] | undefined} looks */
 function placedIn(t, looks) {
+  if (UNDERWATER.test(t.toLowerCase())) return 'underwater';
   const m = t.toLowerCase().match(PLACED), end = m ? m.index + m[0].length : 0, where = m ? t.slice(end - m[1].length, end).replace(/[.!?]+$/, '').trim() : ''; // in the words as they were typed
   if (!where || lookFromWords(where, looks, { moods: false })) return null;
-  // "in front of" always means a backdrop; "on", "at", "in" only when what follows is a place
-  return /in front of\s*$/.test(m[0].slice(0, m[0].length - m[1].length).trim()) || readVibe(where).some(x => x.cue.kind === 'place' || x.cue.kind === 'venue') ? where : null;
+  const prep = m[0].slice(0, m[0].length - m[1].length).trim();
+  // under the sea is somewhere else than the sea, and above the clouds than the clouds
+  if (/\bunder$/.test(prep) && /^(?:the\s+)?(?:sea|ocean|water|waves)\b/i.test(where)) return 'under ' + where;
+  if (/\babove$/.test(prep) && FAR.test(where.toLowerCase())) return 'above ' + where;
+  // a name the device does not know, said as a name ("in Cape Town", "at Hogwarts"), is somewhere all the same
+  if (/^(?:in|at|on|by|into|outside|inside)$/.test(prep.split(/\s+/).pop() || '') && /^[A-Z][a-z]/.test(where) && !/^(?:I|It|Its|My|Your|His|Her|Their|Our|A|An|The)\b/.test(where)) return where;
+  // "in front of" always means a backdrop, and so does somewhere no map has; "on", "at", "in" only when what follows is a place
+  return /in front of$/.test(prep) || FAR.test(where.toLowerCase()) || readVibe(where).some(x => x.cue.kind === 'place' || x.cue.kind === 'venue') ? where : null;
 }
 /** "Take me to a rainy Tokyo jazz bar", "let's go somewhere cosy", "change the room to noir": the whole place, not a picture. */
 const ROOM = /^\s*(?:please\s+)?(?:(?:take|bring) (?:me|us) (?:to|into|(?=somewhere))|move (?:me |us )?(?:to|into)|let['’]?s go (?:to|into|(?=somewhere))|change the room to|switch the room to|make (?:this|the|my) (?:room|place|desk|app) (?:feel )?(?:like|into)|turn (?:this|the) (?:room|place|desk) into|redecorate (?:as|like)|room:)\s*(.+)$/i;
@@ -84,7 +95,9 @@ export function readIntent(text, ctx) {
   const cm = low.match(/\b(two|three|four|a couple of|a few|[234])\s+(versions|variations|options|takes|images|pictures|ideas|alternatives|of them|more)\b/);
   const n = cm ? COUNT[cm[1]] : op === 'vary' ? 3 : 1;
   const pace = /\b(quick|quickly|fast|rough|draft)\b/.test(low) ? 'quick' : /\b(detailed|careful|carefully|best|high quality|masterpiece|perfect)\b/.test(low) ? 'deep' : null;
-  return { op, subject, refs: [...refs, ...others], look, n: Math.min(4, n), pace, pins, ...(op === 'backdrop' && where ? { where } : {}) };
+  // dressing up: who they are to be ("as a superhero"), or what they are to wear ("a crown")
+  const dressed = subject && ['edit', 'restyle', 'backdrop'].includes(op) ? dressFrom(t) : null, dress = dressed ? (dressed.persona ? 'as ' + dressed.persona.name : pieceList(dressed.pieces)) : '';
+  return { op, subject, refs: [...refs, ...others], look, n: Math.min(4, n), pace, pins, ...(op === 'backdrop' && where ? { where } : {}), ...(dress ? { dress } : {}) };
 }
 
 const LABEL = { room: 'Move to', create: 'Paint something new', edit: 'Change', restyle: 'Restyle', reference: 'Change', blend: 'Blend', region: 'Change part of', backdrop: 'New backdrop for', remove: 'Remove from', vary: 'Variations of' };
@@ -93,7 +106,8 @@ export function describeIntent(it, handleOf) {
   const h = id => handleOf(id) || '?', out = [];
   const subj = it.subject ? ' ' + h(it.subject) : '';
   if (it.op === 'blend') out.push({ k: 'op', text: `Blend ${[it.subject, ...it.refs.map(r => r.id)].filter(Boolean).map(h).join(' + ')}` });
-  else out.push({ k: 'op', text: LABEL[it.op] + (it.op === 'create' ? '' : subj) });
+  else out.push({ k: 'op', text: (it.dress && it.op === 'edit' ? 'Dress up' : LABEL[it.op]) + (it.op === 'create' ? '' : subj) });
+  if (it.dress) out.push({ k: 'look', text: it.dress.length > 30 ? it.dress.slice(0, 29) + '…' : it.dress });
   if (it.op === 'region') out.push({ k: 'pin', text: it.pins.map(p => '①②③④⑤⑥⑦⑧⑨'[p.n - 1] || p.n).join(' ') });
   for (const r of it.refs) if (r.role !== 'with' || it.op !== 'blend') out.push({ k: 'ref', text: r.role === 'style' ? `${h(r.id)}’s style` : r.role === 'backdrop' ? `${h(r.id)} as backdrop` : `with ${h(r.id)}` });
   if (it.op === 'backdrop' && it.where) out.push({ k: 'look', text: it.where.length > 30 ? it.where.slice(0, 29) + '…' : it.where });

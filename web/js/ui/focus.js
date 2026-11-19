@@ -217,7 +217,9 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
    * offers to paint it so, or to put the sun back. Only where the device does the painting: anywhere else, a preview
    * drawn here would promise a picture the studio will not make.
    */
-  if (studio.mode === 'showcase' && print.provenance?.scene) holdTheSun(print.provenance.scene);
+  // a picture put somewhere from a photo has its place in its recipe: the sun moves over that place, the person stays
+  const recipe = print.provenance?.recipe, from = recipe?.scene && printById(recipe.from);
+  if (studio.mode === 'showcase' && (print.provenance?.scene || from)) holdTheSun(print.provenance?.scene || recipe.scene);
   function holdTheSun(kept) {
     const tall = (/** @type {number} */ w) => Math.round(w * (print.h || 4) / (print.w || 3));
     let at = null;
@@ -259,7 +261,8 @@ export function openFocus(print, fromEl, { onSend, onUse }) {
       if (busy) { queued = [w, hh]; return; }
       busy = true;
       await new Promise(r => requestAnimationFrame(r));
-      const c = await proofOf({ text: `@${print.handle} ${words()}`, intent: relight(), sun }, { [print.id]: { blob: print.blob, handle: print.handle, scene: kept } }, w, hh).catch(() => null);
+      const ins = from ? { [print.id]: { blob: print.blob, handle: print.handle, recipe }, [from.id]: { blob: from.blob, handle: from.handle } } : { [print.id]: { blob: print.blob, handle: print.handle, scene: kept } };
+      const c = await proofOf({ text: `@${print.handle} ${words()}`, intent: relight(), sun }, ins, w, hh).catch(() => null);
       busy = false;
       if (c && open === el) { view.width = c.width; view.height = c.height; view.getContext('2d').drawImage(c, 0, 0); view.classList.toggle('is-in', moved); }
       if (queued) { const [qw, qh] = queued; queued = null; paint(qw, qh); }

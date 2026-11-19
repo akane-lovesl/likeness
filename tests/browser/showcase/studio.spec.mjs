@@ -158,7 +158,7 @@ test('a picture put somewhere gets a new backdrop: “@A on a beach in Lisbon”
   await expect(page.getByText('A, somewhere new: a beach in Lisbon.')).toBeVisible({ timeout: 30_000 });
 });
 
-test('dressing up: on the moon in a helmet, and a superhero in a cape, painted on and said so', async ({ page }) => {
+test('dressing up, and a picture that remembers: on the moon in a helmet, then a superhero, then without the helmet, and the sun still moves', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('button.bring__opt').first().click()]);
@@ -168,12 +168,19 @@ test('dressing up: on the moon in a helmet, and a superhero in a cape, painted o
   await expect(page.locator('.plan-pill[data-k="op"]')).toHaveText('New backdrop for A');
   await page.locator('button.send').click();
   await expect(page.getByText('A, on the moon, in a helmet: there’s no air up there.')).toBeVisible({ timeout: 30_000 });
-  await page.locator('.composer textarea').fill('make @A a superhero');
-  await expect(page.locator('.plan-pill[data-k="op"]')).toHaveText('Dress up A');
+  // made again from the photo, not cut out of the cut-out: still on the moon, still in the helmet
+  await page.locator('.composer textarea').fill('make @B a superhero');
+  await expect(page.locator('.plan-pill[data-k="op"]')).toHaveText('Dress up B');
   await expect(page.locator('.reading')).toContainText('as a superhero');
   await page.locator('button.send').click();
-  await expect(page.getByText('A, as a superhero: a cape, the city at night behind.')).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator('figure.print')).toHaveCount(3);
+  await expect(page.getByText('B, as a superhero: a cape, on the moon, in a helmet: there’s no air up there.')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.composer textarea').fill('@C without the helmet');
+  await page.locator('button.send').click();
+  await expect(page.getByText('C, on the moon, without a helmet.')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('figure.print')).toHaveCount(4);
+  await page.locator('figure.print').last().click();
+  await expect(page.locator('.focus')).toContainText('made again from A’s photo');
+  await expect(page.locator('button.sun')).toBeVisible();
 });
 
 test('the device does what it honestly can to a photo, and says plainly when it cannot', async ({ page }) => {

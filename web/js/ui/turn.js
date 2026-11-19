@@ -134,7 +134,7 @@ export async function runTurn(t) {
   const room = atmosphere.room, n = t.n || t.intent.n || 1, id = uid('j-');
   const inputs = {};
   for (const pid of [t.intent.subject, ...t.intent.refs.map(r => r.id), ...(t.intent.pins || []).map(p => p.print)].filter(Boolean)) {
-    const p = printById(pid); if (p) inputs[pid] = { blob: p.blob, handle: p.handle, w: p.w, h: p.h, scene: p.provenance?.scene || null };
+    const p = printById(pid); if (p) inputs[pid] = { blob: p.blob, handle: p.handle, w: p.w, h: p.h, scene: p.provenance?.scene || null, recipe: p.provenance?.recipe || null };
   }
   const subject = t.intent.subject && printById(t.intent.subject);
   const ar = subject?.w ? `${subject.w} / ${subject.h}` : '3 / 4';
@@ -154,6 +154,8 @@ export async function runTurn(t) {
       for (const f of card.frames) if (!f.done) { f.draft.hidden = false; showOn(f.draft, canvas); f.label.textContent = 'Draft · on this device'; }
     }).catch(() => {});
   }
+  // a picture the device made from a photo is made again from that photo: the photo goes along, unasked
+  if (!studio.live) for (const v of Object.values(inputs)) { const from = v.recipe?.from, s = from && !inputs[from] && printById(from); if (s) inputs[from] = { blob: s.blob, handle: s.handle, w: s.w, h: s.h, scene: null, recipe: s.provenance?.recipe || null }; }
   await develop(item, studio.engine.turn(spec, inputs), { learn: true });
   return item;
 }

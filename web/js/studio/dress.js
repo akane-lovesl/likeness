@@ -47,9 +47,7 @@ export function dressFrom(text) {
   const persona = PERSONAS.find(([re]) => re.test(t))?.[1] || null, pieces = new Set(persona?.pieces || []);
   let rest = t;
   for (const [re, id] of PIECES) if (re.test(rest)) { pieces.add(id); rest = rest.replace(new RegExp(re.source, 'g'), ' '); }
-  // what is taken off: "without the helmet", "no wings"
-  const off = /** @type {string[]} */ ([]);
-  for (const m of t.matchAll(/\b(?:without|no|minus|lose|take off|leave off)\s+(?:a |an |the |any |his |her |their |its |my )?([a-z’' ]{3,24})/g)) for (const [re, id] of PIECES) if (re.test(m[1])) off.push(id);
+  const off = takenOff(t);
   for (const id of off) pieces.delete(id);
   if (!pieces.size) return null;
   // colours said with a piece: "a blue cape", "a silver crown"
@@ -60,6 +58,13 @@ export function dressFrom(text) {
     for (const id of NOUN[m[2].replace(/s$/, '')] || NOUN[m[2]] || []) if (pieces.has(id)) colours[id] = c;
   }
   return { pieces: [...pieces], persona, colours, place: persona?.place || null, glow: persona?.glow || null, trim: !!persona?.trim, sparkle: !!persona?.sparkle, confetti: !!persona?.confetti, off };
+}
+/** What the words take off: "without the helmet", "no wings", "take the crown off". @param {string} text */
+export function takenOff(text) {
+  const t = String(text || '').toLowerCase(), off = /** @type {string[]} */ ([]);
+  for (const m of t.matchAll(/\b(?:without|no|minus|lose|take off|leave off|remove|take away)\s+(?:a |an |the |any |his |her |their |its |my )?([a-z’' ]{3,24})/g)) for (const [re, id] of PIECES) if (re.test(m[1])) off.push(id);
+  for (const m of t.matchAll(/\btake (?:the |her |his |their |its |my )?([a-z’' ]{3,20}?) off\b/g)) for (const [re, id] of PIECES) if (re.test(m[1])) off.push(id);
+  return [...new Set(off)];
 }
 /** The pieces as a phrase: "a cape and a crown". @param {string[]} pieces */
 export function pieceList(pieces) {
@@ -75,7 +80,8 @@ export function pieceList(pieces) {
 export function figureOf(mask, w, h) {
   const guess = { cx: w * .5, top: h * .12, headW: w * .34, headH: h * .3, neck: h * .42, neckW: w * .14, sy: h * .52, sl: w * .1, sr: w * .9, found: false };
   if (!mask) return guess;
-  const mw = 128, mh = Math.max(1, Math.round(mw * h / w)), d = copy(mask, mw, mh).getContext('2d').getImageData(0, 0, mw, mh).data;
+  const mw = 128, mh = Math.max(1, Math.round(mw * h / w)), small = make(mw, mh), sx = /** @type {CanvasRenderingContext2D} */ (small.getContext('2d', { willReadFrequently: true }));
+  sx.drawImage(mask, 0, 0, mw, mh); const d = sx.getImageData(0, 0, mw, mh).data;
   const L = new Int16Array(mh).fill(-1), R = new Int16Array(mh).fill(-1);
   for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) if (d[(y * mw + x) * 4 + 3] > 128) { if (L[y] < 0) L[y] = x; R[y] = x; }
   let y0 = 0; while (y0 < mh && L[y0] < 0) y0++;

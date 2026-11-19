@@ -203,6 +203,14 @@ html:not([data-dark]) .mr-glow { filter: blur(13cqw) saturate(1.2) brightness(1.
 .mr-over { opacity: 0; }
 .mr-over.is-in { animation: lk-reveal .45s var(--lk-ease) forwards; }
 .mr-over.is-held { opacity: 1; animation: none; clip-path: none; }
+/* the first picture back from the studio: swept in across the face as it was, by a line of light, as the Lookbook's
+   looks come in */
+.mr-over.is-sweep { opacity: 1; animation: mr-sweep 1.25s cubic-bezier(.65, 0, .3, 1) both; }
+.mr-glint { position: absolute; top: 0; bottom: 0; left: 0; width: 2.6cqw; margin-left: -1.3cqw; opacity: 0; pointer-events: none; mix-blend-mode: screen;
+  background: linear-gradient(90deg, transparent, rgb(255 244 224 / .95), transparent); filter: blur(.6cqw); }
+.mr-glint.is-on { animation: mr-glint 1.25s cubic-bezier(.65, 0, .3, 1) both; }
+@keyframes mr-sweep { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+@keyframes mr-glint { 0% { left: 0; opacity: 0; } 6%, 94% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
 .mr-read, .mr-wash, .mr-paint, .mr-sketch { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; transition: opacity .3s; }
 /* painted looks fall into place; while one is reshaped its pencil shows, and the paint waits, faint, for the hand to lift */
 .mr-paint.is-new { -webkit-mask-image: linear-gradient(#000 0 45%, transparent 55% 100%); mask-image: linear-gradient(#000 0 45%, transparent 55% 100%); -webkit-mask-size: 100% 220%; mask-size: 100% 220%; animation: lk-fall .8s cubic-bezier(.3,.7,.2,1) both; }

@@ -76,6 +76,10 @@ test('the mirror tries a look on: four takes inside the part\'s mask, one kept, 
   await expect(mirror.locator('.mr-words__say')).not.toHaveText('Asked', { timeout: 20_000 });
   await expect(mirror).toHaveClass(/has-preview/, { timeout: 40_000 });
   await expect(mirror.locator('.mr-stamp')).toHaveText('Preview');
+  // the first picture back is swept in across the face by the Lookbook's line of light, and the wait is over with it
+  await page.waitForSelector('section.mr .mr-over.is-sweep', { timeout: 60_000 });
+  await expect(mirror).not.toHaveClass(/is-working/);
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated');
   await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(4, { timeout: 60_000 });
   await expect(mirror).not.toHaveClass(/is-working/);
   await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated');

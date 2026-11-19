@@ -149,6 +149,8 @@ export function openMirror(o) {
 
   const glow = h('div.mr-glow', { 'aria-hidden': 'true' });
   const pic = h('img.mr-pic', { alt: '', draggable: false }), over = h('img.mr-pic.mr-over', { alt: '', draggable: false });
+  // the light a picture arriving from the studio is swept in by, as the Lookbook's looks are
+  const glint = h('i.mr-glint', { 'aria-hidden': 'true' });
   // while the studio works: its previews developing in place, a light over what it is changing, its words in the frame
   const preview = /** @type {HTMLImageElement} */ (h('img.mr-pic.mr-preview', { alt: '', draggable: false })), workEl = h('div.mr-work', { 'aria-hidden': 'true' });
   const sayNow = h('span.mr-words__say'), etaEl = h('span.mr-words__eta'), wordsEl = h('p.mr-words', { 'aria-live': 'polite' }, sayNow, etaEl);
@@ -166,7 +168,7 @@ export function openMirror(o) {
   const handlesEl = h('div.mr-handles'), sayEl = h('div.mr-say', { 'aria-live': 'polite' });
   // what leans in when a part is chosen: the picture and everything drawn on it, not the notes in its margins
   const marksEl = /** @type {HTMLCanvasElement} */ (h('canvas.mr-marks', { 'aria-hidden': 'true' }));
-  const lens = h('div.mr-lens', null, pic, over, preview, turnView, wash, paintEl, read, workEl, sk, marksEl, handlesEl);
+  const lens = h('div.mr-lens', null, pic, over, glint, preview, turnView, wash, paintEl, read, workEl, sk, marksEl, handlesEl);
   const INKS = ['#ff3b5c', '#ffd43b', '#ffffff'];
   const drawBar = h('div.mr-drawbar', { role: 'toolbar', 'aria-label': 'Drawing' },
     ...INKS.map((c, i) => h('button.mr-drawbar__ink', { type: 'button', 'aria-label': ['Red', 'Yellow', 'White'][i] + ' pen', 'aria-pressed': String(i === 0), style: { '--pen': c }, onclick: (/** @type {Event} */ e) => { ink = c; drawBar.querySelectorAll('.mr-drawbar__ink').forEach(b => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } })),
@@ -434,13 +436,16 @@ export function openMirror(o) {
   /** A pick's shape, as one comparable string. @param {Pick} q */
   const shapeKey = (q) => Object.entries(q.shape || {}).filter(([, v]) => Math.abs(v) > .02).sort().map(([k, v]) => k + v.toFixed(2)).join(',');
   /** The new picks, drawn over the face the way a stylist marks up a photo: strokes for shapes, washes for colours. */
+  /** The parts of the look that could not be painted on the picture on show, which keep their pencil. @type {Set<string>} */
+  let bare = new Set();
+  function unbare(/** @type {Set<string>} */ now) { bare = now; for (const g of sk.querySelectorAll('g[data-part]')) { const p = /** @type {SVGGElement} */ (g).dataset.part || ''; g.classList.toggle('is-painted', PAINTED.has(p) && !bare.has(p)); } }
   function drawSketch() {
     sk.replaceChildren(); if (!face) return;
     sk.setAttribute('viewBox', '0 0 ' + face.w + ' ' + face.h);
     const now = fresh(); let k = 0;
     for (const q of now) {
       const strokes = markup(face, q.part, q.style.id, q.shape); if (!strokes.length) continue;
-      const g = document.createElementNS(SVG, 'g'); g.dataset.part = q.part; if (PAINTED.has(q.part)) g.classList.add('is-painted');
+      const g = document.createElementNS(SVG, 'g'); g.dataset.part = q.part; if (PAINTED.has(q.part) && !bare.has(q.part)) g.classList.add('is-painted');
       for (const s of strokes) { const d = document.createElementNS(SVG, 'path'); d.setAttribute('d', s.d); d.setAttribute('stroke-width', s.w.toFixed(2)); d.setAttribute('pathLength', '1'); d.style.setProperty('--k', String(Math.min(30, k++))); g.append(d); }
       sk.append(g);
     }
@@ -455,18 +460,19 @@ export function openMirror(o) {
     x.clearRect(0, 0, wash.width, wash.height); if (w) x.drawImage(w, 0, 0, wash.width, wash.height);
     // then what is painted from the picture itself, in its own colours (or the colour the look dyes the hair)
     const px = ctx(paintEl), want = face && base ? now.filter(q => PAINTED.has(q.part)) : [], key = want.map(q => q.part + q.style.id).join();
-    if (!want.length || !face || !base) { px.clearRect(0, 0, paintEl.width, paintEl.height); paintedKey = ''; return; }
+    if (!want.length || !face || !base) { px.clearRect(0, 0, paintEl.width, paintEl.height); paintedKey = ''; unbare(new Set()); return; }
     const f = face, b = base, src = await onShow(); if (n !== washing) return;
     const tone = await tonesOf(src || b); if (n !== washing) return;
     const c = paintLook(src || b, f, want.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], paintEl.width / f.w, { ...tone, dye: dyeOf(now) });
     if (n !== washing) return;
     px.clearRect(0, 0, paintEl.width, paintEl.height); if (c) px.drawImage(c, 0, 0, paintEl.width, paintEl.height);
+    // what could not be painted on this picture (a fringe where no hair was found) keeps its pencil
+    unbare(new Set(want.filter(q => !c?.painted.has(q.part)).map(q => q.part)));
     // a new look falls into place; a reshaped one is simply there
     if (key !== paintedKey && !reduced) { paintEl.classList.remove('is-new'); void paintEl.offsetWidth; paintEl.classList.add('is-new'); }
     paintedKey = key;
   }
-  /** @type {Promise<ReturnType<typeof coloursOf>> | null} the picture's own colours, read once */
-  let tones = null, paintedKey = '';
+  let paintedKey = '';
   /** The colours of each picture shown, read once each (a render's hair is not the portrait's). @type {WeakMap<HTMLCanvasElement, Promise<ReturnType<typeof coloursOf>>>} */
   const toned = new WeakMap();
   const tonesOf = (/** @type {HTMLCanvasElement} */ c) => { const f = /** @type {Face} */ (face); if (!toned.has(c)) toned.set(c, hairOf(c).catch(() => null).then(m => coloursOf(c, f, m))); return /** @type {Promise<ReturnType<typeof coloursOf>>} */ (toned.get(c)); };
@@ -481,12 +487,18 @@ export function openMirror(o) {
   /** The hair colour a look also asks for, which a painted fringe takes. @param {Pick[]} now */
   const dyeOf = (now) => { const d = now.find(q => q.part === 'colour'); return d ? tintOf('colour', d.style.id, d.shape?.shade || 0) || '' : ''; };
 
-  /** One of the takes (or, at -1, the face as it is) in the frame. @param {number} i @param {boolean} [instant] */
-  function show(i, instant = false) {
+  /**
+   * One of the takes (or, at -1, the face as it is) in the frame: at once, or come down over the last, or (the first
+   * picture back from the studio) swept in across the face as it was, by the light the Lookbook's looks come in by.
+   * @param {number} i @param {boolean} [instant] @param {boolean} [arrived]
+   */
+  function show(i, instant = false, arrived = false) {
     const t = i < 0 ? origin : takes[i]; if (!t || t.pending) return;
     shown = i;
-    if (instant || reduced) { pic.src = t.url; over.classList.remove('is-in'); }
-    else { over.src = t.url; over.classList.remove('is-in'); void over.offsetWidth; over.classList.add('is-in'); clearTimeout(swap); swap = setTimeout(() => { pic.src = t.url; over.classList.remove('is-in'); }, 300); }
+    over.classList.remove('is-in', 'is-sweep'); glint.classList.remove('is-on'); clearTimeout(swap);
+    if (instant || reduced) pic.src = t.url;
+    else if (arrived) { over.src = t.url; void over.offsetWidth; over.classList.add('is-sweep'); glint.classList.add('is-on'); swap = setTimeout(() => { pic.src = t.url; over.classList.remove('is-sweep'); glint.classList.remove('is-on'); }, 1300); }
+    else { over.src = t.url; void over.offsetWidth; over.classList.add('is-in'); swap = setTimeout(() => { pic.src = t.url; over.classList.remove('is-in'); }, 300); }
     glow.style.backgroundImage = 'url("' + t.url + '")';
     stampEl.textContent = t.label; stampEl.dataset.kind = t.kind;
     keepBtn.hidden = !t.print; keepBtn.setAttribute('aria-pressed', String(!!t.print?.kept));
@@ -763,9 +775,11 @@ export function openMirror(o) {
     if (now.length) {
       const w = await washOf(pic0, own, now); if (w) x.drawImage(w, 0, 0);
       const painted = now.filter(q => PAINTED.has(q.part));
-      if (painted.length) { const pc = paintLook(pic0, own, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, own.w, own.h], c.width / own.w, { ...coloursOf(pic0, own), dye: dyeOf(now) }); if (pc) x.drawImage(pc, 0, 0, c.width, c.height); }
+      // painted as the frame paints it: with the picture's own hair (the fringe is combed from it)
+      const pc = painted.length ? paintLook(pic0, own, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, own.w, own.h], c.width / own.w, { ...(await tonesOf(pic0)), dye: dyeOf(now) }) : null;
+      if (pc) x.drawImage(pc, 0, 0, c.width, c.height);
       x.save(); x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, c.width / 400);
-      for (const q of now) if (!PAINTED.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
+      for (const q of now) if (!pc?.painted.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
       x.restore();
     }
     return { canvas: c, face: own, pic: pic0 };
@@ -885,7 +899,8 @@ export function openMirror(o) {
       (it.prints || []).forEach((/** @type {string} */ id, /** @type {number} */ k) => {
         const p = id && printById(id); if (!p || landed.has(k) || k >= n) return;
         landed.add(k); land(k, p); paintTakes();
-        if (!shownOne) { shownOne = true; show(first + k); el.classList.remove('has-preview'); }
+        // the first back is swept into the frame, and the frame's wait (its light, its words) is over with it
+        if (!shownOne) { shownOne = true; show(first + k, false, true); el.classList.remove('has-preview'); if (first === lead) el.classList.remove('is-working'); }
       });
     };
     const off = on('item:patch', check);
@@ -932,7 +947,9 @@ export function openMirror(o) {
     // a preview: in its place among the takes, and the first in the frame, where it develops (and says it is one)
     const url = ev.blob ? URL.createObjectURL(ev.blob) : ev.canvas.toDataURL('image/jpeg', .8), t = takes[first + ev.index];
     if (t?.pending) { t.preview = url; paintTakes(); }
-    if (ev.index === 0 && first === lead) { preview.src = url; el.classList.add('has-preview'); stampEl.textContent = 'Preview'; stampEl.dataset.kind = 'preview'; }
+    // (only while its picture is still to come: a preview arriving after it is not let over it; every angle has no
+    // place among the takes, and its previews always show)
+    if (ev.index === 0 && first === lead && (!t || t.pending)) { preview.src = url; el.classList.add('has-preview'); stampEl.textContent = 'Preview'; stampEl.dataset.kind = 'preview'; }
   }
   /** The studio's words, one line at a time, each coming in as the last goes. @param {string} text */
   function sayIt(text) {
@@ -946,9 +963,10 @@ export function openMirror(o) {
     const c = P.copy(base), x = ctx(c), w = await washOf(base, face, picks), b = base, f = face;
     if (w) x.drawImage(w, 0, 0);
     const painted = picks.filter(q => PAINTED.has(q.part));
-    if (painted.length) { tones ||= hairOf(b).catch(() => null).then(m => coloursOf(b, f, m)); const pc = paintLook(b, f, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], c.width / f.w, { ...(await tones), dye: dyeOf(picks) }); if (pc) x.drawImage(pc, 0, 0, c.width, c.height); }
+    const pc = painted.length ? paintLook(b, f, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], c.width / f.w, { ...(await tonesOf(b)), dye: dyeOf(picks) }) : null;
+    if (pc) x.drawImage(pc, 0, 0, c.width, c.height);
     x.save(); x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, c.width / 400);
-    for (const q of picks) if (!PAINTED.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
+    for (const q of picks) if (!pc?.painted.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
     x.restore();
     drawMarks(x, c.width, c.height, marks);
     if (ref) { const r = await canvasOf(ref.url).catch(() => null); if (r) { const w = c.width * .26, hh = w * r.height / r.width; x.save(); x.translate(w * .66, c.height - hh - w * .42); x.rotate(-.05); x.shadowColor = 'rgba(0,0,0,.4)'; x.shadowBlur = c.width / 60; x.fillStyle = '#fbf8f2'; x.fillRect(-w * .52, 0, w * 1.04, hh + w * .2); x.shadowBlur = 0; x.drawImage(r, -w / 2, w * .02, w, hh); x.restore(); } }

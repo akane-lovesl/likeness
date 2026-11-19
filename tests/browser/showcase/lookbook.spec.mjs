@@ -183,6 +183,42 @@ test('a fringe is the person\'s own hair brought forward: its colour and grain a
   expect(lum(got.sofia.own)).toBeLessThan(95);
 });
 
+test('a fringe is only as long as the hair it is combed from, and never made of skin: where no hair is found it is left to the pencil', async ({ page }) => {
+  await realPeople(page);
+  await page.goto('/');
+  const got = await page.evaluate(async () => {
+    const { faceOf, hairOf } = await import('/js/studio/face.js');
+    const { paintLook, coloursOf } = await import('/js/looks/paint.js');
+    const load = async (/** @type {string} */ src) => { const i = new Image(); i.src = src; await i.decode(); const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; c.getContext('2d').drawImage(i, 0, 0); return c; };
+    /** @type {Record<string, any>} */ const out = {};
+    for (const id of ['sofia', 'kenji']) {
+      const c = await load('/examples/' + id + '/portrait.webp'), f = await faceOf(c), m = await hairOf(c);
+      if (!f) continue;
+      const [bx, by, bw, bh] = f.box, box = [bx - bw * .3, by - bh * .4, bw * 1.6, bh * 1.4], k = 300 / box[2];
+      const hair = f.pts[10].y - bh * .02, F = Math.max(bh * .12, Math.min(f.pts[105].y, f.pts[334].y) - hair);
+      // how far below the hairline the curtain reaches, of the forehead's height
+      const l = paintLook(c, f, [{ part: 'bangs', style: 'curtain' }], box, k, coloursOf(c, f, m));
+      let low = -1; if (l) { const d = l.getContext('2d').getImageData(0, 0, l.width, l.height).data; for (let y = 0; y < l.height; y++) for (let x = 0; x < l.width; x++) if (d[(y * l.width + x) * 4 + 3] > 64) low = y; }
+      // and with no hair found in the picture at all
+      const bare = coloursOf(c, f, null);
+      out[id] = { reach: low < 0 ? -1 : (box[1] + low / k - hair) / F, alone: paintLook(c, f, [{ part: 'bangs', style: 'blunt' }], box, k, bare), withBrows: [...(paintLook(c, f, [{ part: 'bangs', style: 'blunt' }, { part: 'brows', style: 'bold' }], box, k, bare)?.painted || [])], hair: bare.hair.mid, skin: bare.skin.mid };
+    }
+    return out;
+  });
+  // long hair falls to the cheekbones; a short crop makes a short fringe
+  expect(got.sofia.reach).toBeGreaterThan(1.4);
+  expect(got.kenji.reach).toBeGreaterThan(.3);
+  expect(got.kenji.reach).toBeLessThan(got.sofia.reach - .6);
+  for (const id of ['sofia', 'kenji']) {
+    const { alone, withBrows, hair, skin } = got[id];
+    // no hair to comb it from: no fringe painted (the pencil draws it), though brows still are
+    expect(alone).toBeNull();
+    expect(withBrows).toEqual(['brows']);
+    // and the hair's colour, read without it, is not the forehead's
+    expect(Math.hypot(hair[0] - skin[0], hair[1] - skin[1], hair[2] - skin[2])).toBeGreaterThan(60);
+  }
+});
+
 test('the line takes anything: words that are no look say they will be painted, and the desk paints them', async ({ page }) => {
   await page.goto('/');
   const book = page.locator('section.book'), ask = book.locator('.lb-ask'), input = ask.locator('.lb-ask__input');
@@ -255,9 +291,9 @@ test('in the mirror the parts stay put, and a change can be drawn on the picture
   await expect(mirror.locator('.mr-stamp')).toHaveText('Sketch');
 });
 
-test('in the mirror a fringe is painted on the photo at once, its pencil kept for shaping', async ({ page }) => {
+test('in the mirror a fringe is painted on the photo at once, its pencil kept for shaping; where no hair is found, the pencil stays', async ({ page }) => {
   await page.goto('/');
-  await mirrorOn(page, 'tests/fixtures/sitters/mei.jpg');
+  await mirrorOn(page, 'tests/fixtures/sitters/ines.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
   await mirror.locator('.mr-part[data-part="bangs"]').click();
@@ -272,4 +308,14 @@ test('in the mirror a fringe is painted on the photo at once, its pencil kept fo
   await mirror.locator('.mr-part[data-part="cut"]').click();
   await mirror.locator('.mr-style[data-style="bob"]').click();
   await expect(mirror.locator('.mr-sketch g[data-part="cut"]:not(.is-painted)')).toHaveCount(1);
+  // a photo whose hair cannot be found (this drawing's): there is nothing to comb a fringe from, so it stays a pencil
+  // line, in sight, rather than being made up
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/mei.jpg');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-style[data-style="blunt"]').click();
+  const pencil = mirror.locator('.mr-sketch g[data-part="bangs"]');
+  await expect(pencil).not.toHaveClass(/is-painted/, { timeout: 20_000 });
+  await expect.poll(() => pencil.evaluate(g => getComputedStyle(g).opacity)).toBe('1');
 });

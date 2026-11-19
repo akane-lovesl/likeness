@@ -15,7 +15,7 @@ import * as P from '../studio/painter.js';
 import { app, printById } from '../state.js';
 import { on, emit } from '../core/bus.js';
 import { markup, controlsOf } from './markup.js';
-import { paintLook, coloursOf, PAINTED } from './paint.js';
+import { paintLook, coloursOf, paints } from './paint.js';
 import { hear } from './words.js';
 import { coat, dyeHair } from './tint.js';
 import { openMirror, bringPhoto } from './mirror.js';
@@ -668,7 +668,7 @@ async function dress(card, c, cw) {
   const { near } = framing(f, all.length > 1 ? '' : c.part), least = 1.6 * near[2] / Math.max(80, cw), turn = (dressing.get(card) || 0) + 1;
   dressing.set(card, turn);
   face.querySelector('.lb-card__sketch')?.remove();
-  const photo = !!c.sitter.person || c.sitter.id === 'you', painted = photo ? all.filter(q => PAINTED.has(q.part)) : [];
+  const photo = !!c.sitter.person || c.sitter.id === 'you', painted = photo ? all.filter(q => paints(q.part, c.sitter.hair)) : [];
   if (!painted.length) face.querySelector('.lb-card__paint')?.remove();
   // the colours it wore stay until the new ones are ready (none to come: they go now)
   const old = [...face.querySelectorAll('.lb-card__wash')], tinted = all.filter(q => tintOf(q.part, q.style, q.shape?.shade || 0));

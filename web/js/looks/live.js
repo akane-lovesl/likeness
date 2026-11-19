@@ -323,7 +323,8 @@ export function openLive(o) {
     // —— painted, as on a photograph: what a look can be painted from the picture itself (a fringe combed from your own
     // hair, brows, liner, a beard) is painted now and then, as often as the device keeps up with, and carried with the
     // face (by the corners of the eyes) between paintings ——
-    /** @type {Map<string, { layer: HTMLCanvasElement, box: number[], e: { x: number, y: number }[], at: number, used: number }>} */
+    /** @typedef {HTMLCanvasElement & { painted: Set<string> }} Painted a painting, and which parts of the look it has */
+    /** @type {Map<string, { layer: Painted, box: number[], e: { x: number, y: number }[], at: number, used: number }>} */
     const paints = new Map();
     /** @type {ReturnType<typeof coloursOf> | null} */ let tone = null;
     let toneAt = -1e9, cost = 40, nextPaint = 0, ticks = 0, paintedTick = -1;
@@ -332,12 +333,13 @@ export function openLive(o) {
     const keyOf = (ps) => ps.filter(q => PAINTED.has(q.part) || q.part === 'colour').map(q => q.part + ':' + q.style.id + ':' + JSON.stringify(q.shape || {})).join('|');
     /**
      * The looks in ps painted on f from pic, the head about px across. @param {HTMLCanvasElement} pic @param {any} f @param {Pick[]} ps @param {number} px
-     * @returns {{ layer: HTMLCanvasElement, box: number[] } | null}
+     * @returns {{ layer: Painted, box: number[] } | null}
      */
     function paintNow(pic, f, ps, px) {
       const now = performance.now();
       const hm = maskNow();
-      if (!tone || now - toneAt > 1200) { tone = coloursOf(pic, f, hm); toneAt = now; }
+      // read again now and then, and at once when the hair is first found (until then a fringe waits, in pencil)
+      if (!tone || now - toneAt > 1200 || (hm && !tone.mask)) { tone = coloursOf(pic, f, hm); toneAt = now; }
       const [bx, by, bw, bh] = f.box, box = [bx - bw * .5, by - bh * .8, bw * 2, bh * 2.05];
       const colour = ps.find(q => q.part === 'colour'), dye = colour ? tintOf('colour', colour.style.id, colour.shape?.shade || 0) : '';
       const layer = paintLook(pic, f, ps.filter(q => PAINTED.has(q.part)).map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), box, px / box[2], { ...tone, mask: hm, dye: dye || '' });
@@ -348,7 +350,7 @@ export function openLive(o) {
      * than about a third), else the last painting, moved with the face. @param {CanvasRenderingContext2D} x @param {any} f @param {Pick[]} ps @param {number} px
      */
     function carry(x, f, ps, px) {
-      /** @returns {boolean} whether there was a painting to show */
+      /** @returns {{ layer: Painted, box: number[] } | null} the painting shown, if there was one */
       const key = keyOf(ps) + '@' + Math.round(px / 60), had = paints.get(key), now = performance.now();
       if ((!had || now >= nextPaint) && paintedTick !== ticks) {
         paintedTick = ticks;
@@ -357,13 +359,13 @@ export function openLive(o) {
         cost = cost * .6 + took * .4; nextPaint = now + Math.max(100, cost * 3); el.dataset.paint = String(Math.round(cost));
         if (got) paints.set(key, { ...got, e: corners(f), at: now, used: now });
       }
-      const p = paints.get(key); if (!p) return false;
+      const p = paints.get(key); if (!p) return null;
       p.used = now;
       const [a1, b1] = p.e, [a2, b2] = corners(f);
       const s = Math.hypot(b2.x - a2.x, b2.y - a2.y) / Math.max(1, Math.hypot(b1.x - a1.x, b1.y - a1.y)), th = Math.atan2(b2.y - a2.y, b2.x - a2.x) - Math.atan2(b1.y - a1.y, b1.x - a1.x);
       x.save(); x.translate(a2.x, a2.y); x.rotate(th); x.scale(s, s); x.translate(-a1.x, -a1.y);
       x.drawImage(p.layer, p.box[0], p.box[1], p.box[2], p.box[3]); x.restore();
-      return true;
+      return p;
     }
     /**
      * The looks on a face (the hair, if it is recoloured, is already done): the lips tinted, what can be painted painted
@@ -377,9 +379,10 @@ export function openLive(o) {
         if (tint) lips(x, f, tint);
       }
       if (ps.some(q => PAINTED.has(q.part))) {
-        if (o.pic) { const got = paintNow(o.pic, f, ps, o.px || 560); if (got) x.drawImage(got.layer, got.box[0], got.box[1], got.box[2], got.box[3]); }
-        else if (o.px && !carry(x, f, ps, o.px)) { /* not painted yet: the pencil until it is */ }
-        else ps = ps.filter(q => !PAINTED.has(q.part));
+        const got = o.pic ? paintNow(o.pic, f, ps, o.px || 560) : o.px ? carry(x, f, ps, o.px) : null;
+        if (o.pic && got) x.drawImage(got.layer, got.box[0], got.box[1], got.box[2], got.box[3]);
+        // what is painted is done; what is not (a tile's first moments, a fringe before the hair is found) is pencilled
+        ps = ps.filter(q => !got?.layer.painted.has(q.part));
       }
       x.strokeStyle = '#fff4e0'; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, view.width / 320);
       const fine = 1 / Math.sqrt(Math.max(1, k));

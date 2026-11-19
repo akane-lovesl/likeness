@@ -3,13 +3,14 @@
  * brows, the colour), that turns under a finger and on its own; the parts a look can change, drawn; one line to ask in.
  * Pick a face or bring your own, and the mirror opens on it. Until the studio's portraits are in, the ring holds drawn
  * sitters (invented people, drawn), each wearing a look sketched on the device: the front one leans in on the part it
- * changes and tries that part's styles on, one after another.
+ * changes and tries that part's styles on, one after another. Once the studio's people are in, their faces are read on
+ * the device as the ring comes in, and they lean in and wear words the same way, as sketches that say so.
  */
 import { h, icon, stage, fitting } from '../core/dom.js';
 import { spring, drag, reduced } from '../core/motion.js';
 import { studio } from '../studio/studio.js';
 import { PARTS, partById, styleOf, plateSVG, tintOf } from './vocab.js';
-import { faceFrom, shapesOf, faceOf, maskOf, LIPS, MOUTH } from '../studio/face.js';
+import { faceFrom, shapesOf, faceOf, hairOf, maskOf, LIPS, MOUTH } from '../studio/face.js';
 import * as P from '../studio/painter.js';
 import { app, printById } from '../state.js';
 import { on } from '../core/bus.js';
@@ -23,7 +24,8 @@ import { openLive, canLive } from './live.js';
 /** @typedef {{ id: string, name?: string, kind?: string, portrait: string, looks: Look[] }} Person */
 /** @typedef {{ id: string, name: string, portrait: string, w: number, h: number, face: import('../studio/face.js').Face, hair: string | null }} Sitter a drawn sitter, its face read already */
 /** @typedef {{ shape?: Record<string, number>, heard?: boolean, base?: string }} Worn how a drawn card wears words: the shape they say, whether it is wearing them now, and the style it wore before them */
-/** @typedef {{ kind: 'photo', person: Person, look: Look } | ({ kind: 'sitter', sitter: Sitter, part: string, style: string } & Worn) | ({ kind: 'plate', part: string, style: string } & Worn)} Card */
+/** @typedef {({ kind: 'photo', person: Person, look: Look, seen?: Seen, sketch?: string } & Worn) | ({ kind: 'sitter', sitter: Sitter, part: string, style: string } & Worn) | ({ kind: 'plate', part: string, style: string } & Worn)} Card */
+/** @typedef {{ face: import('../studio/face.js').Face, hair: string | null }} Seen a render's face (and hair, where a colour is among its looks), read on the device */
 
 const BASE = new URL('../../examples/', import.meta.url);
 /** @type {Promise<{ by: string | null, kind: string, people: Person[] }> | null} */
@@ -57,7 +59,7 @@ const SITS = /** @type {Record<string, string>} */ ({ bangs: 'lena', brows: 'kof
 const SAYINGS = ['Curtain bangs, a lot longer', 'Feathered brows, much fuller', 'Copper, a shade deeper', 'A sleek bob, a little longer', 'A winged liner, much longer', 'A red lip, a touch deeper', 'A trimmed beard, much shorter', 'Birkin bangs, a bit shorter'];
 
 /** The name a card goes by. @param {Card} c */
-const titleOf = (c) => { const part = c.kind === 'photo' ? c.look.part : c.part, s = styleOf(part, c.kind === 'photo' ? c.look.style : c.style); return s ? (['bangs', 'brows'].includes(part) ? s.name + ' ' + (partById(part)?.name || '').toLowerCase() : s.name) : ''; };
+const titleOf = (c) => { const part = c.kind === 'photo' ? c.look.part : c.part, s = styleOf(part, c.kind === 'photo' ? c.sketch || c.look.style : c.style); return s ? (['bangs', 'brows'].includes(part) ? s.name + ' ' + (partById(part)?.name || '').toLowerCase() : s.name) : ''; };
 
 let book = /** @type {HTMLElement | null} */ (null);
 /** The Lookbook in front: made the first time, brought back after that (from the desk). */
@@ -95,13 +97,15 @@ function lookbook() {
   let spin = 0, R = 300, step = 45, front = 0, tried = 0, since = Date.now(), anim = /** @type {{ stop(): void } | null} */ (null), touched = 0, moved = false;
   /** @type {{ part: string, style: any }[]} */ let picks = [];
   /** @type {any} */ let photo = null;
+  // when the ring last moved: a face is read only while it is still, so a turn never stutters for one
+  let lastMove = 0;
   let part = '';
 
   function deal(/** @type {Card[]} */ list) {
     cards = list; step = 360 / Math.max(5, list.length);
     els = list.map((c, i) => {
       const card = h('button.lb-card', { type: 'button', role: 'option', 'aria-label': titleOf(c), style: { '--d': (60 + i * 55) + 'ms' }, onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0) tap(i); } });
-      if (c.kind === 'photo') card.append(h('img.lb-card__before', { src: c.person.portrait, alt: '', draggable: false }), h('img.lb-card__after', { src: c.look.image, alt: '', draggable: false }), h('span.lb-card__glint'), h('span.lb-card__tag', null, c.person.kind === 'render' ? 'GPT Image' : 'Simulated'));
+      if (c.kind === 'photo') { c.seen ||= seen.get(c.person.portrait); card.append(...photoCard(c), h('span.lb-card__glint'), h('span.lb-card__tag', null, tagOf(c))); if (c.seen) card.classList.add('has-face'); }
       else if (c.kind === 'sitter') card.append(sitterCard(c), h('span.lb-card__tag', null, c.sitter.id === 'you' ? 'Sketch' : 'Drawn'));
       else card.append(h('div.lb-card__plate', { html: plateSVG(c.part, c.style) }), h('span.lb-card__tag', null, 'Drawn'));
       const yours = c.kind === 'sitter' && c.sitter.id === 'you';
@@ -111,6 +115,26 @@ function lookbook() {
     });
     ring.replaceChildren(...els); spin = 0; front = 0; layout(); show(0);
     cards.forEach((c, i) => { if (c.kind === 'sitter') dress(els[i], c, cardW()); });
+    readFaces();
+  }
+  let reads = 0;
+  /**
+   * The studio's people, their faces read on the device one by one once the ring is in (after that they are known):
+   * each card then frames the head and can lean in on its part, and words can be drawn on the face.
+   */
+  async function readFaces() {
+    const run = ++reads, todo = [...new Set(cards.flatMap(c => (c.kind === 'photo' && !c.seen ? [c.person] : [])))];
+    if (!todo.length) return;
+    await new Promise(r => setTimeout(r, 1200));
+    for (const p of todo) {
+      if (run !== reads) return;
+      await new Promise(r => (typeof requestIdleCallback === 'function' ? requestIdleCallback(() => r(0), { timeout: 1500 }) : setTimeout(r, 120)));
+      while (run === reads && performance.now() - lastMove < 300) await new Promise(r => setTimeout(r, 120));
+      const got = await readPerson(p);
+      if (run !== reads || !got) continue;
+      cards.forEach((c, k) => { if (c.kind === 'photo' && c.person === p && !c.seen) { c.seen = got; frameCard(els[k], c); } });
+      if (input.value.trim()) wear(input.value);
+    }
   }
   /** How wide a card is drawn. */
   const cardW = () => parseFloat(ring.style.getPropertyValue('--cw')) || 220;
@@ -146,7 +170,8 @@ function lookbook() {
   }
   /** Under the name, how the words shaped it ("longer · parted left"), coming in as it changes. @param {Card} c @param {boolean} [quiet] */
   function shaped(c, quiet = false) {
-    const said = c.kind === 'sitter' && c.shape ? controlsOf(c.sitter.face, c.part, c.style, c.shape).map(k => k.short).filter(Boolean).join(' · ') : '';
+    const said = c.kind === 'sitter' && c.shape ? controlsOf(c.sitter.face, c.part, c.style, c.shape).map(k => k.short).filter(Boolean).join(' · ')
+      : c.kind === 'photo' && c.heard && c.seen && c.shape ? controlsOf(c.seen.face, c.look.part, c.sketch || c.look.style, c.shape).map(k => k.short).filter(Boolean).join(' · ') : '';
     let em = /** @type {HTMLElement | null} */ (title.querySelector('.lb-caption__shape'));
     if (!said) { em?.remove(); return; }
     if (em?.textContent === said) return;
@@ -157,13 +182,13 @@ function lookbook() {
   function turnTo(/** @type {number} */ i, velocity = 0) {
     anim?.stop();
     let target = -i * step; while (target - spin > 180) target -= 360; while (spin - target > 180) target += 360;
-    anim = spring({ from: spin, to: target, velocity, stiffness: 120, damping: 20, onUpdate: v => { spin = v; place(); }, onRest: () => { spin = ((target % 360) + 360) % 360; place(); } });
+    anim = spring({ from: spin, to: target, velocity, stiffness: 120, damping: 20, onUpdate: v => { spin = v; lastMove = performance.now(); place(); }, onRest: () => { spin = ((target % 360) + 360) % 360; place(); } });
   }
   // a finger turns the ring; let go and it comes to rest on the nearest face, carried on a little by the throw
   let from = 0;
   drag(orbit, {
     start: () => { anim?.stop(); from = spin; moved = false; touched = Date.now(); },
-    move: d => { if (Math.abs(d.dx) > 6) moved = true; spin = from + d.dx * step / (orbit.clientWidth * .5); place(); },
+    move: d => { if (Math.abs(d.dx) > 6) moved = true; spin = from + d.dx * step / (orbit.clientWidth * .5); lastMove = performance.now(); place(); },
     end: d => {
       touched = Date.now();
       // a tap: the drag held the pointer, so the card under it is found here
@@ -176,7 +201,7 @@ function lookbook() {
   });
   orbit.addEventListener('keydown', e => { if (e.key === 'ArrowRight') turnTo((front + 1) % cards.length); else if (e.key === 'ArrowLeft') turnTo((front - 1 + cards.length) % cards.length); });
   // left alone, it turns by itself, one face at a time
-  const turning = setInterval(() => { if (reduced || acting() || document.hidden || el.classList.contains('is-away') || el.classList.contains('is-under') || Date.now() - touched < 7000 || Date.now() - since < (cards[front]?.kind === 'sitter' ? 5600 : 4600)) return; turnTo((front + 1) % cards.length); }, 400);
+  const turning = setInterval(() => { if (reduced || acting() || document.hidden || el.classList.contains('is-away') || el.classList.contains('is-under') || Date.now() - touched < 7000 || Date.now() - since < (cards[front]?.kind === 'sitter' ? 5600 : held(cards[front]) ? 6200 : 4600)) return; turnTo((front + 1) % cards.length); }, 400);
   // the face in front tries its part's styles on, one after another (a plate redraws its own)
   const redraw = setInterval(() => {
     const c = cards[front], card = els[front]; if (!c || c.kind === 'photo' || c.heard || reduced || el.classList.contains('is-away')) return;
@@ -196,7 +221,7 @@ function lookbook() {
   /** The front card, chosen: its face in the mirror, or its style picked and a face asked for. */
   function choose(/** @type {number} */ i) {
     const c = cards[i]; if (!c) return;
-    if (c.kind === 'photo') { open({ person: c.person, look: c.look, picks: [{ part: c.look.part, style: styleOf(c.look.part, c.look.style) }], from: els[i] }); return; }
+    if (c.kind === 'photo') { open({ person: c.person, look: c.look, picks: c.heard && input.value.trim() ? said() : [cardPick(c)], words: c.heard ? input.value : '', from: els[i] }); return; }
     // a sitter opens in the mirror wearing the look, its face known already: shape it, turn it, then try it on yourself
     if (c.kind === 'sitter' && c.sitter.id === 'you') { open({ print: youOf, picks: c.heard && input.value.trim() ? said() : [cardPick(c)], words: c.heard ? input.value : '', face: c.sitter.face, turns: turnsFor.get(youOf), from: els[i] }); return; }
     if (c.kind === 'sitter') { open({ person: { id: 'sitter-' + c.sitter.id, name: c.sitter.name, kind: 'drawn', portrait: c.sitter.portrait, looks: [] }, picks: c.heard && input.value.trim() ? said() : [cardPick(c)], words: c.heard ? input.value : '', face: c.sitter.face, hair: c.sitter.hair, from: els[i] }); return; }
@@ -218,7 +243,7 @@ function lookbook() {
   /** "On me", on the front card: its look picked, and your own face asked for (the camera, or a photo). @param {number} i */
   function onMe(i) {
     const c = cards[i]; if (!c) return;
-    const p = c.kind === 'photo' ? c.look.part : c.part, s = c.kind === 'photo' ? c.look.style : c.style;
+    const p = c.kind === 'photo' ? c.look.part : c.part, s = c.kind === 'photo' ? c.sketch || c.look.style : c.style;
     if (!picks.some(q => q.part === p && q.style.id === s)) pick(p, s);
     if (photo) open({ print: photo, picks, words: input.value, from: els[i] }); else pickPhoto(els[i]);
   }
@@ -241,14 +266,14 @@ function lookbook() {
   }
   /** A card's look, as a pick: its part, its style, and the shape words gave it. @param {Card} c */
   function cardPick(c) {
-    const p = c.kind === 'photo' ? c.look.part : c.part, s = styleOf(p, c.kind === 'photo' ? c.look.style : c.style);
-    return s ? { part: p, style: s, ...(c.kind !== 'photo' && c.shape && Object.keys(c.shape).length ? { shape: c.shape } : {}) } : null;
+    const p = c.kind === 'photo' ? c.look.part : c.part, s = styleOf(p, c.kind === 'photo' ? c.sketch || c.look.style : c.style);
+    return s ? { part: p, style: s, ...((c.kind !== 'photo' || c.heard) && c.shape && Object.keys(c.shape).length ? { shape: c.shape } : {}) } : null;
   }
   /** What is asked for: the words' looks (each part they name, in the style they name or the one its face wears, shaped as said), and anything picked by hand that they do not name. */
   function said() {
     // the words in the line, and only those: what the line says by itself, with no one there, is not anyone's
     const words = input.value.trim() ? heard : [];
-    const fromWords = words.map(x => { const c = cards.find(k => k.kind !== 'photo' && k.heard && k.part === x.part); const s = styleOf(x.part, x.style || (c && c.kind !== 'photo' ? c.style : '') || partById(x.part)?.styles[0].id || ''); return s ? { part: x.part, style: s, shape: x.shape } : null; }).filter(q => !!q);
+    const fromWords = words.map(x => { const c = cards.find(k => k.heard && partOf(k) === x.part); const s = styleOf(x.part, x.style || (c ? (c.kind === 'photo' ? c.sketch || c.look.style : c.style) : '') || partById(x.part)?.styles[0].id || ''); return s ? { part: x.part, style: s, shape: x.shape } : null; }).filter(q => !!q);
     return [...picks.filter(q => !words.some(x => x.part === q.part)), ...fromWords];
   }
   /** The look the live mirror opens on: what was asked for here, or the one at the front of the ring. */
@@ -275,7 +300,7 @@ function lookbook() {
    * was. @param {string} text
    */
   function wear(text) {
-    const c0 = cards[front], partOf = (/** @type {Card} */ c) => (c.kind === 'photo' ? c.look.part : c.part);
+    const c0 = cards[front];
     heard = text.trim() ? hear(text, c0 ? partOf(c0) : '') : [];
     const x = heard[0], wore = (/** @type {Card} */ c) => (c.kind === 'photo' ? c.look.style : c.base || c.style);
     let i = -1;
@@ -285,7 +310,8 @@ function lookbook() {
       if (i < 0) i = cards.findIndex(c => partOf(c) === x.part);
     }
     cards.forEach((c, k) => {
-      if (c.kind === 'photo' || (k !== i && !c.heard)) return;
+      if (c.kind === 'photo') { wearPhoto(c, k, k === i ? x : undefined); return; }
+      if (k !== i && !c.heard) return;
       const on = k === i && !!x, was = { style: c.style, shape: c.shape || {} };
       if (on && !c.heard) c.base = c.style;
       const style = on ? x.style || c.base || c.style : c.base || c.style, shape = on ? x.shape : {};
@@ -298,6 +324,26 @@ function lookbook() {
     });
     if (i >= 0 && i !== front) turnTo(i);
     else if (cards[front]) { const c = cards[front], t = title.firstChild; if (t && t.nodeType === 3) t.textContent = titleOf(c); else title.prepend(titleOf(c)); shaped(c); }
+  }
+  /**
+   * A render worn by words: the face it was made from, with what they say sketched on it (the card says Sketch, and the
+   * render steps aside), until the words let it go and the render comes back. Its face must have been read first.
+   * @param {Card & { kind: 'photo' }} c @param {number} k @param {import('./words.js').Heard | undefined} x
+   */
+  function wearPhoto(c, k, x) {
+    const on = !!x && !!c.seen, card = els[k];
+    if (!card || (!on && !c.heard)) return;
+    const style = x && on ? x.style || c.sketch || c.look.style : '', shape = x && on ? x.shape || {} : {}, was = { style: c.sketch || '', shape: c.shape || {} };
+    if (on && c.heard && style === was.style && JSON.stringify(shape) === JSON.stringify(was.shape)) return;
+    c.heard = on; c.sketch = on ? style : undefined; c.shape = on ? shape : undefined;
+    card.classList.toggle('is-sketched', on);
+    const tag = card.querySelector('.lb-card__tag'); if (tag) tag.textContent = tagOf(c);
+    card.setAttribute('aria-label', titleOf(c));
+    if (!on) { dressing.set(card, (dressing.get(card) || 0) + 1); morphs.set(card, (morphs.get(card) || 0) + 1); card.querySelector('.lb-card__sketch')?.remove(); card.querySelector('.lb-card__wash')?.remove(); return; }
+    // asked for now, so drawn now
+    card.style.setProperty('--late', '.05s');
+    const s = worn(c);
+    if (was.style !== style || !card.querySelector('.lb-card__sketch')) dress(card, s, cardW()); else morph(card, s, was.shape, shape, cardW());
   }
   /** Typed: heard at once, and the ring holds still for whoever is typing. */
   function listen() { touched = Date.now(); wear(input.value); }
@@ -406,11 +452,70 @@ function framing(f, part) {
   const near = ({ bangs: fit(cx, by + bh * .3, bh * 1.5), brows: fit(cx, (brows + eyes) / 2, bh * .95), lashes: fit(cx, eyes, bh * .8), lips: fit(P(13).x, mouth - bh * .1, bh * .95), beard: fit(cx, (P(1).y + P(152).y) / 2 + bh * .06, bh * 1.15) })[part] || head;
   return { head, near };
 }
-/** A sitter's card: the picture framed on the head, inside a lens that leans in on the part when the card is in front. @param {{ sitter: Sitter, part: string }} c */
-function sitterCard(c) {
-  const f = c.sitter.face, { head, near } = framing(f, c.part);
-  const face = h('div.lb-card__face', { style: { width: pc(f.w / head[2]), height: pc(f.h / head[3]), left: pc(-head[0] / head[2]), top: pc(-head[1] / head[3]) } }, h('img.lb-card__portrait', { src: c.sitter.portrait, alt: '', draggable: false }));
+/**
+ * A picture framed on the head, inside a lens that leans in on the part when the card is in front.
+ * @param {import('../studio/face.js').Face} f @param {string} part @param {string} src
+ */
+function lensOf(f, part, src) {
+  const { head, near } = framing(f, part);
+  const face = h('div.lb-card__face', { style: { width: pc(f.w / head[2]), height: pc(f.h / head[3]), left: pc(-head[0] / head[2]), top: pc(-head[1] / head[3]) } }, h('img.lb-card__portrait', { src, alt: '', draggable: false }));
   return h('div.lb-card__lens', { style: { '--s': (head[2] / near[2]).toFixed(4), '--tx': pc(-(near[0] - head[0]) / head[2]), '--ty': pc(-(near[1] - head[1]) / head[3]) } }, face);
+}
+/** A sitter's card. @param {{ sitter: Sitter, part: string }} c */
+const sitterCard = (c) => lensOf(c.sitter.face, c.part, c.sitter.portrait);
+/** What a card's corner says it is. @param {Card} c */
+const tagOf = (c) => (c.kind === 'photo' ? (c.heard ? 'Sketch' : c.person.kind === 'render' ? 'GPT Image' : 'Simulated') : c.kind === 'sitter' && c.sitter.id === 'you' ? 'Sketch' : 'Drawn');
+/** The part a card changes. @param {Card} c */
+const partOf = (c) => (c.kind === 'photo' ? c.look.part : c.part);
+/** Whether a card is a render framed on its face (given longer in front: it leans in before the look sweeps in). @param {Card | undefined} c */
+const held = (c) => c?.kind === 'photo' && !!c.seen;
+/**
+ * A render's card: its portrait, and the look sweeping in over it. Once the face is read, both are framed on the head as
+ * a sitter is (the sweep stays the card's own, so it crosses the card however close the lens is).
+ * @param {Card & { kind: 'photo' }} c
+ */
+function photoCard(c) {
+  if (!c.seen) return [h('img.lb-card__before', { src: c.person.portrait, alt: '', draggable: false }), h('img.lb-card__after', { src: c.look.image, alt: '', draggable: false })];
+  return [lensOf(c.seen.face, c.look.part, c.person.portrait), h('div.lb-card__after', null, lensOf(c.seen.face, c.look.part, c.look.image))];
+}
+/**
+ * A render's card, framed where it is once its face is read: from the whole picture, as it was shown, the frame closes
+ * on the head (and leans in on the part, if the card is in front).
+ * @param {HTMLElement} card @param {Card & { kind: 'photo' }} c
+ */
+function frameCard(card, c) {
+  const got = photoCard(c), faces = got.map(x => /** @type {HTMLElement} */ (x.querySelector('.lb-card__face')));
+  const to = faces.map(f => ({ left: f.style.left, top: f.style.top, width: f.style.width, height: f.style.height }));
+  if (!reduced) { faces.forEach(f => Object.assign(f.style, { left: '0%', top: '0%', width: '100%', height: '100%' })); card.classList.add('is-framing'); }
+  card.querySelector('.lb-card__before')?.replaceWith(got[0]); card.querySelector('img.lb-card__after')?.replaceWith(got[1]);
+  card.classList.add('has-face');
+  if (!reduced) requestAnimationFrame(() => requestAnimationFrame(() => { faces.forEach((f, k) => Object.assign(f.style, to[k])); card.classList.remove('is-framing'); }));
+}
+/** A render's card as a sitter wearing what words sketch on it, to be dressed as sitters are. @param {Card & { kind: 'photo' }} c */
+function worn(c) {
+  const s = /** @type {Seen} */ (c.seen);
+  return { sitter: { id: c.person.id, name: c.person.name || '', portrait: c.person.portrait, w: s.face.w, h: s.face.h, face: s.face, hair: s.hair }, part: c.look.part, style: c.sketch || c.look.style, shape: c.shape };
+}
+/** @type {Map<string, Promise<Seen | null>>} */
+const reading = new Map();
+/** @type {Map<string, Seen>} what has been read, by portrait */
+const seen = new Map();
+/**
+ * A render's face read on the device (and its hair, where a colour is among its looks): what a drawn sitter brings with
+ * it already read. @param {Person} p @returns {Promise<Seen | null>}
+ */
+function readPerson(p) {
+  if (!reading.has(p.portrait)) reading.set(p.portrait, (async () => {
+    const img = await picture(p.portrait).catch(() => null); if (!img) return null;
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')).drawImage(img, 0, 0);
+    const face = await faceOf(c); if (!face) return null;
+    const mask = (p.looks || []).some(l => l.part === 'colour') ? await hairOf(c) : null;
+    /** @type {Seen} */ const got = { face, hair: mask ? URL.createObjectURL(await P.toBlob(mask, 'image/png')) : null };
+    seen.set(p.portrait, got);
+    return got;
+  })());
+  return /** @type {Promise<Seen | null>} */ (reading.get(p.portrait));
 }
 const dressing = new WeakMap();
 /**

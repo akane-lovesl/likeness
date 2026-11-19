@@ -98,7 +98,7 @@ uv run pytest
 npm test
 ```
 
-All three checks were green where the code was written: 41 pytest tests and 44 browser tests. Get them green here before you change anything. If one fails, fix the setup, not the tests, and note what it took.
+All three checks were green where the code was written: 41 pytest tests and 45 browser tests. Get them green here before you change anything. If one fails, fix the setup, not the tests, and note what it took.
 
 **Off local models.** Likeness no longer runs Qwen or any other local model. There is no torch, CUDA or model download left in it, and `uv sync` takes the old packages out of the virtual environment. Old weights may still be on disk: in the Hugging Face cache (`%USERPROFILE%\.cache\huggingface\hub`), or in a `models/` folder in an older copy. If so, say in the report where they are and how big. Do not delete them; the user decides.
 
@@ -137,8 +137,8 @@ Every row below must hold. Where one does not, fix it: the code, the words or th
 
 | | What must hold |
 |---|---|
-| **First sight** | Within a few seconds it is clear what Likeness does: real faces, a look sweeping across each, its name beneath, an honest *GPT Image* label. The ring turns by itself and under a finger. Touching a part (Bangs, Brows…) deals only that part's looks. |
-| **Words** | On the Lookbook, *curtain bangs, a lot longer, parted left* turns the ring to the look and moves the strokes. Left alone, the line acts things out by itself. |
+| **First sight** | Within a few seconds it is clear what Likeness does: real faces, a look sweeping across each, its name beneath, an honest *GPT Image* label. A second or two in, the faces are read on the device: each card closes on the head and leans in on its part, and the look sweeps in close. It must read at a glance. The ring turns by itself and under a finger. Touching a part (Bangs, Brows…) deals only that part's looks. |
+| **Words** | On the Lookbook, *curtain bangs, a lot longer, parted left* turns the ring to a face wearing that look and draws it on the real face as said. The card says *Sketch* until the words are gone, then the render comes back. *Copper, a shade deeper* washes the hair. Left alone, the line acts things out by itself. A sketch over a real face must look deliberate and beautiful; if it doesn't, change how it is drawn (`dress` in `web/js/looks/book.js`, the strokes in `web/js/looks/markup.js`). |
 | **The mirror** | On an example person, their looks show as takes, and their three angles turn under a finger. Dragged sideways, a portrait turns on the device (*Turned on this device*) and springs back. The cheek's edge stays clean, the hair comes round, and the wall stays straight. |
 | **On me, from a photo** | Use a drawn sitter as the photo. The face is read: a line of light, its points, its outlines, then the parts named in the margins. Pick a look and shape it by its handles; the words write themselves. **Try on** brings four GPT Image takes inside the part's mask, scrubbed with a finger. Keep one, and **Every angle** brings three more as the frame turns. |
 | **The live mirror** | Start the camera on the Lookbook. The look stays on a moving face. Touching a part opens every style as live tiles; a swipe changes style. *Colour* lands on hair only. The shutter carries the moment to the mirror with the look on. `section.lv` tells how the face is read: `data-reader` (`aside`, in a worker, or `page`) and `data-read` (milliseconds). |
@@ -153,6 +153,7 @@ The code was written on a small computer with no graphics chip, using only drawn
 
 - **The on-device turn** (WebGL over the face's mesh, `web/js/looks/turn.js`) was tuned on drawings. Halfway through a turn, a faint edge can show beside the head.
 - **Hair colour edges** were only ever judged on drawn hair.
+- **Sketches over real faces.** The ring's strokes were tuned on drawings. On photographs they may want to be finer, softer or brighter.
 - **The live mirror's speed.** Where there is a core to spare, faces are read in a worker (`data-reader="aside"`), so the mirror is drawn at the camera's pace. Check that the look keeps to a turning head, here and on the phone. `AHEAD` in `web/js/looks/live.js` is how far a face is carried on between readings.
 - **The share sheet.** Saving the card through a phone's share sheet has never been tried.
 - **The shape words.** Nobody knows yet whether GPT Image follows them (length, parting, arch, shade). 0004 asks for examples of both.

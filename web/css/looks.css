@@ -65,6 +65,14 @@
   background: linear-gradient(90deg, transparent, rgb(255 244 224 / .95), transparent); filter: blur(.5cqw); }
 .lb-card.is-front .lb-card__after { animation: lk-sweep 5.4s .5s cubic-bezier(.65, 0, .3, 1) infinite; }
 .lb-card.is-front .lb-card__glint { animation: lk-glint 5.4s .5s cubic-bezier(.65, 0, .3, 1) infinite; }
+/* a render whose face is read: framed on the head as a sitter is, the frame closing from the whole picture; in front it
+   leans in on the part, and the look sweeps in close once it has. Words drawn on its face make it a sketch, and the
+   render steps aside while they are there */
+.lb-card--photo .lb-card__face { transition: left 1.3s var(--lk-ease), top 1.3s var(--lk-ease), width 1.3s var(--lk-ease), height 1.3s var(--lk-ease); }
+.lb-card.is-framing .lb-card__lens { transform: none !important; transition: none !important; }
+div.lb-card__after { position: absolute; inset: 0; }
+.lb-card--photo.has-face.is-front .lb-card__after, .lb-card--photo.has-face.is-front .lb-card__glint { animation-delay: 1.6s; }
+.lb-card.is-sketched .lb-card__after, .lb-card.is-sketched .lb-card__glint { visibility: hidden; animation: none; }
 
 .lb-caption { position: relative; z-index: 2; text-align: center; padding: 0 6cqw 3.4cqw; min-height: 15cqw; }
 .lb-caption__title { margin: 0; font: italic 400 7.2cqw/1.05 var(--font-display); letter-spacing: -.01em; font-variation-settings: 'opsz' 96, 'SOFT' 100; }

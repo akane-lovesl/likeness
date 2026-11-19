@@ -160,8 +160,8 @@ async function photoEdit(src, it, words, input, frames = false) {
   return null;
 }
 /** Somewhere with nothing to breathe, and what the helmet is for there. */
-const AIRLESS = /** @type {Record<string, string>} */ ({ moon: 'there’s no air up there', space: 'there’s no air out there', under: 'to breathe down there' });
-const THERE = /** @type {Record<string, string>} */ ({ moon: 'on the moon', space: 'out in space', under: 'under the sea', clouds: 'above the clouds' });
+const AIRLESS = /** @type {Record<string, string>} */ ({ moon: 'there’s no air up there', space: 'there’s no air out there', under: 'to breathe down there', mars: 'the air on Mars is too thin to breathe' });
+const THERE = /** @type {Record<string, string>} */ ({ moon: 'on the moon', space: 'out in space', under: 'under the sea', clouds: 'above the clouds', mars: 'on Mars' });
 /** Whether the words name somewhere to be: a place the painter knows, a room, or a thing it would paint there. @param {string} words */
 function namesPlace(words) { const d = P.sceneFrom(words); return d.land !== 'hills' || d.inside || d.things.length > 0 || /\bhills?\b/i.test(words); }
 /**
@@ -191,12 +191,21 @@ const TRIPS = /** @type {[string, string, string][]} */ ([
   ['a Tokyo street at night with neon signs', 'Tokyo, at night', 'Tokyo at night'],
   ['on the moon', 'The moon', 'the moon'],
   ['under the sea', 'Under the sea', 'under the sea'],
+  ['Paris at night', 'Paris, at night', 'Paris at night'],
+  ['the pyramids at sunset', 'The pyramids, at sunset', 'the pyramids at sunset'],
+  ['Mars at sunset', 'Mars, where the sunset is blue', 'Mars at sunset'],
+  ['Kyoto in autumn', 'Kyoto, in autumn', 'Kyoto in autumn'],
+  ['Venice at golden hour', 'Venice, at golden hour', 'Venice at golden hour'],
+  ['San Francisco in the fog', 'San Francisco, in the fog', 'San Francisco in the fog'],
+  ['Santorini in the afternoon', 'Santorini', 'Santorini'],
+  ['New York at night', 'New York, at night', 'New York at night'],
+  ['London in the rain', 'London, in the rain', 'London in the rain'],
+  ['Rome at dusk', 'Rome, at dusk', 'Rome at dusk'],
+  ['Sydney harbour', 'Sydney', 'Sydney'],
+  ['Mount Fuji in spring', 'Fuji, in spring', 'Fuji in spring'],
   ['fields of lavender at golden hour', 'Lavender, at golden hour', 'the lavender at golden hour'],
   ['the northern lights over a frozen lake', 'The northern lights', 'under the northern lights'],
   ['above the clouds at sunrise', 'Above the clouds', 'above the clouds'],
-  ['a desert at sunset', 'The desert, at sunset', 'the desert at sunset'],
-  ['a rainy street in Paris at night', 'Paris, in the rain', 'Paris in the rain'],
-  ['Mars', 'Mars', 'Mars'],
 ]);
 /** The sheet a trip is laid out on: two to a row, the name and the route above, each place written under its picture. @param {number} n @param {number} aspect */
 function tripLayout(n, aspect) {
@@ -256,7 +265,7 @@ async function voyage(spec, it, inputs, seed, frames) {
   // the room's hands, loaded before anything is written in them
   const look = paperLook(); await Promise.all([look.display, look.hand, look.mono].map(f => document.fonts?.load('40px ' + f).catch(() => null)));
   // where to: the places named, then the studio's picks, not the same kind of place twice
-  const landOf = (/** @type {string} */ w) => { const d = P.sceneFrom(w, null, 1); return d.inside ? 'inside:' + w : d.land + (/\bmars\b/i.test(w) ? ':mars' : ''); };
+  const landOf = (/** @type {string} */ w) => { const d = P.sceneFrom(w, null, 1); return d.inside ? 'inside:' + w : d.place || d.land; };
   const stops = /** @type {{ words: string, caption: string, said: string, seed: number }[]} */ ([]), lands = new Set();
   for (const p of it.places || []) { const bare = p.replace(/^(?:on|in|at|to)\s+/i, ''); stops.push({ words: p, caption: cap(bare), said: bare, seed: 0 }); lands.add(landOf(p)); }
   if (stops.length < 2) {
@@ -298,6 +307,9 @@ function intoFrame(o, at) {
   if (o.rects) q.rects = o.rects.map((/** @type {any[]} */ r) => [X(r[0]), Y(r[1]), r[2] * fw, r[3] * fh, r[4], r[5]]);
   if (o.path) q.path = [X(o.path[0]), o.path[1] * fw];
   if (o.avoid) q.avoid = [X(o.avoid[0]), Y(o.avoid[1]), o.avoid[2] * fw];
+  if (o.holes) q.holes = o.holes.map((/** @type {number[]} */ h) => [X(h[0]), Y(h[1]), h[2] * fw, h[3] * fh]);
+  if (o.pivot) q.pivot = [X(o.pivot[0]), Y(o.pivot[1])];
+  if (o.devil) q.devil = [X(o.devil[0]), Y(o.devil[1]), o.devil[2] * fh];
   if (typeof o.r === 'number') q.r = o.r * fw;
   return q;
 }
@@ -313,7 +325,7 @@ async function tripLife(print, source) {
   const src = await sizedOf(source, 256), mask = await subjectOf(source), hints = /** @type {any[]} */ ([]);
   const front = P.make(320, Math.round(320 * SH / SW)), fc = /** @type {CanvasRenderingContext2D} */ (front.getContext('2d'));
   t.places.forEach((/** @type {any} */ p, /** @type {number} */ i) => {
-    const [rx, ry, rw, rh] = t.rects[i], at = [rx / SW, ry / SH, rw / SW, rh / SH], rec = stopRecipe(t, p), desc = placeOf(rec);
+    const [rx, ry, rw, rh] = t.rects[i], at = [rx / SW, ry / SH, rw / SW, rh / SH], rec = stopRecipe(t, p), desc = placeOf(rec, mask);
     if (!desc) return;
     const L = P.lifeIn(desc, pw, ph), win = L.hints.find(o => o.k === 'window'), pane = win ? intoFrame(win, at) : null;
     for (const o of L.hints) if (o.k !== 'arch' && o.k !== 'window') { const q = intoFrame(o, at); if (q.win) q.pane = pane; hints.push(q); }
@@ -334,7 +346,7 @@ export async function tripOf(print, source, w) {
   const big = await P.fromBlob(source.blob, P.MAX), sw = w, sh = Math.round(w * big.height / big.width), src = P.copy(big, sw, sh), mask = await subjectOf(source);
   const me = mask ? P.composite(src, mask, null) : null;
   const stops = t.places.map((/** @type {any} */ p) => {
-    const rec = stopRecipe(t, p), desc = placeOf(rec) || P.sceneFrom(p.words, null, p.seed), back = P.scene(desc, sw, sh), { plan } = planFor(rec, desc);
+    const rec = stopRecipe(t, p), desc = placeOf(rec, mask) || P.sceneFrom(p.words, null, p.seed), back = P.scene(desc, sw, sh), { plan } = planFor(rec, desc);
     const person = mask ? (plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, p.seed).canvas : me) : null;
     const L = P.lifeIn(desc, sw, sh); if (person) L.front.getContext('2d')?.drawImage(person, 0, 0, L.front.width, L.front.height);
     return { back, person, life: { ...L, person, picture: back }, caption: p.caption };
@@ -348,11 +360,22 @@ function planFor(rec, desc) {
   if (plan) plan.pieces = [...plan.pieces, ...(because && !plan.pieces.includes('helmet') ? ['helmet'] : [])];
   return { plan: plan?.pieces.length ? plan : null, because: plan?.pieces.includes('helmet') && because && !rec.dress?.pieces?.includes('helmet') ? because : '' };
 }
-/** A recipe's place, read again (with every change asked of it since), or null when they stay where they were. @param {Recipe} rec */
-function placeOf(rec) {
+/**
+ * A recipe's place, read again (with every change asked of it since), or null when they stay where they were. Given the
+ * outline of who is put there, a landmark in it stands clear of them.
+ * @param {Recipe} rec @param {HTMLCanvasElement | null} [mask]
+ */
+function placeOf(rec, mask = null) {
   const desc = rec.scene ? P.sceneAgain(rec.scene) : null;
   if (desc && rec.ramp && !desc.ramp && !desc.pal) desc.ramp = rec.ramp;
+  if (desc && mask) desc.clear = clearOf(mask);
   return desc;
+}
+/** Where a landmark can stand beside someone: on their wider side, about the middle of what is clear there. @param {HTMLCanvasElement} mask */
+function clearOf(mask) {
+  const f = D.figureOf(mask, mask.width, mask.height); if (!f.found) return null;
+  const l = (f.cx - f.headW * .9) / mask.width, r = (f.cx + f.headW * .9) / mask.width;
+  return l >= 1 - r ? { side: -1, at: Math.max(.15, l / 2 + .03) } : { side: 1, at: Math.min(.85, (1 + r) / 2 - .03) };
 }
 /** What is behind them: the place painted, one plain colour, or nothing at all. @param {Recipe} rec @param {any} desc @param {number} w @param {number} h */
 const backOf = (rec, desc, w, h) => desc ? P.scene(desc, w, h) : rec.plain ? P.plainBackdrop(w, h, rec.plain) : rec.cut ? P.make(w, h) : null;
@@ -374,7 +397,7 @@ export function placeOn(back, overlay, stand, fx) {
  * @param {Recipe} rec @param {HTMLCanvasElement} src @param {HTMLCanvasElement | null} mask @param {boolean} frames @param {number} seed
  */
 function remake(rec, src, mask, frames, seed) {
-  const desc = placeOf(rec); if (desc && frames) desc.layers = [];
+  const desc = placeOf(rec, mask); if (desc && frames) desc.layers = [];
   const w = src.width, h = src.height, bd = backOf(rec, desc, w, h), { plan, because } = planFor(rec, desc), pieces = frames ? /** @type {any[]} */ ([]) : null;
   // where they stand in the place, when they were moved there by hand
   const stand = rec.stand && bd && mask ? rec.stand : null, fx = stand ? D.figureOf(mask, w, h).cx / w : .5;
@@ -410,7 +433,7 @@ function remake(rec, src, mask, frames, seed) {
 export async function standStage(rec, input, w) {
   const src = await sizedOf(input, w), mask = await subjectOf(input);
   if (!mask) return null;
-  const desc = placeOf(rec), back = backOf(rec, desc, src.width, src.height);
+  const desc = placeOf(rec, mask), back = backOf(rec, desc, src.width, src.height);
   if (!back) return null;
   const { plan } = planFor(rec, desc), person = plan ? D.dressUp(src, mask, plan, P.make(src.width, src.height), null, 1).canvas : P.composite(src, mask, null);
   return { back, person, fx: D.figureOf(mask, src.width, src.height).cx / src.width, stand: rec.stand || { x: 0, s: 1 } };
@@ -447,14 +470,15 @@ export async function lifeOf(print, source = null, o = {}) {
   if (print.provenance?.trip) return source?.blob ? tripLife(print, source) : null;
   const rec = print.provenance?.recipe, kept = print.provenance?.scene;
   if (rec ? !rec.scene || rec.look || rec.profile || rec.adjust?.length || !source?.blob : !kept || kept.look) return null;
-  const desc = rec ? placeOf(rec) : P.sceneAgain(kept);
+  const mask = rec ? await subjectOf(source) : null;
+  if (rec && !mask) return null;
+  const desc = rec ? placeOf(rec, mask) : P.sceneAgain(kept);
   if (!desc) return null;
   if (o.sun) P.setSun(desc, o.sun);
   const w = print.w || 768, h = print.h || 1024, { hints, front, bare, cut } = P.lifeIn(desc, w, h);
   let person = null;
-  if (rec) {
-    const src = await sizedOf(source, 192), mask = await subjectOf(source);
-    if (!mask) return null;
+  if (rec && mask) {
+    const src = await sizedOf(source, 192);
     const { plan } = planFor(rec, desc), sw = src.width, sh = src.height, fig = D.figureOf(mask, sw, sh), fx = fig.cx / sw, stand = o.stand || rec.stand || null;
     const dressed = plan ? D.dressUp(src, mask, plan, P.make(sw, sh), null, rec.seed ?? 7).canvas : P.composite(src, mask, null);
     person = placeOn(P.make(front.width, front.height), dressed, stand, fx); front.getContext('2d')?.drawImage(person, 0, 0);
@@ -633,7 +657,8 @@ const SAY = {
   create: (s, h, shows = []) => {
     // what was asked, without the asking, and what the sketch shows of it
     const what = s.text.replace(/@[A-Za-z]{1,2}\b\s*/g, '').replace(/^\s*(?:please\s+)?(?:(?:paint|draw|sketch|make|create|imagine|render|generate|picture|show)(?: me| us)?|give me)\s+/i, '').replace(/[.!?]+$/, '').trim();
-    const of = what.length > 64 ? what.slice(0, 63) + '…' : what;
+    // "A lighthouse…" said back as "a lighthouse…", so it is never read as the picture called A
+    const of = (what.length > 64 ? what.slice(0, 63) + '…' : what).replace(/^(?:A|An|The|Some|Two|Three|My|Our|Your|This)(?= [a-z])/, m => m.toLowerCase());
     return shows.length ? `A first sketch of ${of}: ${shows.slice(0, 3).join(', ')}.` : `A first sketch of “${of}”.`;
   },
   edit: (s, h) => `${h(s.intent.subject)}, changed as you asked.`, restyle: (s, h) => `${h(s.intent.subject)}, in ${s.intent.look?.name || 'a new look'}.`,

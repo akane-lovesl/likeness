@@ -8,6 +8,7 @@ import { vibeOf, readVibe } from '../room/maker.js';
 import { rng } from '../core/dom.js';
 import { path2d } from '../room/ornaments.js';
 import { rampAround } from './looks.js';
+import { placeIn, ownLand, placeSays, placeNote, paintPlace, mars as marsLand } from './atlas.js';
 
 export const MAX = 1024;
 export function make(w, h) { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; }
@@ -189,15 +190,16 @@ const CLOUDS = /^\s*(?:the\s+)?(?:clouds|sky|heavens?)\b|\babove the clouds|\bin
 const CITY = /city|street|tokyo|paris|lisbon|\btown\b|skyline|rooftop|alley|neon|new york|london|seoul|hong kong|shibuya|downtown|cyberpunk|vienna|prague|venice|rome|berlin|madrid|barcelona|amsterdam|copenhagen|stockholm|istanbul|cairo|mumbai|shanghai|kyoto|osaka|bangkok|havana|new orleans|san francisco|los angeles|chicago|buenos aires|edinburgh|dublin/;
 const FRUIT = { lemon: '#f3d23a', orange: '#f08a2a', cherr: '#c8243a', apple: '#d23a2a', olive: '#6b7a2a', peach: '#f6a07a', plum: '#6b2a5a', fig: '#5a2a4a' };
 export function sceneFrom(text, ramp = null, seed = 1) {
-  const t = (text || '').toLowerCase(), vibe = vibeOf(text || '');
+  const t = (text || '').toLowerCase(), vibe = vibeOf(text || ''), place = placeIn(t);
   // the light: said outright, or the time of day the words carry, or after dark when the words are
   let light = has(t, /night|midnight|moon|star|neon|dark/) ? 'night' : has(t, /sunset|dusk|evening|twilight|golden hour/) ? 'dusk' : has(t, /dawn|sunrise|morning/) ? 'dawn' : 'day';
-  if (has(t, /\bmars\b|martian|\bspace\b|planet|lunar|moon ?base|alien|galaxy|nebula|cosmos|cosmic|asteroid|starship|spaceship|rocket|\borbit|northern lights|aurora/)) light = 'night';
+  if (place?.id !== 'mars' && has(t, /\bmars\b|martian|\bspace\b|planet|lunar|moon ?base|alien|galaxy|nebula|cosmos|cosmic|asteroid|starship|spaceship|rocket|\borbit|northern lights|aurora/)) light = 'night';
   else if (light === 'day' && vibe) light = vibe.light === 'golden' || vibe.light === 'dusk' ? 'dusk' : vibe.light === 'dawn' ? 'dawn' : vibe.light === 'night' || (vibe.dark && vibe.light !== 'day') ? 'night' : 'day';
   // on the moon or above the clouds the hour is whatever the words say: the moon itself is no reason for night
   const moon = has(t, MOON), clouds = !moon && has(t, CLOUDS);
-  if (moon || clouds) light = has(t, /\bnight|midnight|\bdark\b|starry/) ? 'night' : has(t, /sunset|dusk|evening|twilight|golden hour/) ? 'dusk' : has(t, /dawn|sunrise|morning/) ? 'dawn' : 'day';
+  if (moon || clouds || place?.id === 'mars') light = has(t, /\bnight|midnight|\bdark\b|starry/) ? 'night' : has(t, /sunset|dusk|evening|twilight|golden hour/) ? 'dusk' : has(t, /dawn|sunrise|morning/) ? 'dawn' : 'day';
   const land = moon ? 'moon' : clouds ? 'clouds' : has(t, /underwater|under the sea|beneath the (?:waves|sea)|deep sea|ocean floor|seabed|aquarium|coral reef|submarine|abyss/) ? 'under'
+    : place ? place.land
     : has(t, /\bmars\b|martian|\bspace\b|planet|lunar|moon ?base|alien|galaxy|nebula|cosmos|cosmic|asteroid|starship|spaceship|rocket|\borbit/) ? 'space'
     : has(t, /\bseas?\b|seaside|ocean|beach|\bwaves?\b|\blake\b|\bpond\b|harbou?r|\bbay\b|coast|river|lighthouse|\bboat|\bsail|lagoon|\breef|mermaid|island|shore|\bsurf|\bpier\b|marina|riviera|amalfi|\bcove\b|fjord/) ? 'sea'
     : has(t, /desert|\bdunes?\b|sahara|\bmesa\b|canyon|arizona|nevada|route 66|motel|mojave|cact(?:us|i)|oasis|badlands/) ? 'desert'
@@ -239,7 +241,7 @@ export function sceneFrom(text, ramp = null, seed = 1) {
   const colour = Object.entries(COLOUR_WORDS).find(([w]) => new RegExp('\\b' + w + '\\b').test(t))?.[1];
   // colour words alone make a ramp; words the room maker knows bring a whole palette instead (pal)
   return { words: text || '', light, land, inside, weather, things, ramp: ramp || (!vibe && colour ? rampAround(colour) : null), arch: has(t, /arch|castle|palace|chapel/), seed, pal: vibe?.colors || null, marks: vibe?.marks || [], props, shelf, sign: sign.toUpperCase(), who, wears, hair, aurora: has(t, /northern lights|aurora/), mars: has(t, /\bmars\b|martian|red planet/),
-    fruit: Object.entries(FRUIT).find(([k]) => t.includes(k))?.[1] || null, frozen: has(t, /frozen|\bicy\b|\bice\b|glacier|arctic|polar/), skyline: land === 'sea' && (props.includes('neon') || has(t, CITY)) };
+    fruit: Object.entries(FRUIT).find(([k]) => t.includes(k))?.[1] || null, frozen: has(t, /frozen|\bicy\b|\bice\b|glacier|arctic|polar/), skyline: land === 'sea' && !place && (props.includes('neon') || has(t, CITY)), place: place?.id || '' };
 }
 export const COLOUR_WORDS = { red: '#c8322d', crimson: '#a5122a', scarlet: '#e0301e', pink: '#ec7fa0', rose: '#d9667f', blush: '#f2b8c6', orange: '#ec7a2c', peach: '#f6b08a', coral: '#f07560', gold: '#d6a540', golden: '#d6a540', yellow: '#f0c93a', lemon: '#f3e05a', green: '#3f8f4f', emerald: '#1f8a5c', mint: '#93d8b8', sage: '#8fa883', olive: '#7d7a32', teal: '#1f8a8a', turquoise: '#33c3c0', cyan: '#35d2e8', blue: '#2f6fdc', navy: '#1a2e6b', cobalt: '#2148b8', sky: '#7dbbf0', lavender: '#b39ddb', lilac: '#c8a2d8', purple: '#7a3ea8', violet: '#6a3fd0', plum: '#6b2a5a', magenta: '#d5248f', brown: '#7a4a2a', chocolate: '#5a3218', silver: '#b8c0cc', white: '#f4f2ee', black: '#141414', grey: '#8a8a8a', gray: '#8a8a8a', cream: '#f4ead2', ivory: '#f6f0dc', burgundy: '#6e1a2c', amber: '#e09a2a', copper: '#b8673a' };
 
@@ -249,11 +251,11 @@ const cap = (/** @type {string} */ s) => s ? s[0].toUpperCase() + s.slice(1) : s
 /** What the painter says as it lays each layer down: the reading, in plain words. */
 function notesFor(d) {
   const p = d.props || [], night = d.light === 'night' || d.light === 'dusk';
-  const land = ({ sea: d.frozen ? 'ice, where the water was' : 'the sea', city: night ? 'the town, lit' : 'the town', hills: 'hills', fields: 'rows running to the horizon', forest: 'the woods', mountains: 'mountains', desert: 'mesas, sand, a saguaro', under: 'under the surface, light coming down', space: 'space: a ringed planet, and the ground of somewhere else', moon: 'the moon: grey dust and craters, and the Earth up in the black', clouds: 'a sea of clouds, all the way to the horizon' })[d.land] + (d.skyline ? ', a town across the water' : '');
+  const land = d.place ? placeSays(d.place, d.light) : ({ sea: d.frozen ? 'ice, where the water was' : 'the sea', city: night ? 'the town, lit' : 'the town', hills: 'hills', fields: 'rows running to the horizon', forest: 'the woods', mountains: 'mountains', desert: 'mesas, sand, a saguaro', under: 'under the surface, light coming down', space: 'space: a ringed planet, and the ground of somewhere else', moon: 'the moon: grey dust and craters, and the Earth up in the black', clouds: 'a sea of clouds, all the way to the horizon' })[d.land] + (d.skyline ? ', a town across the water' : '');
   const outside = cap(land) + (p.includes('neon') && d.land === 'city' ? '. Neon up the buildings' : '') + (p.includes('neon') && d.sign && d.land !== 'city' ? '. The sign: ' + d.sign : '');
   const mark = d.marks?.[0];
   return {
-    sky: d.land === 'moon' ? 'The sky: black at every hour, with the Earth in it' : 'The sky: ' + (d.weather === 'rain' && !night ? 'grey, rain coming' : ({ day: 'a clear day', dawn: 'first light', dusk: 'the sun going down', night: 'night' })[d.light]),
+    sky: d.land === 'moon' ? 'The sky: black at every hour, with the Earth in it' : d.land === 'mars' ? 'The sky: ' + (({ day: 'butterscotch, the dust lit through', night: 'night, and two small moons' })[d.light] || 'brown, and blue around the sun') : 'The sky: ' + (d.weather === 'rain' && !night ? 'grey, rain coming' : ({ day: 'a clear day', dawn: 'first light', dusk: 'the sun going down', night: 'night' })[d.light]),
     land: outside,
     walls: p.includes('wood') ? 'Wood on the walls' : p.includes('deco') ? 'Gold fans along the walls' : p.includes('tiles') ? 'Tiles on the wall, a pattern in each' : mark && d.pal ? 'Wallpaper: ' + (MANY[mark] || mark + 's') : 'The walls',
     furnish: p.includes('shelves') ? ({ books: 'Shelves of books', jars: 'Shelves of jars and bottles', sweets: 'Jars of sweets', bread: 'Loaves on the shelves' })[d.shelf] || 'Shelves' : p.includes('neon') ? (d.sign ? 'The sign: ' + d.sign : 'Neon on the walls') : '',
@@ -346,8 +348,8 @@ export function describeScene(d) {
   if (p.includes('webs')) out.push('cobwebs');
   if (p.includes('train')) out.push('the country going by');
   if (p.includes('plants')) out.push('plants and ivy');
-  const land = ({ sea: d.frozen ? 'the ice' : d.skyline ? 'a town across the water' : 'the sea', city: night ? 'the town lit up' : 'the town', fields: 'rows to the horizon', forest: 'the woods', mountains: 'the mountains', desert: 'mesas and a saguaro', under: 'light coming down through the water', space: 'a ringed planet', hills: 'hills' })[d.land];
-  if (d.inside) { if (d.land !== 'hills') out.push(land + ' outside'); } else if (d.land !== 'hills') out.push(land);
+  const land = d.place ? placeSays(d.place, d.light) : ({ sea: d.frozen ? 'the ice' : d.skyline ? 'a town across the water' : 'the sea', city: night ? 'the town lit up' : 'the town', fields: 'rows to the horizon', forest: 'the woods', mountains: 'the mountains', desert: 'mesas and a saguaro', under: 'light coming down through the water', space: 'a ringed planet', hills: 'hills' })[d.land];
+  if (d.inside) { if (d.place || d.land !== 'hills') out.push(land + ' outside'); } else if (d.place || d.land !== 'hills') out.push(land);
   if (d.things?.includes('glass')) out.push('a cocktail on the bar');
   const things = (d.things || []).filter((/** @type {string} */ k) => !['teacup', 'glass'].includes(k)).map((/** @type {string} */ k) => THING[k]).filter(Boolean);
   if (things.length) out.push(things.join(' and '));
@@ -388,6 +390,12 @@ export function scene(desc, w = 768, h = 1024) {
   }
   if (desc.weather === 'rain' && L !== 'night') sky = sky.map(s => mix(s, '#7d8796', .42));
   const props = desc.props || [], pal = desc.pal;
+  // a famous place: its landmark to one side (away from whoever stands in it), painted from a stream of its own
+  const placeRnd = rng((desc.seed || 7) + 4241), sided = rng((desc.seed || 7) + 77)(), own = !!desc.place && ownLand(desc.place);
+  const side = desc.clear?.side || (sided < .5 ? -1 : 1), at = desc.clear?.at ?? (side < 0 ? (desc.who ? .2 : .3) : (desc.who ? .8 : .7));
+  /** @param {number} ox @param {number} oy @param {number} ow @param {number} oh @param {number} hz @param {string[]} sk @param {number} sunX @returns {import('./atlas.js').Brush} */
+  const brush = (ox, oy, ow, oh, hz, sk, sunX) => ({ x, ox, oy, ow, oh, hz, w, h, L, sky: sk, far: mix(sk[1], sk[2], .3), near: mix(sk[0], '#101820', L === 'night' ? .55 : .7), pal, q: placeRnd, spark, lr, live, fr,
+    at, side, bare: !!desc.bare, holes: [], lights: [], sunX, skyOnly: !!desc.skyOnly, mark: () => { if (!desc.inside) mark(notes.sky); } });
   /** Neon: drawn once in its colour with a glow, then again paler, for the hot core. */
   const neon = (/** @type {string} */ col, /** @type {() => void} */ draw, blur = w * .035) => {
     x.save(); x.shadowColor = col; x.shadowBlur = blur; x.fillStyle = x.strokeStyle = col; draw();
@@ -473,6 +481,13 @@ export function scene(desc, w = 768, h = 1024) {
       x.fillStyle = mix(fc, '#000000', .15 * (1 - lit)); x.fillRect(fx + Math.max(1.5, ow * .004), fb - fh, ow * .05, fh * .38);
       return hz;
     }
+    if (desc.land === 'mars') {
+      // its own sky, and the sun smaller in it: the place to hold it and drag it is where it would be on Earth
+      const hz = oy + oh * .6, su = rnd(), along = L === 'dawn' ? .38 - su * .2 : .62 + su * .2;
+      const sun = desc.sun || (L === 'night' ? [1 - along, 1.28] : [along, L === 'day' ? .32 : .72]), sx = ox + ow * sun[0], sy = oy + (hz - oy) * sun[1];
+      desc.sunAt = { x: sx / w, y: sy / h, r: ow * .1 / w, box: [ox / w, oy / h, ow / w, (hz - oy) / h], sun };
+      return marsLand(brush(ox, oy, ow, oh, hz, sky, sun[0]), { sx, sy, sr: ow * .07, sun });
+    }
     const hz = oy + oh * .6;
     const g = x.createLinearGradient(0, oy, 0, hz); g.addColorStop(0, sky[0]); g.addColorStop(.6, sky[1]); g.addColorStop(1, sky[2]); x.fillStyle = g; x.fillRect(ox, oy, ow, oh);
     if (L === 'night') for (let i = 0; i < 160 * ow / w; i++) { x.globalAlpha = .3 + twinkle() * .7; x.fillStyle = '#fff'; x.fillRect(ox + twinkle() * ow, oy + twinkle() * (hz - oy), twinkle() < .1 ? 2 : 1, twinkle() < .1 ? 2 : 1); }
@@ -512,8 +527,10 @@ export function scene(desc, w = 768, h = 1024) {
     if (!desc.inside) mark(notes.sky);
     if (desc.skyOnly) return oy + oh;
     const far = mix(sky[1], sky[2], .3), mid = mix(sky[0], '#203040', L === 'night' ? .3 : .45), near = mix(sky[0], '#101820', L === 'night' ? .55 : .7);
+    const B = desc.place ? brush(ox, oy, ow, oh, hz, sky, sun[0]) : null;
+    if (B) paintPlace(B, desc.place, 'behind');
     if (desc.land === 'mountains') for (const [col, base, amp] of [[far, hz, .2], [mid, hz + oh * .03, .14]]) { x.fillStyle = col; x.beginPath(); x.moveTo(ox, base); let px = ox; while (px < ox + ow) { px += ow * (.06 + rnd() * .1); x.lineTo(px, base - oh * amp * (.3 + rnd() * .7)); px += ow * (.05 + rnd() * .08); x.lineTo(px, base - oh * amp * rnd() * .3); } x.lineTo(ox + ow, base); x.lineTo(ox + ow, oy + oh); x.lineTo(ox, oy + oh); x.fill(); }
-    if (desc.land === 'city') {
+    if (desc.land === 'city' && !own) {
       // a painted town by day (facades in the words' colours), lit windows after dark
       const faces = pal && L !== 'night' ? [mix(pal.ground, '#ffffff', .15), mix(pal.accent2, '#ffffff', .5), mix(pal.accent, '#ffffff', .6), mix(pal.ground2, '#ffffff', .2), mix(pal.accent2, '#ffffff', .72)] : null;
       for (const [row, col, top, lit] of /** @type {[number, string, number, number][]} */ ([[0, far, .2, .2], [1, near, .12, .5]])) {
@@ -538,7 +555,7 @@ export function scene(desc, w = 768, h = 1024) {
         neon(col, () => { x.lineWidth = Math.max(1.5, ow * .005); x.beginPath(); x.roundRect(sx2, sy2, sw, sh, sw * .3); x.stroke(); for (let k = 0; k < 3; k++) x.fillRect(sx2 + sw * .3, sy2 + sh * (.2 + k * .25), sw * .4, Math.max(1.5, sh * .07)); }, ow * .035);
       }
     }
-    if (desc.land === 'desert') {
+    if (desc.land === 'desert' && !own) {
       // mesas on the horizon, dunes in front, a saguaro or two
       const rock = mix(pal ? pal.accent2 : '#c8553d', far, L === 'night' ? .7 : .4), sand = L === 'night' ? mix('#2a2238', near, .3) : pal ? mix(pal.ground, '#e8b77a', .55) : '#e2b47c';
       x.fillStyle = rock; x.beginPath(); x.moveTo(ox, hz); let px = ox;
@@ -567,7 +584,7 @@ export function scene(desc, w = 768, h = 1024) {
         for (let k = 0; k < 26; k++) { const f = Math.pow(rnd(), 1.7), cx = top((a + b) / 2) + ((a + b) / 2 - top((a + b) / 2)) * f + (rnd() - .5) * (b - a) * f * .7, cy = hz + (oy + oh - hz) * f; x.beginPath(); x.arc(cx, cy, .6 + f * w * .006, 0, Math.PI * 2); x.fill(); }
       }
     }
-    if (desc.land === 'hills') for (let k = 0; k < 3; k++) { x.fillStyle = mix(L === 'night' ? '#1a2a3a' : desc.pal ? mix('#7fa860', desc.pal.accent2, .2) : '#7fa860', near, k * .3); x.beginPath(); x.moveTo(ox, oy + oh); for (let px = 0; px <= ow; px += 8) x.lineTo(ox + px, hz + k * oh * .05 - Math.sin(px / ow * Math.PI * (1.2 + k) + k * 2) * oh * .04 - oh * .02); x.lineTo(ox + ow, oy + oh); x.fill(); }
+    if (desc.land === 'hills' && !own) for (let k = 0; k < 3; k++) { x.fillStyle = mix(L === 'night' ? '#1a2a3a' : desc.pal ? mix('#7fa860', desc.pal.accent2, .2) : '#7fa860', near, k * .3); x.beginPath(); x.moveTo(ox, oy + oh); for (let px = 0; px <= ow; px += 8) x.lineTo(ox + px, hz + k * oh * .05 - Math.sin(px / ow * Math.PI * (1.2 + k) + k * 2) * oh * .04 - oh * .02); x.lineTo(ox + ow, oy + oh); x.fill(); }
     if (desc.land === 'clouds') {
       // above the clouds: their tops spread to the horizon, lit by the hour, deeper in shade toward the front
       const lit = L === 'night' ? mix(sky[2], '#c8d0f0', .35) : L === 'dusk' ? mix('#fff1e0', sky[2], .45) : L === 'dawn' ? mix('#fff6f0', sky[2], .35) : '#ffffff';
@@ -605,6 +622,12 @@ export function scene(desc, w = 768, h = 1024) {
         x.globalAlpha = .5; neon(col, () => { for (let ly = hz + 3; ly < hz + len; ly += 5) x.fillRect(rx - 1 + Math.sin(ly * .3) * 2, ly, 3 + spark() * 4, 2); }, ow * .02); x.globalAlpha = 1;
       }
       }
+    }
+    if (B) {
+      // what sits in front of the place, its lit windows going on and off, and no star in front of a tower
+      paintPlace(B, desc.place, 'after');
+      if (B.lights.length) live({ k: 'windows', rects: B.lights });
+      if (B.holes.length) for (const o of life) if (o.k === 'stars') o.holes = B.holes;
     }
     if (props.includes('neon') && desc.sign && !desc.inside && desc.land !== 'city') {
       // a sign on a pole by the road, saying what the place is, an arrow pointing the way in
@@ -855,6 +878,9 @@ function zoomHint(o, z, k) {
   if (o.rects) o.rects = o.rects.map((/** @type {any[]} */ q) => [X(q[0]), X(q[1]), q[2] * z, q[3] * z, q[4], q[5]]);
   if (o.path) o.path = [X(o.path[0]), o.path[1] * z];
   if (o.avoid) o.avoid = [X(o.avoid[0]), X(o.avoid[1]), o.avoid[2] * z];
+  if (o.holes) o.holes = o.holes.map((/** @type {number[]} */ q) => [X(q[0]), X(q[1]), q[2] * z, q[3] * z]);
+  if (o.pivot) o.pivot = [X(o.pivot[0]), X(o.pivot[1])];
+  if (o.devil) o.devil = [X(o.devil[0]), X(o.devil[1]), o.devil[2] * z];
   if (typeof o.r === 'number') o.r *= z;
   if (o.k === 'arch') o.zoom = [z, k];
 }
@@ -889,7 +915,7 @@ export function lifeIn(desc, w, h) {
   return { hints: full.life || [], front, bare, cut };
 }
 /** Hints for things that move themselves: cut out of the picture and moved whole. */
-const MOVES = new Set(['bob', 'sway', 'beat']);
+const MOVES = new Set(['bob', 'sway', 'beat', 'spin']);
 
 /**
  * A sitter as one flat shape, drawn in a 100-unit box (feet at the bottom) at ox, oy and size s.

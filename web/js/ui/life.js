@@ -43,7 +43,8 @@ function effect(o, W0, H0, seed) {
     case 'stars': {
       // a few stars, each brightening now and then into a little cross of light
       const [bx, by, bw, bh] = box(), s = Array.from({ length: o.n || 24 }, () => ({ x: bx + r() * bw, y: by + Math.pow(r(), 1.3) * bh, p: 2.4 + r() * 4, f: r() * TAU, z: (.7 + r() * .9) * S }))
-        .filter(q => !o.avoid || Math.hypot(q.x - o.avoid[0] * W, q.y - o.avoid[1] * H) > o.avoid[2] * W);
+        .filter(q => (!o.avoid || Math.hypot(q.x - o.avoid[0] * W, q.y - o.avoid[1] * H) > o.avoid[2] * W)
+          && !(o.holes || []).some((/** @type {number[]} */ h) => q.x >= h[0] * W && q.x <= (h[0] + h[2]) * W && q.y >= h[1] * H && q.y <= (h[1] + h[3]) * H));
       return { draw(x, t) {
         x.fillStyle = '#fff';
         for (const q of s) {
@@ -226,11 +227,16 @@ function effect(o, W0, H0, seed) {
       } };
     }
     case 'petals': {
-      const [bx, by, bw, bh] = box(), ps = Array.from({ length: 16 }, () => ({ x: r(), y: r(), v: 1 / (8 + r() * 6), sw: (10 + r() * 16) * S, f: r() * TAU, rs: .8 + r() * 1.6, z: (3.5 + r() * 3) * S, c: r() < .5 ? '#f6b6c8' : '#fbd7e1' }));
+      // petals, or (with a leaf's colours) maple leaves, tumbling as they come down
+      const [bx, by, bw, bh] = box(), cs = o.c || ['#f6b6c8', '#fbd7e1'];
+      const ps = Array.from({ length: o.leaf ? 12 : 16 }, (_, i) => ({ x: r(), y: r(), v: 1 / (8 + r() * 6), sw: (10 + r() * 16) * S, f: r() * TAU, rs: .8 + r() * 1.6, z: (o.leaf ? 5 + r() * 3 : 3.5 + r() * 3) * S, c: cs[i % cs.length] }));
       return { draw(x, t) {
         for (const q of ps) {
           x.save(); x.translate(bx + q.x * bw + Math.sin(t * .6 + q.f) * q.sw, by + ((q.y + t * q.v) % 1) * (bh + 20 * S) - 10 * S); x.rotate(t * q.rs + q.f); x.scale(Math.cos(t * q.rs * 1.3 + q.f), 1);
-          x.fillStyle = q.c; x.beginPath(); x.moveTo(0, -q.z); x.quadraticCurveTo(q.z * .8, 0, 0, q.z); x.quadraticCurveTo(-q.z * .8, 0, 0, -q.z); x.fill(); x.restore();
+          x.fillStyle = q.c; x.beginPath();
+          if (o.leaf) for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? q.z * .42 : q.z * (k === 0 ? 1 : k === 2 || k === 8 ? .9 : .66); x.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+          else { x.moveTo(0, -q.z); x.quadraticCurveTo(q.z * .8, 0, 0, q.z); x.quadraticCurveTo(-q.z * .8, 0, 0, -q.z); }
+          x.fill(); x.restore();
         }
       } };
     }
@@ -265,7 +271,7 @@ function effect(o, W0, H0, seed) {
       return { draw(x, t) {
         x.save(); x.globalCompositeOperation = 'lighter';
         pts.forEach((/** @type {number[]} */ [px, py], /** @type {number} */ i) => {
-          const a = .22 + .1 * Math.sin(t * 13 + i * 2.1) + .08 * Math.sin(t * 7.7 + i), R = VW * .05 * (1 + .12 * Math.sin(t * 9 + i)), g = x.createRadialGradient(px, py, 0, px, py, R);
+          const a = .22 + .1 * Math.sin(t * 13 + i * 2.1) + .08 * Math.sin(t * 7.7 + i), R = VW * (o.z || .05) * (1 + .12 * Math.sin(t * 9 + i)), g = x.createRadialGradient(px, py, 0, px, py, R);
           g.addColorStop(0, `rgb(255 220 150 / ${a.toFixed(3)})`); g.addColorStop(1, 'rgb(255 214 140 / 0)'); x.fillStyle = g; x.fillRect(px - R, py - R, R * 2, R * 2);
         });
         x.restore();
@@ -300,6 +306,85 @@ function effect(o, W0, H0, seed) {
         for (const q of cs) {
           x.save(); x.translate(bx + q.x * bw + Math.sin(t * .9 + q.f) * q.sw, by + ((q.y + t * q.v) % 1) * (bh + 16 * S) - 8 * S); x.rotate(t * q.rs + q.f); x.scale(1, Math.cos(t * q.rs * 1.7 + q.f));
           x.fillStyle = q.c; x.fillRect(-q.w / 2, -q.w * .3, q.w, q.w * .6); x.restore();
+        }
+      } };
+    }
+    case 'glitter': {
+      // the Paris tower on the hour after dark: a thousand bulbs going off at random all over it. Here a burst comes
+      // soon after it is looked at, and again every so often
+      const pts = o.pts.map((/** @type {number[]} */ p) => ({ x: p[0] * W, y: p[1] * H, v: 5 + r() * 9, f: r() * TAU })), every = 13, on = 6;
+      return { draw(x, t) {
+        const c = (t + every - 1.4) % every; if (c > on) return;
+        const env = Math.min(1, c / .7, (on - c) / .9);
+        x.save(); x.globalCompositeOperation = 'lighter';
+        for (const q of pts) {
+          const a = peak(t * q.v + q.f, 14) * env; if (a < .05) continue;
+          const l = (2.2 + 3.4 * a) * S; x.fillStyle = 'rgb(255 255 248 / ' + a.toFixed(3) + ')';
+          x.fillRect(q.x - l, q.y - .35 * S, l * 2, .7 * S); x.fillRect(q.x - .35 * S, q.y - l, .7 * S, l * 2);
+          x.beginPath(); x.arc(q.x, q.y, 1.2 * S * a, 0, TAU); x.fill();
+        }
+        x.restore();
+      } };
+    }
+    case 'beacon': {
+      // the searchlight on top going round over the city: two beams swinging out and back, flaring as one faces you
+      const cx = o.at[0] * W, cy = o.at[1] * H, per = 10, L = VW * 1.25;
+      return { draw(x, t) {
+        x.save(); x.globalCompositeOperation = 'lighter';
+        for (const off of [0, Math.PI]) {
+          const th = t * TAU / per + off, across = Math.sin(th), toward = Math.cos(th), len = L * Math.abs(across);
+          if (len > VW * .03) {
+            const ex = cx + across * L, ey = cy - VH * .03 * Math.abs(across), spread = VW * .06 * Math.abs(across), a = .16 + .14 * Math.max(0, toward);
+            const g = x.createLinearGradient(cx, cy, ex, ey); g.addColorStop(0, 'rgb(255 248 220 / ' + (a * 1.6).toFixed(3) + ')'); g.addColorStop(1, 'rgb(255 248 220 / 0)');
+            x.fillStyle = g; x.beginPath(); x.moveTo(cx, cy - .6 * S); x.lineTo(ex, ey - spread); x.lineTo(ex, ey + spread); x.lineTo(cx, cy + .6 * S); x.closePath(); x.fill();
+          }
+          const f = Math.pow(Math.max(0, toward), 12);
+          if (f > .02) { const R = VW * (.02 + .07 * f), g = x.createRadialGradient(cx, cy, 0, cx, cy, R); g.addColorStop(0, 'rgb(255 250 230 / ' + (.85 * f).toFixed(3) + ')'); g.addColorStop(1, 'rgb(255 250 230 / 0)'); x.fillStyle = g; x.fillRect(cx - R, cy - R, R * 2, R * 2); }
+        }
+        x.restore();
+      } };
+    }
+    case 'blink': {
+      // red lights on the tops of the tall things, for the planes
+      const pts = o.pts.map((/** @type {number[]} */ p, /** @type {number} */ i) => ({ x: p[0] * W, y: p[1] * H, f: i * .37 + r() * .2 }));
+      return { draw(x, t) {
+        x.save(); x.globalCompositeOperation = 'lighter';
+        for (const q of pts) {
+          const ph = ((t + q.f) % 1.7) / 1.7, a = ph < .3 ? Math.sin(ph / .3 * Math.PI) : 0; if (a < .03) continue;
+          const R = 5 * S, g = x.createRadialGradient(q.x, q.y, 0, q.x, q.y, R); g.addColorStop(0, 'rgb(255 70 50 / ' + (.95 * a).toFixed(3) + ')'); g.addColorStop(.3, 'rgb(255 40 30 / ' + (.4 * a).toFixed(3) + ')'); g.addColorStop(1, 'rgb(255 40 30 / 0)');
+          x.fillStyle = g; x.fillRect(q.x - R, q.y - R, R * 2, R * 2);
+        }
+        x.restore();
+      } };
+    }
+    case 'fog': {
+      // fog coming in off the sea, banks of it drifting across, slowly
+      const [bx, by, bw, bh] = box(), tex = document.createElement('canvas'); tex.width = Math.max(2, Math.round(bw)); tex.height = Math.max(2, Math.round(bh));
+      const tx = /** @type {CanvasRenderingContext2D} */ (tex.getContext('2d'));
+      for (let i = 0; i < 16; i++) {
+        const ex = r() * bw, ey = bh * (.35 + r() * .45), rx = bw * (.08 + r() * .1), ry = bh * (.12 + r() * .14);
+        for (const dx of [-bw, 0, bw]) { const g = tx.createRadialGradient(ex + dx, ey, 0, ex + dx, ey, rx); g.addColorStop(0, 'rgb(' + (o.c || '255 255 255') + ' / .5)'); g.addColorStop(1, 'rgb(' + (o.c || '255 255 255') + ' / 0)'); tx.save(); tx.translate(ex + dx, ey); tx.scale(1, ry / rx); tx.translate(-(ex + dx), -ey); tx.fillStyle = g; tx.fillRect(ex + dx - rx, ey - rx, rx * 2, rx * 2); tx.restore(); }
+      }
+      return { draw(x, t) {
+        const off = (t * VW * .012) % tex.width; x.globalAlpha = (o.a || .5) * (.8 + .2 * Math.sin(t * .2));
+        x.drawImage(tex, bx - off, by); x.drawImage(tex, bx - off + tex.width, by); x.globalAlpha = 1;
+      } };
+    }
+    case 'dust': {
+      // dust on the wind, streaming low over the ground; and now and then a dust devil wandering across the plain far off
+      const [bx, by, bw, bh] = box(), gr = Array.from({ length: 70 }, () => ({ y: by + Math.pow(r(), .6) * bh, v: .04 + r() * .1, x: r(), z: (.5 + r() * 1.3) * S, a: .15 + r() * .35, w: r() * TAU }));
+      const dv = o.devil ? { x: o.devil[0] * W, y: o.devil[1] * H, h: o.devil[2] * H, f: r() } : null;
+      return { draw(x, t) {
+        for (const q of gr) {
+          const px = bx + ((q.x + t * q.v) % 1) * bw, py = q.y + Math.sin(t * 1.3 + q.w) * 2 * S;
+          x.fillStyle = 'rgb(240 196 150 / ' + q.a.toFixed(3) + ')'; x.fillRect(px, py, q.z * 2.4, q.z * .7);
+        }
+        if (dv) {
+          const drift = ((t * .006 + dv.f) % 1) - .5, cx = dv.x + drift * bw * .5;
+          for (let k = 0; k < 14; k++) {
+            const u = k / 13, y = dv.y - dv.h * u, wob = Math.sin(t * 3 + u * 7) * dv.h * .05 * u, rx = dv.h * (.03 + u * .13);
+            x.fillStyle = 'rgb(226 170 126 / ' + (.3 * (1 - u * .6)).toFixed(3) + ')'; x.beginPath(); x.ellipse(cx + wob, y, rx, rx * .4, 0, 0, TAU); x.fill();
+          }
         }
       } };
     }
@@ -380,7 +465,7 @@ function spritesOf(life, W, H) {
   if (!bare || !cut || !picture) return [];
   const S = W / 360, out = /** @type {ReturnType<typeof spritesOf>} */ ([]), kx = cut.width / W, ky = cut.height / H;
   life.hints.forEach((o, i) => {
-    if (!['bob', 'sway', 'beat'].includes(o.k)) return;
+    if (!['bob', 'sway', 'beat', 'spin'].includes(o.k)) return;
     const pad = 6 * S, x0 = Math.max(0, Math.floor(o.box[0] * W - pad)), y0 = Math.max(0, Math.floor(o.box[1] * H - pad)), x1 = Math.min(W, Math.ceil((o.box[0] + o.box[2]) * W + pad)), y1 = Math.min(H, Math.ceil((o.box[1] + o.box[3]) * H + pad));
     const cw = x1 - x0, ch = y1 - y0; if (cw < 2 || ch < 2) return;
     const make = () => { const c = document.createElement('canvas'); c.width = cw; c.height = ch; return { c, x: /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')) }; };
@@ -393,6 +478,9 @@ function spritesOf(life, W, H) {
     const move = o.k === 'bob'
       // riding the swell: up and down, and rocking a little after it
       ? (/** @type {CanvasRenderingContext2D} */ x, /** @type {number} */ t) => { const py = (o.box[1] + o.box[3] * .85) * H; x.translate(cx, py + Math.sin(t * 1.25 + f) * 2.2 * S); x.rotate(Math.sin(t * 1.25 + f - .9) * .035); x.translate(-cx, -py); }
+      : o.k === 'spin'
+        // a wheel, a windmill's sails: going round, from where they were painted
+        ? (/** @type {CanvasRenderingContext2D} */ x, /** @type {number} */ t) => { const px = o.pivot[0] * W, py = o.pivot[1] * H; x.translate(px, py); x.rotate(t * (o.v || .2)); x.translate(-px, -py); }
       : o.k === 'sway'
         // on its string, in the air moving
         ? (/** @type {CanvasRenderingContext2D} */ x, /** @type {number} */ t) => { const px = o.pivot[0] * W, py = o.pivot[1] * H; x.translate(px, py + Math.sin(t * .7 + f) * 1.6 * S); x.rotate(Math.sin(t * .9 + f) * .055); x.translate(-px, -py); }

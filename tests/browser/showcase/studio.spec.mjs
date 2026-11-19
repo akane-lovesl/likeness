@@ -243,6 +243,14 @@ test('someone put somewhere can be picked up and walked back into the place', as
   expect(film.suggestedFilename()).toMatch(/^likeness-c-making\.(webm|mp4)$/);
 });
 
+test('a famous place looks like itself and lives its own way: Paris at night, the tower sparkling over the roofs', async ({ page }) => {
+  await open(page);
+  await say(page, 'Paris at night');
+  await expect(page.getByText(/A first sketch of Paris at night: the tower sparkling over the roofs/)).toBeVisible({ timeout: 30_000 });
+  await page.locator('figure.print').last().click();
+  await expect(page.locator('.focus__life.is-in')).toHaveCount(1);
+});
+
 test('a trip: someone taken to four places at once, a sheet that lives, and a film where the world changes behind them', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

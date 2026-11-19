@@ -23,10 +23,11 @@ import { addPrint, addItem, setKept, printById, urlOf, settings } from '../state
 import { runTurn } from '../ui/turn.js';
 import { PARTS, partById, styleOf, wordsFor, titleOf, plateSVG, partsIn, tintOf } from './vocab.js';
 import { markup, controlsOf } from './markup.js';
+import { paintLook, coloursOf, PAINTED } from './paint.js';
 import { hear } from './words.js';
 import { turner } from './turn.js';
 import { openLive, canLive } from './live.js';
-import { coat } from './tint.js';
+import { coat, dyeHair } from './tint.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const INK = '#fff4e0';
@@ -104,7 +105,7 @@ async function washOf(pic, f, picks) {
     const tint = tintOf(q.part, q.style.id, q.shape?.shade || 0); if (!tint || !f) continue;
     const m = await maskOf(pic, f, q.part); if (!m) continue;
     const layer = P.copy(pic), lx = /** @type {CanvasRenderingContext2D} */ (layer.getContext('2d'));
-    coat(lx, tint, q.part);
+    if (q.part === 'colour') dyeHair(lx, tint, m); else coat(lx, tint, q.part);
     lx.globalCompositeOperation = 'destination-in'; lx.globalAlpha = 1; lx.drawImage(m, 0, 0);
     x.drawImage(layer, 0, 0); any = true;
   }
@@ -154,6 +155,8 @@ export function openMirror(o) {
   const read = /** @type {HTMLCanvasElement} */ (h('canvas.mr-read', { 'aria-hidden': 'true' }));
   const turnView = /** @type {HTMLCanvasElement} */ (h('canvas.mr-turnview', { 'aria-hidden': 'true' }));
   const wash = /** @type {HTMLCanvasElement} */ (h('canvas.mr-wash', { 'aria-hidden': 'true' }));
+  // what is painted rather than drawn: a fringe in the hair's own colour, brows, liner, a beard (the pencil only shows while shaping)
+  const paintEl = /** @type {HTMLCanvasElement} */ (h('canvas.mr-paint', { 'aria-hidden': 'true' }));
   const sk = document.createElementNS(SVG, 'svg'); sk.setAttribute('class', 'mr-sketch'); sk.setAttribute('aria-hidden', 'true'); sk.setAttribute('preserveAspectRatio', 'none');
   const notes = h('div.mr-notes'), lines = document.createElementNS(SVG, 'svg'); lines.setAttribute('class', 'mr-lines'); lines.setAttribute('aria-hidden', 'true');
   const stampEl = h('span.mr-stamp');
@@ -163,7 +166,7 @@ export function openMirror(o) {
   const handlesEl = h('div.mr-handles'), sayEl = h('div.mr-say', { 'aria-live': 'polite' });
   // what leans in when a part is chosen: the picture and everything drawn on it, not the notes in its margins
   const marksEl = /** @type {HTMLCanvasElement} */ (h('canvas.mr-marks', { 'aria-hidden': 'true' }));
-  const lens = h('div.mr-lens', null, pic, over, preview, turnView, wash, read, workEl, sk, marksEl, handlesEl);
+  const lens = h('div.mr-lens', null, pic, over, preview, turnView, wash, paintEl, read, workEl, sk, marksEl, handlesEl);
   const INKS = ['#ff3b5c', '#ffd43b', '#ffffff'];
   const drawBar = h('div.mr-drawbar', { role: 'toolbar', 'aria-label': 'Drawing' },
     ...INKS.map((c, i) => h('button.mr-drawbar__ink', { type: 'button', 'aria-label': ['Red', 'Yellow', 'White'][i] + ' pen', 'aria-pressed': String(i === 0), style: { '--pen': c }, onclick: (/** @type {Event} */ e) => { ink = c; drawBar.querySelectorAll('.mr-drawbar__ink').forEach(b => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } })),
@@ -216,7 +219,7 @@ export function openMirror(o) {
     clearTimeout(sizing); if (soon) { sizing = setTimeout(() => fit(), 140); focus(part); return; }
     const dpr = Math.min(2, devicePixelRatio || 1), sharp = Math.max(1, (base?.width || 0) / (fw * dpr));
     // the outline and the wash as sharp as the picture itself, for when the mirror leans in close
-    for (const c of [read, wash, turnView, marksEl]) { const k = c === turnView ? 1 : sharp, w = Math.round(fw * dpr * k), hgt = Math.round(fh * dpr * k); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
+    for (const c of [read, wash, paintEl, turnView, marksEl]) { const k = c === turnView ? 1 : sharp, w = Math.round(fw * dpr * k), hgt = Math.round(fh * dpr * k); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
     turn?.draw();
     if (part) mark(part); paintWash(); focus(part); paintHandles(); paintMarks(); placeRef();
   }
@@ -437,7 +440,7 @@ export function openMirror(o) {
     const now = fresh(); let k = 0;
     for (const q of now) {
       const strokes = markup(face, q.part, q.style.id, q.shape); if (!strokes.length) continue;
-      const g = document.createElementNS(SVG, 'g'); g.dataset.part = q.part;
+      const g = document.createElementNS(SVG, 'g'); g.dataset.part = q.part; if (PAINTED.has(q.part)) g.classList.add('is-painted');
       for (const s of strokes) { const d = document.createElementNS(SVG, 'path'); d.setAttribute('d', s.d); d.setAttribute('stroke-width', s.w.toFixed(2)); d.setAttribute('pathLength', '1'); d.style.setProperty('--k', String(Math.min(30, k++))); g.append(d); }
       sk.append(g);
     }
@@ -450,7 +453,33 @@ export function openMirror(o) {
     const now = fresh(), w = face && base && now.some(q => tintOf(q.part, q.style.id)) ? await washOf(base, face, now) : null;
     if (n !== washing) return;
     x.clearRect(0, 0, wash.width, wash.height); if (w) x.drawImage(w, 0, 0, wash.width, wash.height);
+    // then what is painted from the picture itself, in its own colours (or the colour the look dyes the hair)
+    const px = ctx(paintEl), want = face && base ? now.filter(q => PAINTED.has(q.part)) : [], key = want.map(q => q.part + q.style.id).join();
+    if (!want.length || !face || !base) { px.clearRect(0, 0, paintEl.width, paintEl.height); paintedKey = ''; return; }
+    const f = face, b = base, src = await onShow(); if (n !== washing) return;
+    const tone = await tonesOf(src || b); if (n !== washing) return;
+    const c = paintLook(src || b, f, want.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], paintEl.width / f.w, { ...tone, dye: dyeOf(now) });
+    if (n !== washing) return;
+    px.clearRect(0, 0, paintEl.width, paintEl.height); if (c) px.drawImage(c, 0, 0, paintEl.width, paintEl.height);
+    // a new look falls into place; a reshaped one is simply there
+    if (key !== paintedKey && !reduced) { paintEl.classList.remove('is-new'); void paintEl.offsetWidth; paintEl.classList.add('is-new'); }
+    paintedKey = key;
   }
+  /** @type {Promise<ReturnType<typeof coloursOf>> | null} the picture's own colours, read once */
+  let tones = null, paintedKey = '';
+  /** The colours of each picture shown, read once each (a render's hair is not the portrait's). @type {WeakMap<HTMLCanvasElement, Promise<ReturnType<typeof coloursOf>>>} */
+  const toned = new WeakMap();
+  const tonesOf = (/** @type {HTMLCanvasElement} */ c) => { const f = /** @type {Face} */ (face); if (!toned.has(c)) toned.set(c, hairOf(c).catch(() => null).then(m => coloursOf(c, f, m))); return /** @type {Promise<ReturnType<typeof coloursOf>>} */ (toned.get(c)); };
+  /** The picture on show, at the face's size: the photo itself, or the take in the frame. @type {Map<string, Promise<HTMLCanvasElement | null>>} */
+  const shownAt = new Map();
+  const onShow = () => {
+    const t = shown >= 0 ? takes[shown] : null; if (!t || !face || !t.url) return Promise.resolve(base);
+    const f = face;
+    if (!shownAt.has(t.url)) shownAt.set(t.url, canvasOf(t.print?.blob || t.url).then(raw => { if (raw.width === f.w && raw.height === f.h) return raw; const c = P.make(f.w, f.h); ctx(c).drawImage(raw, 0, 0, f.w, f.h); return c; }).catch(() => null));
+    return /** @type {Promise<HTMLCanvasElement | null>} */ (shownAt.get(t.url));
+  };
+  /** The hair colour a look also asks for, which a painted fringe takes. @param {Pick[]} now */
+  const dyeOf = (now) => { const d = now.find(q => q.part === 'colour'); return d ? tintOf('colour', d.style.id, d.shape?.shade || 0) || '' : ''; };
 
   /** One of the takes (or, at -1, the face as it is) in the frame. @param {number} i @param {boolean} [instant] */
   function show(i, instant = false) {
@@ -733,8 +762,10 @@ export function openMirror(o) {
     const c = P.make(face.w, face.h), x = ctx(c); x.drawImage(pic0, 0, 0);
     if (now.length) {
       const w = await washOf(pic0, own, now); if (w) x.drawImage(w, 0, 0);
+      const painted = now.filter(q => PAINTED.has(q.part));
+      if (painted.length) { const pc = paintLook(pic0, own, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, own.w, own.h], c.width / own.w, { ...coloursOf(pic0, own), dye: dyeOf(now) }); if (pc) x.drawImage(pc, 0, 0, c.width, c.height); }
       x.save(); x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, c.width / 400);
-      for (const q of now) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
+      for (const q of now) if (!PAINTED.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
       x.restore();
     }
     return { canvas: c, face: own, pic: pic0 };
@@ -912,10 +943,12 @@ export function openMirror(o) {
   /** Here, with no studio: the change sketched over the face, stamped as a sketch, kept on the desk. */
   async function sketchIt() {
     if (!base || !face) { toast('Sketching needs a face to draw on'); return; }
-    const c = P.copy(base), x = ctx(c), w = await washOf(base, face, picks);
+    const c = P.copy(base), x = ctx(c), w = await washOf(base, face, picks), b = base, f = face;
     if (w) x.drawImage(w, 0, 0);
+    const painted = picks.filter(q => PAINTED.has(q.part));
+    if (painted.length) { tones ||= hairOf(b).catch(() => null).then(m => coloursOf(b, f, m)); const pc = paintLook(b, f, painted.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], c.width / f.w, { ...(await tones), dye: dyeOf(picks) }); if (pc) x.drawImage(pc, 0, 0, c.width, c.height); }
     x.save(); x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = Math.max(2, c.width / 400);
-    for (const q of picks) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
+    for (const q of picks) if (!PAINTED.has(q.part)) for (const s of markup(face, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
     x.restore();
     drawMarks(x, c.width, c.height, marks);
     if (ref) { const r = await canvasOf(ref.url).catch(() => null); if (r) { const w = c.width * .26, hh = w * r.height / r.width; x.save(); x.translate(w * .66, c.height - hh - w * .42); x.rotate(-.05); x.shadowColor = 'rgba(0,0,0,.4)'; x.shadowBlur = c.width / 60; x.fillStyle = '#fbf8f2'; x.fillRect(-w * .52, 0, w * 1.04, hh + w * .2); x.shadowBlur = 0; x.drawImage(r, -w / 2, w * .02, w, hh); x.restore(); } }

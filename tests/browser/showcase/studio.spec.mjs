@@ -196,7 +196,7 @@ test('once the studio has made its people, the ring is their faces, and a face o
   await expect(mirror.locator('.mr-angle')).toHaveCount(2);
 });
 
-test('the studio\'s people are read on the device too: each closes on its face, and words are sketched on it and say so', async ({ page }) => {
+test('the studio\'s people are read on the device too: each closes on its face, and words are painted on it as a sketch and say so', async ({ page }) => {
   await stubExamples(page);
   await page.goto('/');
   const book = page.locator('section.book');
@@ -206,7 +206,9 @@ test('the studio\'s people are read on the device too: each closes on its face, 
   await expect(book.locator('.lb-caption__part')).toHaveText('BANGS · LENA');
   await expect(front).toHaveClass(/is-sketched/);
   await expect(front.locator('.lb-card__tag')).toHaveText('Sketch');
-  await expect(front.locator('.lb-card__sketch path').first()).toBeAttached();
+  // on a photograph the fringe is painted from the picture, not drawn over it
+  await expect(front.locator('.lb-card__paint')).toBeAttached();
+  await expect(front.locator('.lb-card__sketch')).toHaveCount(0);
   await expect(book.locator('.lb-caption__shape')).toHaveText('to the jaw · parted left');
   // a colour, washed on the hair the device found
   await input.fill('copper, a shade deeper');
@@ -216,7 +218,7 @@ test('the studio\'s people are read on the device too: each closes on its face, 
   await input.fill('');
   await expect(front).not.toHaveClass(/is-sketched/);
   await expect(front.locator('.lb-card__tag')).toHaveText('GPT Image');
-  await expect(front.locator('.lb-card__sketch')).toHaveCount(0);
+  await expect(front.locator('.lb-card__sketch, .lb-card__paint, .lb-card__wash')).toHaveCount(0);
   // chosen while the words are on it, the mirror opens on that person with the words in its line
   await input.fill('curtain bangs, a lot longer, parted left');
   await expect(front).toHaveClass(/is-sketched/);

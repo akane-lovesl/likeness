@@ -85,14 +85,25 @@ const page = await ctx.newPage();
 await page.goto(URL_ + (!ONLY.length || ONLY.includes('welcome') ? '/?welcome' : '/'));
 const edition = (await page.locator('.lb-bar__edition').textContent({ timeout: 30000 }).catch(() => '')) || '?';
 
-await scene('welcome', 'The first time: what Likeness is for, then the first screen shown', page, async ({ shot }) => {
-  await page.locator('.wl-title').waitFor({ timeout: 15000 }); await sleep(1400); await shot('the welcome');
-  await page.locator('.wl-title .wl-go').click(); await sleep(1100); await shot('1 · the ring');
-  await page.locator('.wl-card .wl-go').click(); await sleep(3800); await shot('2 · mixing a look, done on the ring');
-  await sleep(2400); await shot('every face wears both');
-  await page.locator('.wl-card .wl-go').click(); await sleep(1400); await shot('3 · then, on you (the ring put back)');
-  await page.locator('.wl-card .wl-go').click(); await sleep(1100); await shot('4 · the rooms');
-  await page.locator('.wl-card .wl-go').click(); await sleep(900);
+await scene('welcome', 'The first time: a sitting on a real face, the light under a finger, then the Lookbook', page, async ({ shot }) => {
+  const sit = page.locator('.wl-sit');
+  if (!(await sit.waitFor({ timeout: 15000 }).then(() => true, () => false))) {
+    // without the studio's people: a line and three steps
+    await page.locator('.wl-title').waitFor({ timeout: 5000 }); await sleep(1200); await shot('the welcome, without the studio\'s people');
+    await page.locator('.wl-title .wl-go').click(); await sleep(900); return;
+  }
+  await sleep(700); await shot('a face, as they are');
+  await sleep(2700); await shot('a look sweeping in');
+  await page.locator('.wl-look').nth(1).click(); await sleep(800); await shot('another look, touched: it sweeps in');
+  await sleep(1400); await shot('there, whole');
+  const hb = await page.locator('.wl-sit__hero').boundingBox();
+  if (hb) {
+    await page.mouse.move(hb.x + hb.width * .85, hb.y + hb.height * .4); await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width * .45, hb.y + hb.height * .42, { steps: 8 }); await sleep(250); await shot('the light under a finger: after, before');
+    await page.mouse.up(); await sleep(1000);
+  }
+  await page.locator('.wl-sit__next').click(); await sleep(3600); await shot('someone else');
+  await page.locator('.wl-sit__around').click(); await sleep(2400); await shot('Look around: the Lookbook, that face in front');
 });
 await page.evaluate(() => document.querySelector('.wl')?.remove()).catch(() => {});
 
@@ -111,7 +122,7 @@ await scene('words', 'Words: a look described, drawn as it is said', page, async
   await input.fill('copper, a shade deeper'); await sleep(2600); await shot('typed: copper, a shade deeper');
   await input.fill(''); await page.locator('.lb-orbit').click({ position: { x: 4, y: 4 } }).catch(() => {}); await sleep(1400); await shot('the words gone');
 });
-await scene('mix', 'A look mixed from several parts, worn by every face at once', page, async ({ shot }) => {
+await scene('mix', 'A look mixed from several parts, worn by every face at once (painted on the photographs)', page, async ({ shot }) => {
   const book = page.locator('section.book');
   await book.locator('.lb-part[data-part="bangs"]').click(); await sleep(700);
   await book.locator('.lb-style[data-style="curtain"]').click(); await sleep(1800); await shot('curtain bangs, on every face');

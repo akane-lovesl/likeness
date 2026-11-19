@@ -58,36 +58,98 @@ test('the rooms are a touch away on the Lookbook, and dress all of it', async ({
   expect(swatch).not.toBe('rgba(0, 0, 0, 0)');
 });
 
-test('the first time, a welcome says what Likeness is for, then shows it on the Lookbook itself and puts it back', async ({ page }) => {
+/** The studio's own people (served, but kept out of the manifest for the other tests). */
+const realPeople = (page) => page.route('**/examples/manifest.json', r => r.fulfill({ path: 'web/examples/manifest.json' }));
+/** How far across the light stands in the sitting's picture (100: the look whole). */
+const light = (page) => page.locator('.wl-sit__hero').getAttribute('aria-valuenow').then(Number);
+
+test('the first time is a sitting: a look touched sweeps in on a real face, the light follows a finger, and the Lookbook opens on that face', async ({ page }) => {
+  await realPeople(page);
+  await page.goto('/?welcome');
+  const wl = page.locator('.wl'), hero = wl.locator('.wl-sit__hero');
+  await expect(wl.locator('.wl-title__name')).toHaveText('Likeness');
+  await expect(wl.locator('.wl-look')).toHaveCount(3);
+  await expect(wl.locator('.wl-sit__ask')).toHaveText(/^Choose a look for /);
+  // a look touched: it is the one chosen, its name over the picture, and the light carries it on whole
+  const second = wl.locator('.wl-look').nth(1), name = (await second.textContent()).trim();
+  await second.click();
+  await expect(second).toHaveAttribute('aria-pressed', 'true');
+  await expect(wl.locator('.wl-hero__say')).toContainText(name);
+  await expect.poll(() => light(page), { timeout: 10_000 }).toBe(100);
+  // the light under a finger: held part way across, the face as it is shows beyond it; let go, and the look is whole again
+  const b = await hero.boundingBox();
+  await page.mouse.move(b.x + b.width * .8, b.y + b.height * .4); await page.mouse.down();
+  await page.mouse.move(b.x + b.width * .3, b.y + b.height * .4, { steps: 6 });
+  await expect.poll(() => light(page)).toBeLessThan(50);
+  await page.mouse.up();
+  await expect.poll(() => light(page)).toBe(100);
+  // and by the keys, as a slider
+  await hero.focus(); await page.keyboard.press('Home');
+  await expect.poll(() => light(page)).toBe(0);
+  await page.keyboard.press('End');
+  await expect.poll(() => light(page)).toBe(100);
+  // someone else, and their looks
+  const asked = await wl.locator('.wl-sit__ask').textContent();
+  await wl.locator('.wl-sit__next').click();
+  await expect(wl.locator('.wl-sit__ask')).not.toHaveText(asked);
+  const who = (await wl.locator('.wl-sit__ask').textContent()).replace('Choose a look for ', '');
+  // the Lookbook, with that face in front
+  await wl.locator('.wl-sit__around').click();
+  await expect(wl).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('likeness.welcomed'))).toBe('true');
+  await expect(page.locator('.lb-caption__part')).toContainText(who, { ignoreCase: true, timeout: 10_000 });
+  // the name at the top brings it back; Escape lets it go
+  await page.locator('.lb-bar__mark').click();
+  await expect(page.locator('.wl-sit')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.wl')).toHaveCount(0);
+});
+
+test('from the sitting, "Try it on me" takes the look it ended on to your own face', async ({ page }) => {
+  await realPeople(page);
+  await page.goto('/?welcome');
+  const wl = page.locator('.wl');
+  await expect(wl.locator('.wl-look')).toHaveCount(3);
+  const name = (await wl.locator('.wl-look').nth(2).textContent()).trim();
+  await wl.locator('.wl-look').nth(2).click();
+  const chooser = page.waitForEvent('filechooser', { timeout: 20_000 }).catch(() => null);
+  await wl.locator('.wl-go').click();
+  await expect(wl).toHaveCount(0);
+  // the look is picked on the Lookbook, and your face is asked for: the live mirror, or a photo
+  await expect(page.locator('.lb-token')).toHaveCount(1);
+  await expect(page.locator('.lb-token__name')).toHaveText(name.split(' ')[0], { ignoreCase: true });
+  const live = page.locator('section.lv');
+  expect(await Promise.race([live.waitFor({ timeout: 20_000 }).then(() => 'live', () => ''), chooser.then(c => (c ? 'photo' : ''))])).not.toBe('');
+});
+
+test('without the studio\'s people, the welcome says what Likeness is for in a line and three steps', async ({ page }) => {
   await page.goto('/?welcome');
   const wl = page.locator('.wl');
   await expect(wl.locator('.wl-title__name')).toHaveText('Likeness');
   await expect(wl.locator('.wl-title__steps li')).toHaveCount(3);
   await wl.locator('.wl-title .wl-go').click();
-  const card = wl.locator('.wl-card');
-  await expect(card.locator('.wl-card__n')).toHaveText('1 of 4');
-  await expect(card.locator('.wl-card__title')).toHaveText('Looks, on faces');
-  await card.locator('.wl-go').click();
-  await expect(card.locator('.wl-card__title')).toHaveText('Mix your own');
-  // it does what it says, for real: two styles picked, and every face wears both
-  await expect(card.locator('.wl-chip')).toHaveCount(2, { timeout: 10_000 });
-  await expect(page.locator('.lb-token')).toHaveCount(2);
-  await card.locator('.wl-go').click();
-  // and puts the ring back as it was
-  await expect(page.locator('.lb-token')).toHaveCount(0);
-  await expect(page.locator('.lb-part[aria-pressed="true"]')).toHaveCount(0);
-  await expect(card.locator('.wl-card__title')).toHaveText('Then, on you');
-  await card.locator('.wl-go').click();
-  await expect(card.locator('.wl-card__title')).toHaveText('Make it yours');
-  await expect(card.locator('.wl-go')).toHaveText('Start');
-  await card.locator('.wl-go').click();
   await expect(wl).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('likeness.welcomed'))).toBe('true');
-  // the name at the top brings it back
-  await page.locator('.lb-bar__mark').click();
-  await expect(page.locator('.wl-title')).toBeVisible();
-  await page.locator('.wl-title .wl-skip').click();
-  await expect(page.locator('.wl')).toHaveCount(0);
+});
+
+test('on a photograph a look is painted from the picture itself, not drawn over it; only a cut is still a line', async ({ page }) => {
+  await realPeople(page);
+  await page.goto('/');
+  const book = page.locator('section.book');
+  await book.locator('.lb-part[data-part="bangs"]').click();
+  await book.locator('.lb-style[data-style="curtain"]').click();
+  // every face read wears it painted: a canvas of hair over the picture, no pen line over a real face
+  await expect.poll(() => book.locator('.lb-card__paint').count(), { timeout: 45_000 }).toBeGreaterThan(3);
+  await expect(book.locator('.lb-card.is-front .lb-card__paint')).toHaveCount(1, { timeout: 20_000 });
+  expect(await book.locator('.lb-card__sketch').count()).toBe(0);
+  const painted = await book.locator('.lb-card.is-front .lb-card__paint').evaluate(c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; return n / (d.length / 4); });
+  expect(painted).toBeGreaterThan(.02);
+  await expect(book.locator('.lb-card.is-front .lb-card__tag')).toHaveText('Sketch');
+  // a cut is still a fine line beside the paint
+  await book.locator('.lb-part[data-part="cut"]').click();
+  await book.locator('.lb-style[data-style="bob"]').click();
+  await expect(book.locator('.lb-card.is-front .lb-card__sketch.is-fine')).toHaveCount(1, { timeout: 20_000 });
+  await expect(book.locator('.lb-card.is-front .lb-card__paint')).toHaveCount(1);
 });
 
 test('in the mirror the parts stay put, and a change can be drawn on the picture or borrowed from a reference', async ({ page }) => {
@@ -136,4 +198,23 @@ test('in the mirror the parts stay put, and a change can be drawn on the picture
   await mirror.locator('.mr-ask__go').click();
   await expect(mirror.locator('.mr-take:not(.is-origin)')).toHaveCount(1, { timeout: 20_000 });
   await expect(mirror.locator('.mr-stamp')).toHaveText('Sketch');
+});
+
+test('in the mirror a fringe is painted on the photo at once, its pencil kept for shaping', async ({ page }) => {
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/mei.jpg');
+  const mirror = page.locator('section.mr');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-style[data-style="blunt"]').click();
+  const paint = mirror.locator('.mr-paint');
+  await expect.poll(() => paint.evaluate(c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 64) if (d[i] > 40) n++; return n; }), { timeout: 20_000 }).toBeGreaterThan(50);
+  // the strokes are there to be shaped, out of sight until a handle is held
+  const strokes = mirror.locator('.mr-sketch g.is-painted[data-part="bangs"]');
+  await expect(strokes).toHaveCount(1);
+  expect(await strokes.evaluate(g => getComputedStyle(g).opacity)).toBe('0');
+  // a cut is still drawn
+  await mirror.locator('.mr-part[data-part="cut"]').click();
+  await mirror.locator('.mr-style[data-style="bob"]').click();
+  await expect(mirror.locator('.mr-sketch g[data-part="cut"]:not(.is-painted)')).toHaveCount(1);
 });

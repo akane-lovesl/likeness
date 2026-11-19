@@ -65,12 +65,15 @@ html:not([data-dark]) :is(.book, .mr, .lv) { --lk-deep: color-mix(in srgb, var(-
 .lb-card__face { position: absolute; }
 .lb-card__portrait, .lb-card__sketch { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .lb-card__wash { position: absolute; display: block; }
+.lb-card__paint { position: absolute; display: block; pointer-events: none; }
+.lb-card.is-front .lb-card__paint:not(.is-again) { -webkit-mask-image: linear-gradient(#000 0 45%, transparent 55% 100%); mask-image: linear-gradient(#000 0 45%, transparent 55% 100%); -webkit-mask-size: 100% 220%; mask-size: 100% 220%; animation: lk-fall .9s calc(var(--late, 1.1s) + .1s) cubic-bezier(.3,.7,.2,1) both; }
+@keyframes lk-fall { from { -webkit-mask-position: 0 100%; mask-position: 0 100%; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
 .lb-card__sketch { overflow: visible; filter: drop-shadow(0 0 .25cqw rgb(0 0 0 / .6)); }
 .lb-card__sketch path { fill: none; stroke: #fff4e0; stroke-linecap: round; stroke-linejoin: round; }
 .lb-card__sketch.is-fine { filter: drop-shadow(0 0 .22cqw rgb(0 0 0 / .5)) drop-shadow(0 .25cqw .7cqw rgb(0 0 0 / .28)); }
 .lb-card__sketch.is-fine path { stroke: rgb(255 247 233 / .93); }
 .lb-card.is-front .lb-card__sketch path { stroke-dasharray: 1; animation: lk-ink .9s calc(var(--k) * var(--step, 40ms) + var(--late, 1.1s)) cubic-bezier(.45, .05, .2, 1) both; }
-.lb-card.is-front .lb-card__wash { animation: lk-fade 1s calc(var(--late, 1.1s) + .35s) backwards; }
+.lb-card.is-front .lb-card__wash:not(.is-again) { animation: lk-fade 1s calc(var(--late, 1.1s) + .35s) backwards; }
 .lb-card__tag { position: absolute; left: 3.4cqw; bottom: 3.4cqw; font: 500 1.9cqw/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase; padding: 1.1cqw 1.9cqw; border-radius: 99cqw; background: rgb(0 0 0 / .45); color: #fff; backdrop-filter: blur(6px); }
 .lb-card--plate .lb-card__tag { background: none; color: rgb(42 33 27 / .5); padding-left: 0; }
 .lb-card.is-front .lb-card__plate .ln:not(.base) path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: lk-draw 1s calc(var(--k) * 70ms + .15s) cubic-bezier(.45, .05, .2, 1) forwards; }
@@ -121,6 +124,12 @@ div.lb-card__after { position: absolute; inset: 0; }
 .lb-style__name, .mr-style__name { max-width: 100%; text-align: center; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: break-word; hyphens: auto; }
 .lb-style .ln:not(.base) path, .mr-style .ln:not(.base) path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: lk-draw .8s calc(var(--d, 0s) + var(--k) * 50ms + .1s) cubic-bezier(.45, .05, .2, 1) forwards; }
 .lb-style[aria-selected="true"], .mr-style[aria-selected="true"] { color: var(--lk-ink) !important; }
+/* in a dark room the swatches are lit like cards under a lamp: the one chosen (or picked) in full, the rest a step back,
+   so the face stays the brightest thing on the screen */
+:is(.lb-style__plate, .mr-style__plate, .lb-part__glyph) { transition: filter .35s, transform .35s var(--lk-pop), box-shadow .3s; }
+[data-dark] :is(.lb-styles, .mr-styles):has([aria-selected="true"]) :is(.lb-style, .mr-style):not([aria-selected="true"]) :is(.lb-style__plate, .mr-style__plate),
+[data-dark] .lb-parts:has(.lb-part:is([aria-pressed="true"], .is-picked)) .lb-part:not([aria-pressed="true"]):not(.is-picked) .lb-part__glyph { filter: brightness(.74) saturate(.9); }
+[data-dark] :is(.lb-style, .mr-style, .lb-part):is(:hover, :focus-visible) :is(.lb-style__plate, .mr-style__plate, .lb-part__glyph) { filter: none; }
 .lb-style[aria-selected="true"] .lb-style__plate, .mr-style[aria-selected="true"] .mr-style__plate { transform: translateY(-.8cqw); box-shadow: 0 0 0 .6cqw var(--lk-accent), 0 2cqw 4cqw var(--lk-shadow); }
 .mr-styles__back { flex: none; scroll-snap-align: start; align-self: center; margin-bottom: 4cqw; width: 9cqw; height: 9cqw; border-radius: 50%; display: grid; place-items: center; padding: 0; border: 1px solid var(--lk-line); background: var(--lk-glass); }
 
@@ -184,15 +193,20 @@ html:not([data-dark]) .mr-glow { filter: blur(13cqw) saturate(1.2) brightness(1.
 .mr .mr-show__done { height: 12.5cqw; padding: 0 6.5cqw; border-radius: 99cqw; border: 1px solid var(--lk-line); background: var(--lk-glass); color: var(--lk-ink); font: 500 2.7cqw/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
 @keyframes mr-show-in { from { opacity: 0; translate: 0 3cqw; } to { opacity: 1; translate: 0 0; } }
 .mr-frame.is-device-turn .mr-turnview { visibility: visible; }
-.mr-frame.is-device-turn :is(.mr-pic, .mr-wash, .mr-sketch, .mr-read) { visibility: hidden; }
+.mr-frame.is-device-turn :is(.mr-pic, .mr-wash, .mr-paint, .mr-sketch, .mr-read) { visibility: hidden; }
 .mr-over { opacity: 0; }
 .mr-over.is-in { animation: lk-reveal .45s var(--lk-ease) forwards; }
 .mr-over.is-held { opacity: 1; animation: none; clip-path: none; }
-.mr-read, .mr-wash, .mr-sketch { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; transition: opacity .3s; }
+.mr-read, .mr-wash, .mr-paint, .mr-sketch { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; transition: opacity .3s; }
+/* painted looks fall into place; while one is reshaped its pencil shows, and the paint waits, faint, for the hand to lift */
+.mr-paint.is-new { -webkit-mask-image: linear-gradient(#000 0 45%, transparent 55% 100%); mask-image: linear-gradient(#000 0 45%, transparent 55% 100%); -webkit-mask-size: 100% 220%; mask-size: 100% 220%; animation: lk-fall .8s cubic-bezier(.3,.7,.2,1) both; }
+.mr-sketch g.is-painted { opacity: 0; transition: opacity .25s; }
+.mr.is-shaping .mr-sketch g.is-painted { opacity: 1; }
+.mr.is-shaping .mr-paint { opacity: .3; }
 .mr-wash { opacity: .95; }
 .mr-sketch { filter: drop-shadow(0 0 .35cqw rgb(0 0 0 / .65)); overflow: visible; }
 .mr-sketch path { fill: none; stroke: #fff4e0; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: lk-draw .9s calc(var(--k) * 45ms) cubic-bezier(.45, .05, .2, 1) forwards; }
-.mr-frame.is-comparing .mr-sketch, .mr-frame.is-comparing .mr-wash, .mr-frame.is-comparing .mr-read, .mr.is-turning .mr-sketch, .mr.is-turning .mr-wash, .mr.is-turning .mr-read, .mr.is-take .mr-read { opacity: 0; }
+.mr-frame.is-comparing .mr-sketch, .mr-frame.is-comparing .mr-wash, .mr-frame.is-comparing .mr-paint, .mr.is-turning .mr-paint, .mr-frame.is-comparing .mr-read, .mr.is-turning .mr-sketch, .mr.is-turning .mr-wash, .mr.is-turning .mr-read, .mr.is-take .mr-read { opacity: 0; }
 .mr-read.is-marking { animation: lk-mark 2.6s ease-out forwards; }
 .mr-read.is-quiet { filter: opacity(.15); transition: filter .4s; }
 .mr.is-take .mr-read, .mr-frame.is-comparing .mr-read, .mr.is-turning .mr-read { visibility: hidden; }
@@ -249,7 +263,7 @@ html:not([data-dark]) .mr-glow { filter: blur(13cqw) saturate(1.2) brightness(1.
 .mr.is-working :is(.mr-handles, .mr-keep, .mr-turn, .mr-dial) { opacity: 0 !important; pointer-events: none !important; transition: opacity .3s; }
 .mr-preview { -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; opacity: 0; filter: blur(1.4cqw) saturate(.7); transition: opacity .9s var(--lk-ease), filter 1.6s var(--lk-ease); }
 .mr.has-preview .mr-preview { opacity: 1; filter: none; }
-.mr.has-preview .mr-sketch { opacity: .22; transition: opacity .9s; }
+.mr.has-preview :is(.mr-sketch, .mr-paint) { opacity: .22; transition: opacity .9s; }
 .mr-words { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; margin: 0; padding: 12cqw 5cqw 4cqw; display: flex; align-items: flex-end; justify-content: space-between; gap: 3cqw;
   background: linear-gradient(transparent, rgb(12 10 9 / .66)); color: #fff7ec; pointer-events: none; opacity: 0; translate: 0 3cqw; transition: opacity .45s, translate .6s var(--lk-ease); }
 .mr.is-working .mr-words { opacity: 1; translate: 0 0; }
@@ -284,6 +298,7 @@ html:not([data-dark]) .mr-glow { filter: blur(13cqw) saturate(1.2) brightness(1.
   .book *, .book *::before, .book *::after, .mr *, .mr *::before, .mr *::after { animation: none !important; transition: none !important; }
   .book .ln path, .mr .ln path, .mr-sketch path, .lb-card__sketch path { stroke-dashoffset: 0 !important; }
   .lb-card__after { clip-path: none; }
+  .lb-card__paint, .mr-paint { -webkit-mask: none !important; mask: none !important; }
 }
 
 /* leaning in: a part chosen brings the picture close; the notes step back while it is */
@@ -460,9 +475,10 @@ img.mr-token__plate { object-fit: cover; }
 .act.is-ready { background: var(--lk-accent); border-color: transparent; color: var(--lk-on-accent) !important; }
 .act.is-ready .act__ring { animation: none; background: currentColor; -webkit-mask: none; mask: none; clip-path: polygon(14% 52%, 26% 40%, 42% 56%, 76% 20%, 88% 32%, 42% 80%); }
 
-/* —— the welcome: a title card, then a light over each part of the first screen in turn, a card saying what it is —— */
+/* —— the welcome: a sitting. A face, the looks it was made in, the light under a finger; then on you, or around —— */
 .wl { position: absolute; inset: 0; z-index: 97; opacity: 0; transition: opacity .45s cubic-bezier(.2, .8, .2, 1); color: var(--ink); -webkit-tap-highlight-color: transparent; }
 .wl.is-in { opacity: 1; }
+/* without the studio's people: what it is for, in a line and three steps */
 .wl-title { position: absolute; inset: 0; display: grid; align-content: center; gap: 4cqw; padding: 10cqw 9cqw; backdrop-filter: blur(6px);
   background: radial-gradient(120% 70% at 50% 28%, color-mix(in srgb, var(--ground-2) 90%, transparent), color-mix(in srgb, var(--ground) 96%, transparent) 72%); }
 .wl-title__hello { margin: 0; font: 500 2.4cqw/1 var(--font-mono); letter-spacing: .24em; text-transform: uppercase; color: var(--accent); animation: lk-rise .7s .1s cubic-bezier(.2, .8, .2, 1) backwards; }
@@ -475,40 +491,44 @@ img.mr-token__plate { object-fit: cover; }
 .wl-title__steps span { font: 400 3.4cqw/1.35 var(--font-text); color: var(--soft); }
 .wl-title__row { display: flex; align-items: center; gap: 3cqw; margin-top: 4cqw; animation: lk-rise .7s 1.15s cubic-bezier(.2, .8, .2, 1) backwards; }
 .wl-go { height: 12cqw; padding: 0 6.4cqw; border: 0; border-radius: 99cqw; background: var(--accent); color: var(--on-accent); font: 500 2.7cqw/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
-.wl-skip { height: 12cqw; padding: 0 4cqw; border: 0; background: none; color: var(--soft); font: 500 2.5cqw/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
-.wl-skip:empty { visibility: hidden; }
-/* the tour: everything dimmed but the part being told about, lit round, the light gliding from one to the next */
-.wl-hole { position: absolute; display: none; border-radius: 5cqw; pointer-events: none; box-shadow: 0 0 0 .5cqw color-mix(in srgb, var(--accent) 70%, transparent), 0 0 0 200vmax rgb(8 6 5 / .72);
-  transition: left .6s cubic-bezier(.2, .8, .2, 1), top .6s cubic-bezier(.2, .8, .2, 1), width .6s cubic-bezier(.2, .8, .2, 1), height .6s cubic-bezier(.2, .8, .2, 1); }
-.wl.is-touring .wl-hole { display: block; }
-.wl.is-touring { pointer-events: auto; }
-.wl-card { position: absolute; left: 5cqw; right: 5cqw; display: none; padding: 4.4cqw 5cqw 3.2cqw; border-radius: 5cqw; background: var(--surface); color: var(--ink); box-shadow: 0 3cqw 10cqw rgb(0 0 0 / .45); transition: top .5s cubic-bezier(.2, .8, .2, 1), bottom .5s cubic-bezier(.2, .8, .2, 1); }
-.wl.is-touring .wl-card { display: block; }
-.wl-card__n { margin: 0 0 1.6cqw; font: 500 2.1cqw/1 var(--font-mono); letter-spacing: .2em; text-transform: uppercase; color: var(--accent); }
-.wl-card__title { margin: 0 0 1.6cqw; font: italic 400 7cqw/1.05 var(--font-display); }
-.wl-card__say { margin: 0; font: 400 3.6cqw/1.42 var(--font-text); color: var(--soft); }
-.wl-card__mix { display: flex; flex-wrap: wrap; gap: 1.6cqw; margin-top: 2.6cqw; min-height: 8cqw; }
-.wl-chip { display: flex; align-items: center; gap: 1.4cqw; padding: .8cqw 2.6cqw .8cqw .8cqw; border-radius: 99cqw; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--ink); font: italic 400 3.3cqw/1 var(--font-text); animation: lk-pop .45s cubic-bezier(.3, 1.5, .5, 1) backwards; }
-.wl-chip i { width: 6.4cqw; height: 6.4cqw; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #f3ece1; }
-.wl-chip i svg { width: 100%; height: 100%; }
-.wl-card__row { display: flex; justify-content: space-between; align-items: center; margin-top: 3cqw; }
-.wl-card .wl-go { height: 10.4cqw; padding: 0 5.6cqw; }
-/* the title card's picture: before, then the look sweeping in, under the name; the words sit low, over its fading edge */
-.wl-title.has-hero { align-content: end; gap: 3.2cqw; padding-bottom: 8cqw; }
-.wl-title.has-hero :is(.wl-title__hello, .wl-title__name, .wl-title__line) { position: relative; text-shadow: 0 .4cqw 3cqw rgb(0 0 0 / .55); }
-.wl-title.has-hero .wl-title__name { font-size: 15.5cqw; }
-.wl-title.has-hero .wl-title__steps { margin: 1.6cqw 0 0; gap: 3.2cqw; }
-.wl-title.has-hero .wl-title__row { margin-top: 2.4cqw; }
+
+/* the sitting: the face fills the top and fades into the room; the words, the looks and the way on sit over its edge */
+.wl-sit { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 60% at 50% 30%, var(--ground-2), var(--ground) 75%); }
 .wl-hero { position: absolute; inset: 0 0 auto; height: 96cqw; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .45s cubic-bezier(.2, .8, .2, 1);
   -webkit-mask: linear-gradient(#000 38%, rgb(0 0 0 / .78) 54%, rgb(0 0 0 / .45) 70%, rgb(0 0 0 / .18) 85%, rgb(0 0 0 / .05) 94%, transparent); mask: linear-gradient(#000 38%, rgb(0 0 0 / .78) 54%, rgb(0 0 0 / .45) 70%, rgb(0 0 0 / .18) 85%, rgb(0 0 0 / .05) 94%, transparent); }
 .wl-hero.is-in { opacity: 1; }
-.wl-hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; }
-.wl-hero__after { -webkit-mask: linear-gradient(100deg, #000 45%, transparent 55%) 100% 0 / 260% 100% no-repeat; mask: linear-gradient(100deg, #000 45%, transparent 55%) 100% 0 / 260% 100% no-repeat; }
-.wl-hero.is-sweeping .wl-hero__after { animation: wl-sweep 1.7s cubic-bezier(.65, .05, .3, 1) forwards; }
-.wl-hero.is-after .wl-hero__after { -webkit-mask-position: 0 0; mask-position: 0 0; }
-@keyframes wl-sweep { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
-.wl-hero__light { position: absolute; top: -10%; bottom: -10%; left: 0; width: 18cqw; translate: -24cqw 0; opacity: 0; transform: skewX(-9deg); background: linear-gradient(90deg, transparent, rgb(255 240 214 / .55), transparent); filter: blur(1.6cqw); }
-.wl-hero.is-sweeping .wl-hero__light { animation: wl-light 1.7s cubic-bezier(.65, .05, .3, 1) forwards; }
-@keyframes wl-light { 0% { translate: -24cqw 0; opacity: 0; } 15%, 85% { opacity: 1; } 100% { translate: 110cqw 0; opacity: 0; } }
-.wl-hero__say { position: absolute; right: 6cqw; top: 7cqw; margin: 0; padding: 1.3cqw 2.4cqw; border-radius: 99cqw; background: rgb(12 9 7 / .48); backdrop-filter: blur(8px); font: 500 2.1cqw/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: #f6efe6; }
-@media (prefers-reduced-motion: reduce) { .wl, .wl *, .wl-hole { animation: none !important; transition: none !important; } }
+.wl-hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; user-select: none; -webkit-user-drag: none; }
+.wl-sit__hero { height: 122cqw; pointer-events: auto; cursor: ew-resize; touch-action: none; outline: none; }
+.wl-sit__hero:focus-visible { box-shadow: inset 0 0 0 .6cqw var(--accent); }
+/* the look shows on the near side of the light, the face as it is on the far side */
+.wl-sit__hero .wl-hero__after { -webkit-mask: linear-gradient(90deg, #000 calc(var(--x, 0) * 100% - 4%), transparent calc(var(--x, 0) * 100% + 4%)); mask: linear-gradient(90deg, #000 calc(var(--x, 0) * 100% - 4%), transparent calc(var(--x, 0) * 100% + 4%)); }
+.wl-hero__light { position: absolute; top: -10%; bottom: -10%; left: 0; width: 18cqw; translate: calc(var(--x, 0) * 100cqw - 9cqw) 0; opacity: 0; transform: skewX(-9deg); background: linear-gradient(90deg, transparent, rgb(255 240 214 / .55), transparent); filter: blur(1.6cqw); transition: opacity .35s; pointer-events: none; }
+.wl-sit__hero.is-moving .wl-hero__light { opacity: 1; }
+.wl-hero__say { position: absolute; left: 6cqw; top: 6cqw; margin: 0; padding: 1.3cqw 2.4cqw; border-radius: 99cqw; background: rgb(12 9 7 / .48); backdrop-filter: blur(8px); font: 500 2.1cqw/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: #f6efe6; pointer-events: none; }
+/* once a look is chosen, the picture says it can be dragged, until it has been */
+.wl-sit__drag { position: absolute; left: 50%; top: 62%; translate: -50% 0; padding: 1.3cqw 2.8cqw; border-radius: 99cqw; background: rgb(12 9 7 / .46); backdrop-filter: blur(8px); color: #f6efe6; font: 500 2cqw/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; opacity: 0; transition: opacity .5s .9s; pointer-events: none; }
+.wl-sit__hero.is-held:not(.was-dragged) .wl-sit__drag { opacity: 1; }
+.wl-sit__skip { position: absolute; top: 4.6cqw; right: 4.6cqw; height: 8.4cqw; padding: 0 3.6cqw; border: 0; border-radius: 99cqw; background: rgb(12 9 7 / .42); backdrop-filter: blur(8px); color: #f6efe6; font: 500 2.3cqw/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; cursor: pointer; }
+.wl-sit__body { position: absolute; left: 0; right: 0; bottom: 0; display: grid; gap: 3.6cqw; padding: 0 7cqw 6cqw; pointer-events: none; }
+.wl-sit__body > :not(.wl-sit__text) { pointer-events: auto; }
+.wl-sit__text { display: grid; gap: 1.2cqw; text-shadow: 0 .4cqw 3cqw rgb(0 0 0 / .55); }
+.wl-sit .wl-title__name { font-size: 14cqw; margin: -.6cqw 0 0; }
+.wl-sit .wl-title__line { font-size: 4.8cqw; }
+.wl-sit__head { display: flex; align-items: baseline; justify-content: space-between; gap: 3cqw; }
+.wl-sit__ask { margin: 0; min-width: 0; font: italic 400 4.2cqw/1.2 var(--font-text); }
+.wl-sit__next { flex: none; padding: 1cqw 0; border: 0; background: none; color: var(--soft); font: 500 2.3cqw/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; text-decoration: underline; text-underline-offset: .8cqw; }
+.wl-sit__looks { display: flex; gap: 2.2cqw; margin-top: 2.2cqw; }
+.wl-look { flex: 1 1 0; min-width: 0; display: grid; justify-items: center; align-content: start; gap: 1.4cqw; padding: 2.4cqw 1.2cqw 2.2cqw; border-radius: 4cqw; border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); background: color-mix(in srgb, var(--surface) 72%, transparent); color: var(--ink); font: italic 400 3.2cqw/1.15 var(--font-text); text-align: center; cursor: pointer; transition: border-color .25s, background-color .25s, scale .3s cubic-bezier(.3, 1.4, .5, 1); }
+.wl-look i { width: 9.4cqw; height: 9.4cqw; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #f3ece1; }
+.wl-look i svg { width: 100%; height: 100%; }
+.wl-look span { overflow-wrap: anywhere; }
+.wl-look[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.wl-look:active { scale: .96; }
+.wl-sit__row { display: flex; align-items: center; gap: 2.6cqw; }
+.wl-sit__row .wl-go { flex: 1; }
+.wl-sit__around { height: 12cqw; padding: 0 4.6cqw; border-radius: 99cqw; border: 1px solid color-mix(in srgb, var(--ink) 24%, transparent); background: none; color: var(--ink); font: 500 2.6cqw/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.wl-sit__note { margin: -.8cqw 0 0; font: 400 2.7cqw/1.35 var(--font-text); color: var(--soft); text-align: center; text-wrap: balance; }
+.wl-sit__choose { animation: lk-rise .7s .55s cubic-bezier(.2, .8, .2, 1) backwards; }
+.wl-sit__row { animation: lk-rise .7s .75s cubic-bezier(.2, .8, .2, 1) backwards; }
+.wl-sit__note, .wl-sit__skip { animation: lk-rise .7s .95s cubic-bezier(.2, .8, .2, 1) backwards; }
+@media (prefers-reduced-motion: reduce) { .wl, .wl * { animation: none !important; transition: none !important; } }

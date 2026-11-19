@@ -15,8 +15,9 @@ import * as P from '../studio/painter.js';
 import { app, printById } from '../state.js';
 import { on } from '../core/bus.js';
 import { markup, controlsOf } from './markup.js';
+import { paintLook, coloursOf, PAINTED } from './paint.js';
 import { hear } from './words.js';
-import { coat } from './tint.js';
+import { coat, dyeHair } from './tint.js';
 import { openMirror, bringPhoto } from './mirror.js';
 import { openLive, canLive } from './live.js';
 import { openRooms } from '../ui/rooms.js';
@@ -309,6 +310,13 @@ function lookbook() {
     photo = got.print; if (got.turns) turnsFor.set(got.print, got.turns); photoBtn.replaceChildren(h('img', { src: URL.createObjectURL(photo.blob), alt: '' })); photoBtn.classList.add('has-photo');
     open({ print: photo, picks: got.picks, words: input.value, from: got.from || from, face: got.face, turns: got.turns });
   }
+  // the welcome's sitting, finished: the look it ended on, put on you; or the ring turned to the face wearing it
+  on('sitting', (/** @type {{ act: string, person: string, part: string, style: string }} */ s) => {
+    if (!s || !el.isConnected) return;
+    if (s.act === 'me') { if (!picks.some(q => q.part === s.part && q.style.id === s.style)) pick(s.part, s.style); pickPhoto(); return; }
+    const i = cards.findIndex(c => c.kind === 'photo' && c.person.id === s.person && c.look.part === s.part && c.look.style === s.style);
+    if (i >= 0) { touched = Date.now(); turnTo(i); }
+  });
   /** A card's look, as a pick: its part, its style, and the shape words gave it. @param {Card} c */
   function cardPick(c) {
     const p = c.kind === 'photo' ? c.look.part : c.part, s = styleOf(p, c.kind === 'photo' ? c.sketch || c.look.style : c.style);
@@ -390,7 +398,7 @@ function lookbook() {
       tag.toggleAttribute('hidden', label === 'GPT Image');
     }
     card.setAttribute('aria-label', titleOf(c));
-    if (!on) { dressing.set(card, (dressing.get(card) || 0) + 1); morphs.set(card, (morphs.get(card) || 0) + 1); card.querySelector('.lb-card__sketch')?.remove(); card.querySelector('.lb-card__wash')?.remove(); return; }
+    if (!on) { dressing.set(card, (dressing.get(card) || 0) + 1); morphs.set(card, (morphs.get(card) || 0) + 1); card.querySelector('.lb-card__sketch')?.remove(); card.querySelectorAll('.lb-card__wash, .lb-card__paint').forEach(x => x.remove()); return; }
     // asked for now, so drawn now
     card.style.setProperty('--late', '.05s');
     const s = worn(c);
@@ -602,15 +610,15 @@ function frameCard(card, c) {
 /** A render's card as a sitter wearing what words sketch on it, to be dressed as sitters are. @param {Card & { kind: 'photo' }} c */
 function worn(c) {
   const s = /** @type {Seen} */ (c.seen);
-  return { sitter: { id: c.person.id, name: c.person.name || '', portrait: c.person.portrait, w: s.face.w, h: s.face.h, face: s.face, hair: s.hair }, part: c.look.part, style: c.sketch || c.look.style, shape: c.shape };
+  return { sitter: { id: c.person.id, name: c.person.name || '', portrait: c.person.portrait, w: s.face.w, h: s.face.h, face: s.face, hair: s.hair, person: c.person }, part: c.look.part, style: c.sketch || c.look.style, shape: c.shape };
 }
 /** @type {Map<string, Promise<Seen | null>>} */
 const reading = new Map();
 /** @type {Map<string, Seen>} what has been read, by portrait */
 const seen = new Map();
 /**
- * A render's face read on the device (and its hair, where a colour is among its looks): what a drawn sitter brings with
- * it already read. @param {Person} p @returns {Promise<Seen | null>}
+ * A render's face read on the device, and its hair (for a colour washed in, and for the tones a fringe or a beard is
+ * painted in): what a drawn sitter brings with it already read. @param {Person} p @returns {Promise<Seen | null>}
  */
 function readPerson(p) {
   if (!reading.has(p.portrait)) reading.set(p.portrait, (async () => {
@@ -618,7 +626,7 @@ function readPerson(p) {
     const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
     /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')).drawImage(img, 0, 0);
     const face = await faceOf(c); if (!face) return null;
-    const mask = (p.looks || []).some(l => l.part === 'colour') ? await hairOf(c) : null;
+    const mask = await hairOf(c).catch(() => null);
     /** @type {Seen} */ const got = { face, hair: mask ? URL.createObjectURL(await P.toBlob(mask, 'image/png')) : null };
     seen.set(p.portrait, got);
     return got;
@@ -627,8 +635,10 @@ function readPerson(p) {
 }
 const dressing = new WeakMap();
 /**
- * A sitter wearing a look: the strokes the mirror would draw, at least thick enough to be seen at the card's size, and
- * a colour (lips, hair) washed in from the picture itself, the way the mirror does it.
+ * A sitter wearing a look. On a drawing, the strokes the mirror would draw, at least thick enough to be seen at the
+ * card's size. On a photograph (the studio's people, or you) a pen would be a line drawn over someone, so what can be is
+ * painted from the picture itself (a fringe in their own hair, brows in their own colour, liner, a beard) and only a cut
+ * is still a line, a fine one. A colour (lips, hair) is washed in from the picture, the way the mirror does it.
  * @param {HTMLElement} card @param {{ sitter: Sitter, part: string, style: string, shape?: Record<string, number>, more?: Worn1[] }} c @param {number} cw the card's width, drawn
  */
 async function dress(card, c, cw) {
@@ -636,23 +646,77 @@ async function dress(card, c, cw) {
   const f = c.sitter.face, all = [{ part: c.part, style: c.style, shape: c.shape }, ...(c.more || [])];
   const { near } = framing(f, all.length > 1 ? '' : c.part), least = 1.6 * near[2] / Math.max(80, cw), turn = (dressing.get(card) || 0) + 1;
   dressing.set(card, turn);
-  face.querySelector('.lb-card__sketch')?.remove(); face.querySelectorAll('.lb-card__wash').forEach(w => w.remove());
-  const strokes = all.flatMap(q => markup(f, q.part, q.style, q.shape));
-  // over a photograph (the studio's people, or you) the marks are finer, a pencil on a print rather than a pen on a drawing
-  const fine = !!c.sitter.person || c.sitter.id === 'you', width = (/** @type {number} */ w) => (fine ? Math.max(w * .8, least * .75) : Math.max(w * 1.25, least));
+  face.querySelector('.lb-card__sketch')?.remove();
+  const photo = !!c.sitter.person || c.sitter.id === 'you', painted = photo ? all.filter(q => PAINTED.has(q.part)) : [];
+  if (!painted.length) face.querySelector('.lb-card__paint')?.remove();
+  // the colours it wore stay until the new ones are ready (none to come: they go now)
+  const old = [...face.querySelectorAll('.lb-card__wash')], tinted = all.filter(q => tintOf(q.part, q.style, q.shape?.shade || 0));
+  if (!tinted.length) old.forEach(w => w.remove());
+  const strokes = all.filter(q => !painted.includes(q)).flatMap(q => markup(f, q.part, q.style, q.shape));
+  // over a photograph the line that is left (a cut) is finer, a pencil on a print rather than a pen on a drawing
+  const width = (/** @type {number} */ w) => (photo ? Math.max(w * .8, least * .75) : Math.max(w * 1.25, least));
   // however many strokes a look takes, it is drawn in about the same time
-  face.insertAdjacentHTML('beforeend', '<svg class="lb-card__sketch' + (fine ? ' is-fine' : '') + '" viewBox="0 0 ' + f.w + ' ' + f.h + '" preserveAspectRatio="none" aria-hidden="true" style="--step:' + Math.min(40, 700 / Math.max(1, strokes.length)).toFixed(1) + 'ms">'
+  if (strokes.length) face.insertAdjacentHTML('beforeend', '<svg class="lb-card__sketch' + (photo ? ' is-fine' : '') + '" viewBox="0 0 ' + f.w + ' ' + f.h + '" preserveAspectRatio="none" aria-hidden="true" style="--step:' + Math.min(40, 700 / Math.max(1, strokes.length)).toFixed(1) + 'ms">'
     + strokes.map((s, k) => '<path d="' + s.d + '" pathLength="1" stroke-width="' + width(s.w).toFixed(2) + '" style="--k:' + k + '"/>').join('') + '</svg>');
-  // each colour it wears (the lips, the hair), washed in over its own part
-  for (const q of all) {
-    const tint = tintOf(q.part, q.style, q.shape?.shade || 0); if (!tint) continue;
-    const box = framing(f, q.part).near, wash = await sitterWash(c.sitter, q.part, tint, box, cw);
+  if (painted.length) paintCard(card, face, c, all, cw, near, turn);
+  // each colour it wears (the lips, the hair), washed in over its own part; put in together, in place of the ones before
+  const washes = [];
+  for (const q of tinted) {
+    const tint = tintOf(q.part, q.style, q.shape?.shade || 0), box = framing(f, q.part).near, wash = await sitterWash(c.sitter, q.part, tint, box, cw);
     if (dressing.get(card) !== turn) return;
     if (!wash) continue;
-    wash.className = 'lb-card__wash';
+    wash.className = 'lb-card__wash' + (old.length ? ' is-again' : '');
     Object.assign(wash.style, { left: pc(box[0] / f.w), top: pc(box[1] / f.h), width: pc(box[2] / f.w), height: pc(box[3] / f.h) });
-    face.insertBefore(wash, face.querySelector('.lb-card__sketch'));
+    washes.push(wash);
   }
+  if (tinted.length) { old.forEach(w => w.remove()); const at = face.querySelector('.lb-card__paint') || face.querySelector('.lb-card__sketch'); washes.forEach(w => face.insertBefore(w, at)); }
+}
+/**
+ * Heavy drawing waits its turn: one card at a time with a frame between, so the ring keeps moving while faces are
+ * painted; the card in front first, and a card dressed again since it asked dropped without a wait.
+ * @type {{ card: HTMLElement, alive: () => boolean, fn: () => any, done: (v: any) => void }[]}
+ */
+const queue = [];
+let draining = false;
+/** @template T @param {HTMLElement} card @param {() => boolean} alive @param {() => Promise<T> | T} fn @returns {Promise<T | null>} */
+function inTurn(card, alive, fn) { return new Promise(done => { queue.push({ card, alive, fn, done }); drain(); }); }
+async function drain() {
+  if (draining) return; draining = true;
+  try {
+    while (queue.length) {
+      for (let i = queue.length - 1; i >= 0; i--) if (!queue[i].alive() || !queue[i].card.isConnected) queue.splice(i, 1)[0].done(null);
+      if (!queue.length) break;
+      await new Promise(r => requestAnimationFrame(() => r(null)));
+      const i = queue.findIndex(j => j.card.classList.contains('is-front')), [job] = queue.splice(Math.max(0, i), 1);
+      if (!job) continue;
+      if (!job.alive()) { job.done(null); continue; }
+      try { job.done(await job.fn()); } catch { job.done(null); }
+    }
+  } finally { draining = false; }
+}
+/** A sitter's colours, read from its picture once: its hair (where it was found), its brows, its skin. @type {Map<string, Promise<ReturnType<typeof coloursOf>>>} */
+const colours = new Map();
+/**
+ * A look painted over a photograph's card, under its pencil and over its washes: in the hair's own colour, or the one
+ * the look dyes it, falling into place from the top.
+ * @param {HTMLElement} card @param {Element} face @param {{ sitter: Sitter }} c @param {Worn1[]} all @param {number} cw @param {number[]} near @param {number} turn
+ */
+async function paintCard(card, face, c, all, cw, near, turn) {
+  const f = c.sitter.face, s = c.sitter;
+  const got = await inTurn(card, () => dressing.get(card) === turn, async () => {
+    const img = await picture(s.portrait).catch(() => null); if (!img || dressing.get(card) !== turn) return null;
+    if (!colours.has(s.portrait)) colours.set(s.portrait, (async () => coloursOf(img, f, s.hair ? await picture(s.hair).catch(() => null) : null))());
+    const tone = await colours.get(s.portrait), dyed = all.find(q => q.part === 'colour'), dye = dyed ? tintOf('colour', dyed.style, dyed.shape?.shade || 0) : '';
+    if (dressing.get(card) !== turn || !tone) return null;
+    const { head } = framing(f, ''), k = Math.min(1.6, 2 * cw / near[2]);
+    return { canvas: paintLook(img, f, all, head, k, { ...tone, dye: dye || '' }), head };
+  });
+  if (!got?.canvas || dressing.get(card) !== turn || !card.isConnected) return;
+  const { canvas, head } = got, was = face.querySelector('.lb-card__paint');
+  canvas.className = 'lb-card__paint'; canvas.setAttribute('aria-hidden', 'true');
+  Object.assign(canvas.style, { left: pc(head[0] / f.w), top: pc(head[1] / f.h), width: pc(head[2] / f.w), height: pc(head[3] / f.h) });
+  // the look it wore until now stays until this one is ready, then this one takes its place (and falls in only when new)
+  if (was) { if (card.classList.contains('is-front')) canvas.classList.add('is-again'); was.replaceWith(canvas); } else face.insertBefore(canvas, face.querySelector('.lb-card__sketch'));
 }
 /** Past the mark and back, a little: how a shape settles. @param {number} t */
 const overshoot = (t) => { const u = t - 1; return 1 + 2.4 * u * u * u + 1.4 * u * u; };
@@ -706,7 +770,6 @@ async function sitterWash(s, part, tint, box, cw) {
   const c = document.createElement('canvas'), m = document.createElement('canvas'); c.width = m.width = w; c.height = m.height = hh;
   const x = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d')), mx = /** @type {CanvasRenderingContext2D} */ (m.getContext('2d'));
   x.drawImage(img, box[0], box[1], box[2], box[3], 0, 0, w, hh);
-  coat(x, tint, part);
   mx.setTransform(k, 0, 0, k, -box[0] * k, -box[1] * k);
   const shape = (/** @type {{ x: number, y: number }[][]} */ rings, /** @type {CanvasFillRule} */ rule) => { mx.beginPath(); for (const r of rings) r.forEach((p, i) => (i ? mx.lineTo(p.x, p.y) : mx.moveTo(p.x, p.y))); mx.fill(rule); };
   mx.fillStyle = '#fff';
@@ -715,6 +778,8 @@ async function sitterWash(s, part, tint, box, cw) {
     mx.globalCompositeOperation = 'destination-out'; mx.filter = 'blur(2px)'; const sh = shapesOf(s.face);
     for (const r of [...sh.beard, ...sh.brows]) shape([r], 'nonzero');
   } else { mx.filter = 'blur(1.5px)'; shape([LIPS.map(i => s.face.pts[i]), MOUTH.map(i => s.face.pts[i])], 'evenodd'); }
+  // hair on a photograph is dyed strand by strand (its own light kept); lips, and the drawn sitters, are coated
+  if (part === 'colour' && s.person || part === 'colour' && s.id === 'you') dyeHair(x, tint, m); else coat(x, tint, part);
   x.globalCompositeOperation = 'destination-in'; x.drawImage(m, 0, 0);
   return c;
 }

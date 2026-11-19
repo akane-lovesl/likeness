@@ -76,7 +76,7 @@ export function composer({ onSend, onAttach }) {
     c.className = 'proof__layer'; proofPic.append(c);
     const older = [...proofPic.children].filter(n => n !== c);
     if (reduced) older.forEach(n => n.remove()); else c.addEventListener('animationend', () => older.forEach(n => n.remove()), { once: true });
-    proof.dataset.kind = r.op === 'create' && !r.subject ? 'new' : 'change';
+    proof.dataset.kind = (r.op === 'create' && !r.subject) || r.op === 'backdrop' ? 'new' : 'change';
     proof.classList.add('is-in'); proof.removeAttribute('inert');
   }
   function hideProof() { clearTimeout(proofTimer); proofTicket++; proofKey = ''; proof.classList.remove('is-in'); proof.setAttribute('inert', ''); }

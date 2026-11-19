@@ -146,6 +146,18 @@ test('the sun can be held: drag it under the sea and the sketch is painted again
   await expect(made(page, 'Sketch')).toHaveCount(1);
 });
 
+test('a picture put somewhere gets a new backdrop: “@A on a beach in Lisbon”', async ({ page }) => {
+  await open(page);
+  await page.locator('button.starter').first().click();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('button.bring__opt').first().click()]);
+  await chooser.setFiles('tests/fixtures/sitters/ines.jpg');
+  await expect(page.locator('figure.print')).toHaveCount(1);
+  await page.locator('.composer textarea').fill('@A on a beach in Lisbon');
+  await expect(page.locator('.plan-pill[data-k="op"]')).toHaveText('New backdrop for A');
+  await page.locator('button.send').click();
+  await expect(page.getByText('A, somewhere new: a beach in Lisbon.')).toBeVisible({ timeout: 30_000 });
+});
+
 test('the look camera shows the world in a look, and the shutter sends it to be painted', async ({ page }) => {
   await open(page);
   await page.locator('button.starter').first().click();

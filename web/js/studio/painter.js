@@ -51,6 +51,7 @@ function rampLUT(ramp) {
 export function grade(src, look, strength = 1, seed = 1) {
   const w = src.width, h = src.height, out = make(w, h), c = ctx2d(out), rnd = rng(seed);
   if (look.halftone) return halftone(src, look.halftone, strength);
+  if (look.wash) return watercolour(src, look, strength, seed);
   if (look.pixel) { const pw = look.pixel, ph = Math.round(pw * h / w), small = copy(src, pw, ph); c.imageSmoothingEnabled = false; c.drawImage(small, 0, 0, w, h); c.imageSmoothingEnabled = true; }
   else { c.filter = look.pre || 'none'; c.drawImage(src, 0, 0); c.filter = 'none'; }
   const img = c.getImageData(0, 0, w, h), d = img.data, lut = look.ramp ? rampLUT(look.ramp) : null, keep = look.keep ?? .2;
@@ -73,6 +74,55 @@ export function grade(src, look, strength = 1, seed = 1) {
   if (look.scan) scanlines(out, look.scan * strength);
   if (look.vignette) vignette(out, look.vignette * strength);
   return out;
+}
+
+/**
+ * Watercolour as a medium: the picture's own colours (or a look's ramp) laid in flat, transparent washes, pigment pooled
+ * darker where one wash meets another, blooms where the water sat, granulated on cold-press paper that shows through
+ * at ragged margins, over a faint pencil drawing.
+ * @param {HTMLCanvasElement} src @param {any} look
+ */
+function watercolour(src, look, strength = 1, seed = 1) {
+  const w = src.width, h = src.height, rnd = rng(seed), sw = Math.max(48, Math.round(w * .6)), sh = Math.max(48, Math.round(h * .6)), n = sw * sh;
+  const soft = make(sw, sh), sc = ctx2d(soft);
+  sc.filter = 'blur(1px) saturate(1.12)'; sc.drawImage(src, 0, 0, sw, sh); sc.filter = 'none';
+  const pig = paletteOf(soft, 10).map(rgb), img = sc.getImageData(0, 0, sw, sh), d = img.data, L = new Float32Array(n);
+  const lut = look.ramp ? rampLUT(look.ramp) : null, keep = look.keep ?? .5, [pr, pg, pb] = rgb(look.paper || '#fbf6ec');
+  for (let i = 0, p = 0; p < n; i += 4, p++) {
+    let r = d[i], g = d[i + 1], b = d[i + 2], best = pig[0], bd = 1e9;
+    for (const c of pig) { const dd = (c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2; if (dd < bd) { bd = dd; best = c; } }
+    r = r * .5 + best[0] * .5; g = g * .5 + best[1] * .5; b = b * .5 + best[2] * .5;   // a few pigments, flat washes
+    if (lut) { const l = (r * .299 + g * .587 + b * .114) | 0, m = (r + g + b) / 3; r = lut[l * 3] + (r - m) * keep; g = lut[l * 3 + 1] + (g - m) * keep; b = lut[l * 3 + 2] + (b - m) * keep; }
+    r = pr - (pr - r) * .84; g = pg - (pg - g) * .84; b = pb - (pb - b) * .84;            // transparent: the paper shows through every wash
+    d[i] = r; d[i + 1] = g; d[i + 2] = b; L[p] = r * .299 + g * .587 + b * .114;
+  }
+  const E = new Float32Array(n);
+  for (let y = 1; y < sh - 1; y++) for (let x = 1; x < sw - 1; x++) { const i = y * sw + x; E[i] = Math.min(1, Math.max(0, (Math.hypot(L[i + 1] - L[i - 1], L[i + sw] - L[i - sw]) - 6) / 40)); }
+  // where the water sat: a coarse random field, smoothly enlarged
+  const coarse = make(Math.ceil(sw / 14), Math.ceil(sh / 14)), cx = ctx2d(coarse), cn = cx.createImageData(coarse.width, coarse.height);
+  for (let i = 0; i < cn.data.length; i += 4) { cn.data[i] = cn.data[i + 1] = cn.data[i + 2] = rnd() * 255; cn.data[i + 3] = 255; }
+  cx.putImageData(cn, 0, 0);
+  const field = make(sw, sh), fc = ctx2d(field); fc.imageSmoothingQuality = 'high'; fc.drawImage(coarse, 0, 0, sw, sh);
+  const N = fc.getImageData(0, 0, sw, sh).data, edge = cx.createImageData(sw, sh), ed = edge.data;
+  for (let y = 0, p = 0; y < sh; y++) for (let x = 0; x < sw; x++, p++) {
+    const i = p * 4, e = (E[p] + (E[p - 1] || 0) + (E[p + 1] || 0) + (E[p - sw] || 0) + (E[p + sw] || 0)) / 5, nz = N[i] / 255;
+    const k = 1 - e * .3 - (nz - .5) * .14 - (rnd() - .5) * .05;                         // pooled at the edges, blooms, granulation
+    const rim = Math.min(x, y, sw - 1 - x, sh - 1 - y) / Math.min(sw, sh), a = Math.max(0, Math.min(1, (rim - .03 - nz * .05) / .025)); // ragged white margin
+    d[i] = pr + (d[i] * k - pr) * a; d[i + 1] = pg + (d[i + 1] * k - pg) * a; d[i + 2] = pb + (d[i + 2] * k - pb) * a; ed[i + 3] = a * 255;
+  }
+  sc.putImageData(img, 0, 0);
+  const out = make(w, h), c = ctx2d(out);
+  c.imageSmoothingQuality = 'high'; c.drawImage(soft, 0, 0, w, h);
+  const tooth = c.getImageData(0, 0, w, h), td = tooth.data;                               // the paper's own tooth
+  for (let i = 0; i < td.length; i += 4) { const v = (rnd() - .5) * 14; td[i] += v; td[i + 1] += v; td[i + 2] += v; }
+  c.putImageData(tooth, 0, 0);
+  // the pencil underneath, holding the likeness where the washes soften it, and only where there is paint
+  const pencil = make(w, h), pc = ctx2d(pencil), painted = make(sw, sh); ctx2d(painted).putImageData(edge, 0, 0);
+  inkEdges(pencil, src, .34, '#5e574e'); pc.globalCompositeOperation = 'destination-in'; pc.drawImage(painted, 0, 0, w, h);
+  c.drawImage(pencil, 0, 0);
+  if (strength >= 1) return out;
+  const mixed = make(w, h), mc = ctx2d(mixed); mc.drawImage(src, 0, 0); mc.globalAlpha = Math.max(0, strength); mc.drawImage(out, 0, 0);
+  return mixed;
 }
 
 function inkEdges(out, src, amount, ink) {

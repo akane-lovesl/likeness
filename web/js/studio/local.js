@@ -7,6 +7,7 @@ import * as P from './painter.js';
 import { LOOKS, lookFromWords } from './looks.js';
 import { sleep, rng, pick } from '../core/dom.js';
 import { heardSpans } from '../room/maker.js';
+import { selectAt } from './segment.js';
 
 const PACE = { quick: 2200, fine: 4000, deep: 6800 };
 const cancelled = new Set();
@@ -51,9 +52,10 @@ export async function sketch(spec, inputs, i = 0, size = P.MAX, opts = {}) {
       note = it.pins?.length ? 'cleared under the pins' : 'nothing pinned: pin what should go'; break;
     }
     case 'backdrop': {
-      const where = (spec.backdrop?.words || words.replace(/.*?(background|backdrop|behind \w+|setting|surroundings)\s*(to|of|with|into|in|as|:)?\s*/i, '')) || 'a garden at golden hour';
+      const where = (spec.backdrop?.words || it.where || words.replace(/.*?(background|backdrop|behind \w+|setting|surroundings)\s*(to|of|with|into|in|as|:)?\s*/i, '')) || 'a garden at golden hour';
       const bd = P.scene(P.sceneFrom(where, spec.backdrop?.ramp || null, seed), subject.width, subject.height);
-      out = P.composite(subject, spec.subjectMask || null, bd); note = spec.subjectMask ? 'subject kept by its mask' : 'subject guessed as the centre';
+      const mask = spec.subjectMask || await subjectOf(inputs[it.subject]);
+      out = P.composite(subject, mask, bd); note = mask ? 'subject kept by its outline' : 'subject guessed as the centre';
       break;
     }
     case 'vary': {
@@ -105,7 +107,13 @@ function editedScene(was, words, sun = null) {
   if (sun) { P.setSun(desc, sun); changes.unshift(P.hourWords(sun)); }
   return { desc, first, changes };
 }
-const thumbs = new WeakMap();
+const thumbs = new WeakMap(), subjects = new WeakMap();
+/** Who or what a picture is of: the segmenter's outline of whatever is in the middle, found once per picture; null if it cannot tell. */
+const subjectOf = (/** @type {any} */ input) => {
+  if (!input?.blob) return Promise.resolve(null);
+  if (!subjects.has(input.blob)) subjects.set(input.blob, P.fromBlob(input.blob, 512).then(c => selectAt(c, .5, .5)).then(r => (r.guessed ? null : r.mask)).catch(() => null));
+  return subjects.get(input.blob);
+};
 const thumbOf = async (/** @type {any} */ input) => { if (!thumbs.has(input.blob)) thumbs.set(input.blob, await P.fromBlob(input.blob, 256)); return thumbs.get(input.blob); };
 
 /**
@@ -125,6 +133,10 @@ export async function proofOf(spec, inputs, w = 192, h = 256) {
   if (was?.scene && (it.op === 'edit' || it.op === 'restyle')) {
     const { desc, first, changes } = editedScene(was.scene, words, Array.isArray(spec.sun) ? spec.sun : null);
     if (changes.length) { const c = P.scene(desc, w, h), medium = lookFromWords(words, LOOKS, { moods: false }) || first; return medium ? P.grade(c, medium, .6, 1) : c; }
+  }
+  if (was?.blob && it.op === 'backdrop') {
+    const t = await thumbOf(was), where = spec.backdrop?.words || it.where || words;
+    return P.composite(t, await subjectOf(was), P.scene(P.sceneFrom(where, spec.backdrop?.ramp || null, Number.isFinite(spec.seed) ? spec.seed : 1), t.width, t.height));
   }
   if (was?.blob && it.op === 'restyle' && it.look) return P.grade(await thumbOf(was), it.look, it.look.strength ?? .9, 1);
   const ref = it.refs?.find((/** @type {any} */ r) => r.role === 'style' && inputs[r.id]);
@@ -148,7 +160,7 @@ const SAY = {
   edit: (s, h) => `${h(s.intent.subject)}, changed as you asked.`, restyle: (s, h) => `${h(s.intent.subject)}, in ${s.intent.look?.name || 'a new look'}.`,
   reference: (s, h) => `${h(s.intent.subject)} in ${h(s.intent.refs.find(r => r.role === 'style')?.id)}’s colours.`, blend: (s, h) => `${h(s.intent.subject)} and ${h(s.intent.refs[0]?.id)}, folded into one.`,
   region: (s, h) => `Changed what you pinned on ${h(s.intent.subject)}.`, remove: (s, h) => `Cleared it from ${h(s.intent.subject)}.`,
-  backdrop: (s, h) => `${h(s.intent.subject)}, somewhere new.`, vary: (s, h) => `${['One', 'Two', 'Three', 'Four'][s.n - 1] || s.n} takes on ${h(s.intent.subject)}.`,
+  backdrop: (s, h) => { const where = s.backdrop?.name?.toLowerCase() || s.intent.where; return where ? `${h(s.intent.subject)}, somewhere new: ${where}.` : `${h(s.intent.subject)}, somewhere new.`; }, vary: (s, h) => `${['One', 'Two', 'Three', 'Four'][s.n - 1] || s.n} takes on ${h(s.intent.subject)}.`,
 };
 const NEXT = {
   create: ['Make it night', 'In watercolour', 'Two more like this'], edit: ['Warmer', 'Try a backdrop', 'Two more like this'], restyle: ['Softer', 'Stronger', 'Try a backdrop'],

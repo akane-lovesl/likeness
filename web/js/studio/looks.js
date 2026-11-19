@@ -4,12 +4,13 @@
  */
 import { hsl, fromHsl, mix } from '../core/color.js';
 
-/** @typedef {{ id: string, name: string, line: string, prompt: string, ramp?: string[], keep?: number, pre?: string, posterize?: number, grain?: number, bloom?: number, vignette?: number, edges?: number, paper?: string, halftone?: { inks: string[], paper: string, cell: number }, pixel?: number, scan?: number, fade?: number, mine?: boolean, from?: string }} Look */
+/** @typedef {{ id: string, name: string, line: string, prompt: string, ramp?: string[], keep?: number, pre?: string, posterize?: number, grain?: number, bloom?: number, vignette?: number, edges?: number, paper?: string, halftone?: { inks: string[], paper: string, cell: number }, pixel?: number, scan?: number, fade?: number, wash?: boolean, mine?: boolean, from?: string }} Look */
 
 /** @type {Look[]} */
 export const LOOKS = [
   { id: 'velvet-hour', name: 'Velvet Hour', line: 'Plum shadows, candlelit gold, a little grain.', ramp: ['#1b0f1f', '#4a1d3f', '#a8475a', '#e3a35c', '#fbe3b8'], keep: .18, grain: .06, bloom: .35, vignette: .4, pre: 'contrast(1.08)', prompt: 'intimate candlelit photograph, deep plum shadows, warm gold highlights, soft film grain, gentle halation' },
-  { id: 'watercolour', name: 'Watercolour Valentine', line: 'Washed pinks bleeding into cold-press paper.', ramp: ['#6b3a4a', '#c76f86', '#f2a7b8', '#fbe0e3', '#fffaf5'], keep: .35, pre: 'blur(1.3px) saturate(1.1)', posterize: 7, edges: .3, paper: '#fff8f3', prompt: 'loose watercolour painting in rose and blush pinks, pigment blooms and soft bleeding edges on cold-press paper, white paper showing through' },
+  { id: 'watercolour', name: 'Watercolour', line: 'Loose washes on cold-press paper, the white showing through.', wash: true, keep: .5, paper: '#fbf6ec', prompt: 'loose watercolour painting in the picture’s own colours, transparent washes with soft bleeding edges and pigment blooms on cold-press paper, white paper showing through at the margins, a faint pencil underdrawing' },
+  { id: 'valentine', name: 'Watercolour Valentine', line: 'Washed pinks bleeding into cold-press paper.', ramp: ['#6b3a4a', '#c76f86', '#f2a7b8', '#fbe0e3', '#fffaf5'], keep: .35, wash: true, paper: '#fff8f3', prompt: 'loose watercolour painting in rose and blush pinks, pigment blooms and soft bleeding edges on cold-press paper, white paper showing through' },
   { id: 'riso', name: 'Riso Garden', line: 'Two inks, cobalt and fluorescent pink, slightly off register.', halftone: { inks: ['#1d3a8a', '#ff5f6d'], paper: '#f6f0e4', cell: 5 }, prompt: 'two-colour risograph print in cobalt blue and fluorescent pink, coarse halftone dots, slight misregistration, uncoated paper' },
   { id: 'film-77', name: 'Film ’77', line: 'Faded teal shadows, warm skin, soft halation.', ramp: ['#12302f', '#3f6a63', '#c98b5b', '#edc79b', '#f7ecd6'], keep: .45, grain: .09, vignette: .3, bloom: .2, fade: .07, prompt: '1970s 35mm film photograph, faded teal shadows, warm skin tones, halation around highlights, visible grain' },
   { id: 'neon-noir', name: 'Neon Noir', line: 'Magenta and cyan on a wet black night.', ramp: ['#07040f', '#2a0b4a', '#c3168e', '#2ee6f5', '#f4f1ff'], keep: .12, bloom: .55, scan: .22, pre: 'contrast(1.2)', prompt: 'neon noir, magenta and cyan rim light on a rain-wet black night, glowing signage reflections, cinematic contrast' },
@@ -33,7 +34,7 @@ export const LOOKS = [
  * @type {[RegExp, string, ('mood')?][]}
  */
 const WORDS = [
-  [/water ?colou?r|aquarelle/, 'watercolour'], [/\boil\b|old master|impasto|rembrandt/, 'oil'], [/pencil|sketch|drawing|charcoal|\bink\b|sumi/, 'ink-wash'],
+  [/valentine|(?:pink|rose|blush) water ?colou?r/, 'valentine'], [/water ?colou?r|aquarelle/, 'watercolour'], [/\boil\b|old master|impasto|rembrandt/, 'oil'], [/pencil|sketch|drawing|charcoal|\bink\b|sumi/, 'ink-wash'],
   [/anime|cel|cartoon|comic|manga/, 'cel-pop'], [/pixel|8.?bit|retro game|game ?boy/, 'pixel-pocket'], [/neon|cyber|synthwave|vaporwave/, 'neon-noir', 'mood'],
   [/film|analog|polaroid/, 'film-77'], [/70s|seventies|vintage/, 'film-77', 'mood'], [/golden|sunset|warm light/, 'golden-hour', 'mood'], [/winter|frost|icy|snowy|cold/, 'hoarfrost', 'mood'],
   [/dream|pastel|soft/, 'pastel-dream', 'mood'], [/riso|risograph|zine|screen ?print/, 'riso'], [/porcelain|delft|china|blue and white/, 'porcelain'],

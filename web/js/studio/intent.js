@@ -4,6 +4,7 @@
  * again with a real model; this reading only has to be right often enough to be useful, and visible when it is not.
  */
 import { lookFromWords } from './looks.js';
+import { readVibe } from '../room/maker.js';
 
 const ORD = { first: 0, '1st': 0, second: 1, '2nd': 1, third: 2, '3rd': 2, fourth: 3, '4th': 3, fifth: 4, '5th': 4 };
 const COUNT = { two: 2, three: 3, four: 4, 'a couple of': 2, 'a few': 3, '2': 2, '3': 3, '4': 4 };
@@ -17,6 +18,17 @@ const STYLE_BEFORE = /(?:\blike|\bas|in the style of|styled (?:like|after)|inspi
 const STYLE_AFTER = /^\s*(?:as (?:a |an |the |my |our )?(?:reference|style|inspiration|guide|model|example|moodboard)|['’]s (?:style|colou?rs?|palette|look|vibe|mood|light(?:ing)?|tones?|feel)|for (?:the |its )?(?:style|colou?rs?|palette|look|vibe|mood))/;
 const SET_BEFORE = /(?:\binto|in front of|on top of|\bonto|(?:background|backdrop|scene|setting|place) (?:of|from))\s*(?:the\s+)?$/;
 const SET_AFTER = /^\s*as (?:the |a )?(?:background|backdrop|setting|scene)/;
+/**
+ * Someone put somewhere: "@A on a beach", "put her in front of a lighthouse at sunset", "@A in Paris at night". A new
+ * backdrop when what follows reads as a place; a medium there makes it a restyle instead ("@A in watercolour").
+ */
+const PLACED = /(?:@[a-z]{1,2}\b|\b(?:her|him|them|me|us|it|she(?:['’]s| is)?|he(?:['’]s| is)?|they(?:['’]re| are)?))[,\s]+(?:(?:standing|sitting|walking|posing|stood|sat|lying|out)\s+)?(?:in front of|on top of|on|at|in|into|onto|by|beside|under|among|inside|outside)\s+(.+)$/;
+/** @param {string} t @param {any[] | undefined} looks */
+function placedIn(t, looks) {
+  const m = t.toLowerCase().match(PLACED), end = m ? m.index + m[0].length : 0, where = m ? t.slice(end - m[1].length, end).replace(/[.!?]+$/, '').trim() : ''; // in the words as they were typed
+  if (!where || lookFromWords(where, looks, { moods: false })) return null;
+  return readVibe(where).some(x => x.cue.kind === 'place' || x.cue.kind === 'venue') ? where : null;
+}
 /** "Take me to a rainy Tokyo jazz bar", "let's go somewhere cosy", "change the room to noir": the whole place, not a picture. */
 const ROOM = /^\s*(?:please\s+)?(?:(?:take|bring) (?:me|us) (?:to|into|(?=somewhere))|move (?:me |us )?(?:to|into)|let['’]?s go (?:to|into|(?=somewhere))|change the room to|switch the room to|make (?:this|the|my) (?:room|place|desk|app) (?:feel )?(?:like|into)|turn (?:this|the) (?:room|place|desk) into|redecorate (?:as|like)|room:)\s*(.+)$/i;
 
@@ -55,11 +67,12 @@ export function readIntent(text, ctx) {
   // "use the second picture as a reference and change this one": the subject is the newest picture that is not the reference
   const subject = ids.find(id => !refs.some(r => r.id === id)) || (refs.length && /\b(this|it|that)\b/.test(low) ? [...prints].reverse().find(p => !refs.some(r => r.id === p.id))?.id : null) || null;
   const others = ids.filter(id => id !== subject && !refs.some(r => r.id === id)).map(id => ({ id, role: 'with' }));
-  const look = ctx.look || lookFromWords(low, ctx.looks, { moods: !!subject }) || null; // with nothing to restyle, a mood is part of what to paint
+  const where = subject && !pins.length ? placedIn(t, ctx.looks) : null; // "at sunset" there belongs to the place, not a look
+  const look = ctx.look || (where ? null : lookFromWords(low, ctx.looks, { moods: !!subject })) || null; // with nothing to restyle, a mood is part of what to paint
 
   let op = 'create';
   if (pins.length) op = 'region';
-  else if (subject && /(background|backdrop|behind (her|him|them|it|me)|scene behind|setting|surroundings|put (her|him|them|it|me) (in|on|at))/.test(low)) op = 'backdrop';
+  else if (subject && (where || /(background|backdrop|behind (her|him|them|it|me)|scene behind|setting|surroundings|put (her|him|them|it|me) (in|on|at))/.test(low))) op = 'backdrop';
   else if (subject && /\b(remove|erase|get rid of|delete|take out|without)\b/.test(low)) op = 'remove';
   else if (subject && !look && /(variation|alternative|another take|different take|more like (this|that|it|the)|riff|remix|three takes|few takes)/.test(low)) op = 'vary';
   else if (ids.length >= 2 && /(combine|merge|mix|blend|together|fuse|both)/.test(low)) op = 'blend';
@@ -70,7 +83,7 @@ export function readIntent(text, ctx) {
   const cm = low.match(/\b(two|three|four|a couple of|a few|[234])\s+(versions|variations|options|takes|images|pictures|ideas|alternatives|of them|more)\b/);
   const n = cm ? COUNT[cm[1]] : op === 'vary' ? 3 : 1;
   const pace = /\b(quick|quickly|fast|rough|draft)\b/.test(low) ? 'quick' : /\b(detailed|careful|carefully|best|high quality|masterpiece|perfect)\b/.test(low) ? 'deep' : null;
-  return { op, subject, refs: [...refs, ...others], look, n: Math.min(4, n), pace, pins };
+  return { op, subject, refs: [...refs, ...others], look, n: Math.min(4, n), pace, pins, ...(op === 'backdrop' && where ? { where } : {}) };
 }
 
 const LABEL = { room: 'Move to', create: 'Paint something new', edit: 'Change', restyle: 'Restyle', reference: 'Change', blend: 'Blend', region: 'Change part of', backdrop: 'New backdrop for', remove: 'Remove from', vary: 'Variations of' };
@@ -82,6 +95,7 @@ export function describeIntent(it, handleOf) {
   else out.push({ k: 'op', text: LABEL[it.op] + (it.op === 'create' ? '' : subj) });
   if (it.op === 'region') out.push({ k: 'pin', text: it.pins.map(p => '①②③④⑤⑥⑦⑧⑨'[p.n - 1] || p.n).join(' ') });
   for (const r of it.refs) if (r.role !== 'with' || it.op !== 'blend') out.push({ k: 'ref', text: r.role === 'style' ? `${h(r.id)}’s style` : r.role === 'backdrop' ? `${h(r.id)} as backdrop` : `with ${h(r.id)}` });
+  if (it.op === 'backdrop' && it.where) out.push({ k: 'look', text: it.where.length > 30 ? it.where.slice(0, 29) + '…' : it.where });
   if (it.look) out.push({ k: 'look', text: it.look.name });
   if (it.n > 1) out.push({ k: 'n', text: '×' + it.n });
   return out;

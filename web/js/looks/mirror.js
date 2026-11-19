@@ -11,7 +11,7 @@ import { on } from '../core/bus.js';
 import { progressAt } from '../core/estimate.js';
 import { studio } from '../studio/studio.js';
 import * as P from '../studio/painter.js';
-import { faceOf, reframed, contoursOf, shapesOf, maskOf, partAt, hairOf } from '../studio/face.js';
+import { faceOf, reframed, knowHair, contoursOf, shapesOf, maskOf, partAt, hairOf } from '../studio/face.js';
 /** @typedef {import('../studio/face.js').Face} Face */
 import { addPrint, addItem, setKept, printById, urlOf, settings } from '../state.js';
 import { runTurn } from '../ui/turn.js';
@@ -19,6 +19,7 @@ import { PARTS, partById, styleOf, wordsFor, titleOf, plateSVG, partsIn, tintOf 
 import { markup, controlsOf } from './markup.js';
 import { turner } from './turn.js';
 import { openLive, canLive } from './live.js';
+import { coat } from './tint.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const INK = '#fff4e0';
@@ -52,8 +53,6 @@ async function canvasOf(src) {
 /** What a picture is, in a word, for its stamp. @param {any} p */
 const labelOf = (p) => ({ simulated: 'Simulated', render: 'GPT Image', sketch: 'Sketch', photo: 'Your photo' })[p?.provenance?.kind] || 'Picture';
 
-/** How light a colour is, 0 to 1. @param {string} hex */
-const lightness = (hex) => { const v = parseInt(hex.slice(1), 16); return (.3 * (v >> 16) + .59 * ((v >> 8) & 255) + .11 * (v & 255)) / 255; };
 /**
  * The new colours, painted where they go (the hair, the lips) and nowhere else: the picture itself recoloured inside
  * the part's mask, so the light and the strands stay its own. Transparent where nothing changes colour.
@@ -65,11 +64,8 @@ async function washOf(pic, f, picks) {
   for (const q of picks) {
     const tint = tintOf(q.part, q.style.id, q.shape?.shade || 0); if (!tint || !f) continue;
     const m = await maskOf(pic, f, q.part); if (!m) continue;
-    const layer = P.copy(pic), lx = /** @type {CanvasRenderingContext2D} */ (layer.getContext('2d')), light = lightness(tint);
-    const coat = (/** @type {GlobalCompositeOperation} */ op, /** @type {number} */ a) => { lx.globalCompositeOperation = op; lx.globalAlpha = a; lx.fillStyle = tint; lx.fillRect(0, 0, c.width, c.height); };
-    coat('color', q.part === 'lips' ? .75 : .9);
-    if (q.part === 'colour') coat('soft-light', .6);   // so dark hair takes the colour too, not only its hue
-    if (light > .62) coat('screen', .38); else if (light < .2) coat('multiply', .55); else if (q.part === 'lips') coat('multiply', .3);
+    const layer = P.copy(pic), lx = /** @type {CanvasRenderingContext2D} */ (layer.getContext('2d'));
+    coat(lx, tint, q.part);
     lx.globalCompositeOperation = 'destination-in'; lx.globalAlpha = 1; lx.drawImage(m, 0, 0);
     x.drawImage(layer, 0, 0); any = true;
   }
@@ -78,7 +74,7 @@ async function washOf(pic, f, picks) {
 
 /**
  * Opens the mirror on a photo (a print) or on one of the studio's example people.
- * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null }} o
+ * @param {{ print?: any, person?: Person, look?: Look, picks?: Pick[], words?: string, from?: Element | null, go?: boolean, face?: Face | null, hair?: string | null }} o
  */
 export function openMirror(o) {
   current?.close(true);
@@ -93,7 +89,7 @@ export function openMirror(o) {
   /** @type {import('../studio/face.js').Face | null} */ let face = null;
   /** @type {HTMLCanvasElement | null} */ let base = null;
   /** @type {any} */ let examplePrint = null;
-  const made = person?.kind === 'render' ? { label: 'GPT Image', kind: 'render' } : { label: 'Simulated', kind: 'simulated' };
+  const made = person?.kind === 'render' ? { label: 'GPT Image', kind: 'render' } : person?.kind === 'drawn' ? { label: 'Drawn', kind: 'sketch' } : { label: 'Simulated', kind: 'simulated' };
   const origin = /** @type {Take} */ ({ url: person ? person.portrait : urlOf(print), ...(person ? made : { label: 'Your photo', kind: 'photo' }) });
   const stops = /** @type {(() => void)[]} */ ([]);
 
@@ -560,7 +556,7 @@ export function openMirror(o) {
     if (print) return print;
     if (examplePrint) return examplePrint;
     const blob = await (await fetch(t?.url || origin.url)).blob(), c = await P.fromBlob(blob, 1600);
-    examplePrint = await addPrint({ blob: await P.toBlob(c, 'image/jpeg', .92), w: c.width, h: c.height, origin: 'upload', provenance: { kind: made.kind, label: made.label === 'GPT Image' ? 'Render' : 'Simulated', detail: 'An example portrait of someone who does not exist' } });
+    examplePrint = await addPrint({ blob: await P.toBlob(c, 'image/jpeg', .92), w: c.width, h: c.height, origin: 'upload', provenance: { kind: made.kind, label: made.label === 'GPT Image' ? 'Render' : made.label, detail: person?.kind === 'drawn' ? 'A drawn sitter: someone who does not exist, drawn' : 'An example portrait of someone who does not exist' } });
     await addItem({ type: 'prints', prints: [examplePrint.id], mine: true });
     return examplePrint;
   }
@@ -695,6 +691,8 @@ export function openMirror(o) {
     partsRow.hidden = true;   // the face is the menu once it is read: the chips come back only where no face is found
     frame.classList.add('is-reading');
     try { base = await canvasOf(person ? person.portrait : print.blob); } catch { base = null; }
+    // a drawn sitter's hair comes with it, read when it was made ready
+    if (base && o.hair) { try { const img = new Image(); img.src = o.hair; await img.decode(); const m = P.make(base.width, base.height); ctx(m).drawImage(img, 0, 0, m.width, m.height); knowHair(base, m); } catch { /* the segmenter, then */ } }
     fit();
     // a face read as the picture was taken (the live mirror's) is this picture's already: no second reading, no wait
     const known = o.face && base && Math.abs(o.face.w / o.face.h - base.width / base.height) < .01 ? reframed(o.face, base.width, base.height) : null;

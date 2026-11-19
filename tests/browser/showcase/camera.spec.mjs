@@ -25,3 +25,14 @@ test('the camera is a mirror: the look sketched live on the face, and the shutte
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 6_000 });
   await expect(mirror).not.toHaveClass(/is-close/);
 });
+
+test('On me, on a face in the ring: the camera opens with that look on', async ({ page }) => {
+  await page.goto('/');
+  const front = page.locator('section.book .lb-card.is-front');
+  await expect(front).toHaveClass(/lb-card--sitter/);
+  await front.locator('.lb-card__me').click();
+  const live = page.locator('section.lv');
+  await expect(live).toBeVisible();
+  await expect(live.locator('.lv-styles .mr-style[aria-selected="true"]')).toHaveAttribute('data-style', 'curtain');
+  await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
+});

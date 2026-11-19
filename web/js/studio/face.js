@@ -101,6 +101,12 @@ export function reframed(f, w, h, mirror = false) {
   return boxed(f.pts.map(p => ({ x: (mirror ? f.w - p.x : p.x) * kx, y: p.y * ky, z: (p.z || 0) * kx })), w, h);
 }
 
+/** A picture's hair, known already (a drawn sitter's, read when it was made ready): no segmenter is needed for it. @param {HTMLCanvasElement} c @param {HTMLCanvasElement} mask */
+export function knowHair(c, mask) { hairRead.set(c, Promise.resolve(mask)); }
+
+/** A face read before (a drawn sitter's, shipped with it): its points as [x, y, z]. @param {number[][]} pts @param {number} w @param {number} h @returns {Face} */
+export const faceFrom = (pts, w, h) => boxed(pts.map(([x, y, z]) => ({ x, y, z: z || 0 })), w, h);
+
 /** A face from its points: with the box round its outline. @param {Pt[]} pts @param {number} w @param {number} h @returns {Face} */
 function boxed(pts, w, h) {
   const xs = OVAL.map(i => pts[i].x), ys = OVAL.map(i => pts[i].y), x0 = Math.min(...xs), y0 = Math.min(...ys);

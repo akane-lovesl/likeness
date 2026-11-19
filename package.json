@@ -6,6 +6,7 @@
   "description": "Likeness — a personal image studio you talk to. Rooms, weather, and pictures made by conversation.",
   "scripts": {
     "serve": "node tools/serve.mjs",
+    "sitters": "node tools/sitters.mjs",
     "check": "tsc -p web/jsconfig.json",
     "test": "playwright test"
   },

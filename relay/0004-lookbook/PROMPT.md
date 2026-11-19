@@ -8,7 +8,7 @@ You are Codex, working in the Likeness repository on the user's own computer, af
 
 Likeness opens on the **Lookbook**: a ring of faces that turns by itself. On each face one thing changes in a sweep of light (curtain bangs, feathered brows, a copper colour, a bob) and its name sits underneath. Touch a face and the **mirror** opens on it: the takes of that look, and every angle of it. Then *On me* brings in your own photo, the mirror reads the face on the device, and the same change is tried on you: four takes from GPT Image, scrubbed with a finger, one kept, then turned to every angle.
 
-The Lookbook is only as good as its faces. Until now it has shown line drawings, because nothing in the repository may be a picture of a real person. So the faces must be **people who do not exist**, rendered by GPT Image here, and good enough that someone opening the app wants to try a look on.
+The Lookbook is only as good as its faces. Until now it has shown drawings (the drawn sitters, with looks sketched on them), because nothing in the repository may be a picture of a real person. So the faces must be **people who do not exist**, rendered by GPT Image here, and good enough that someone opening the app wants to try a look on.
 
 ## What to make
 
@@ -18,7 +18,7 @@ The Lookbook is only as good as its faces. Until now it has shown line drawings,
 2. **Each look**: an `op: edit` turn on the portrait, in the app's own words for that style: *"Give them curtain bangs, parted in the middle, sweeping softly out to the cheekbones. Keep everything else exactly as it is: the same person, face, expression, skin, light and background."*
 3. **Every angle of the first look**: one `op: angles` turn with `n: 3` (three-quarter from their right, profile, three-quarter from their left; *only the camera moves*).
 
-Each picture is cut to 768 × 1024 (3:4, leaning to keep the top of the head) and saved as WebP under `web/examples/<person>/`. `web/examples/manifest.json` is rewritten after each person, with `"kind": "render"`. The app reads it on start; the drawings step aside when at least three looks are there.
+Each picture is cut to 768 × 1024 (3:4, leaning to keep the top of the head) and saved as WebP under `web/examples/<person>/`. `web/examples/manifest.json` is rewritten after each person, with `"kind": "render"`. The app reads it on start; the drawn sitters step aside when at least three looks are there.
 
 The stage runs it: `uv run likeness relay run 0004`. It is 56 pictures and may take a few hours. Stopped or failed, run it again: what is already on disk is kept. To make one person or one picture again, delete the file (or the person's folder) and run `uv run likeness examples --engine codex --only <id>`.
 

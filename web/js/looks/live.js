@@ -13,6 +13,7 @@ import { addPrint, addItem } from '../state.js';
 import { studio } from '../studio/studio.js';
 import { partById, styleOf, plateSVG, tintOf } from './vocab.js';
 import { markup } from './markup.js';
+import { coat } from './tint.js';
 
 /** @typedef {{ part: string, style: import('./vocab.js').Style, shape?: Record<string, number>, said?: string }} Pick */
 
@@ -138,8 +139,7 @@ export function openLive(o) {
     function lips(x, f, tint) {
       const path = new Path2D();
       for (const ring of [LIPS, MOUTH]) { ring.forEach((i, k) => (k ? path.lineTo(f.pts[i].x, f.pts[i].y) : path.moveTo(f.pts[i].x, f.pts[i].y))); path.closePath(); }
-      x.save(); x.globalCompositeOperation = 'color'; x.globalAlpha = .72; x.fillStyle = tint; x.fill(path, 'evenodd');
-      x.globalCompositeOperation = 'multiply'; x.globalAlpha = .26; x.fill(path, 'evenodd'); x.restore();
+      x.save(); x.clip(path, 'evenodd'); coat(x, tint, 'lips'); x.restore();
     }
     /** The hair recoloured: a small copy of the frame, its hair found a few times a second, tinted and laid back over it. @param {CanvasRenderingContext2D} x @param {import('../studio/face.js').Crop} c @param {string} tint */
     function hairOf(x, c, tint) {
@@ -148,8 +148,7 @@ export function openLive(o) {
       ctx(small).drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, sw, sh);
       const m = hair?.(small); if (!m) return;
       const t = ctx(tinted); t.globalCompositeOperation = 'source-over'; t.globalAlpha = 1; t.clearRect(0, 0, sw, sh); t.drawImage(small, 0, 0);
-      t.globalCompositeOperation = 'color'; t.globalAlpha = .88; t.fillStyle = tint; t.fillRect(0, 0, sw, sh);
-      t.globalCompositeOperation = 'soft-light'; t.globalAlpha = .6; t.fillRect(0, 0, sw, sh);
+      coat(t, tint, 'colour');
       t.globalCompositeOperation = 'destination-in'; t.globalAlpha = 1; t.drawImage(m, 0, 0, sw, sh);
       x.drawImage(tinted, 0, 0, view.width, view.height);
     }

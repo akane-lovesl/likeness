@@ -9,6 +9,9 @@ test('the Lookbook is the way in: a ring of looks that turns under a finger, the
   // until the studio's people are made, the ring holds drawings, and says so
   await expect(book.locator('.lb-card')).toHaveCount(8);
   await expect(book.locator('.lb-card__tag').first()).toHaveText('Drawn');
+  // drawn sitters, each wearing a look, named under the ring
+  await expect(book.locator('.lb-card--sitter')).toHaveCount(8);
+  await expect(book.locator('.lb-caption__part')).toHaveText('BANGS · LENA');
   await expect(book.locator('.lb-caption__title')).not.toBeEmpty();
   const front = () => page.evaluate(() => [...document.querySelectorAll('.lb-card')].findIndex(c => c.classList.contains('is-front')));
   const was = await front();
@@ -22,6 +25,7 @@ test('the Lookbook is the way in: a ring of looks that turns under a finger, the
   await book.locator('.lb-part[data-part="brows"]').click();
   await expect(book.locator('.lb-style')).toHaveCount(6);
   await expect(book.locator('.lb-card')).toHaveCount(6);
+  await expect(book.locator('.lb-caption__part')).toHaveText('BROWS · KOFI');
   await book.locator('.lb-style[data-style="arched"]').click();
   await expect(book.locator('.lb-token')).toHaveText(['High arch']);
   await book.locator('.lb-bar__desk').click();
@@ -29,6 +33,21 @@ test('the Lookbook is the way in: a ring of looks that turns under a finger, the
   await expect(page.locator('.desk__bar .edition')).toBeVisible();
   await page.getByRole('button', { name: 'Looks' }).click();
   await expect(book).not.toHaveClass(/is-away/);
+});
+
+test('a drawn sitter wears its look in the ring, and opens in the mirror wearing it: its face known, the notes at once, and it says it is drawn', async ({ page }) => {
+  await page.goto('/');
+  const front = page.locator('section.book .lb-card.is-front');
+  await expect(front).toHaveClass(/lb-card--sitter/);
+  // the look, drawn on the face with the strokes the mirror draws
+  await expect(front.locator('.lb-card__sketch path').first()).toBeAttached();
+  await front.click({ position: { x: 40, y: 60 } });
+  const mirror = page.locator('section.mr');
+  await expect(mirror).toBeVisible();
+  await expect(mirror.locator('.mr-stamp')).toHaveText(/^Drawn/);
+  await expect(mirror.locator('.mr-token')).toHaveText(['Curtain']);
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 5_000 });
+  await expect(mirror.locator('.mr-bar__mine')).toHaveText('On me');
 });
 
 test('the mirror reads a face, names its parts in the margin, and sketches a look over it, stamped as a sketch', async ({ page }) => {

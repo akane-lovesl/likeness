@@ -27,7 +27,8 @@ const PLACED = /(?:^\s*(?:put (?:it|her|him|them|me) )?|(?:@[a-z]{1,2}\b|\b(?:he
 function placedIn(t, looks) {
   const m = t.toLowerCase().match(PLACED), end = m ? m.index + m[0].length : 0, where = m ? t.slice(end - m[1].length, end).replace(/[.!?]+$/, '').trim() : ''; // in the words as they were typed
   if (!where || lookFromWords(where, looks, { moods: false })) return null;
-  return readVibe(where).some(x => x.cue.kind === 'place' || x.cue.kind === 'venue') ? where : null;
+  // "in front of" always means a backdrop; "on", "at", "in" only when what follows is a place
+  return /in front of\s*$/.test(m[0].slice(0, m[0].length - m[1].length).trim()) || readVibe(where).some(x => x.cue.kind === 'place' || x.cue.kind === 'venue') ? where : null;
 }
 /** "Take me to a rainy Tokyo jazz bar", "let's go somewhere cosy", "change the room to noir": the whole place, not a picture. */
 const ROOM = /^\s*(?:please\s+)?(?:(?:take|bring) (?:me|us) (?:to|into|(?=somewhere))|move (?:me |us )?(?:to|into)|let['’]?s go (?:to|into|(?=somewhere))|change the room to|switch the room to|make (?:this|the|my) (?:room|place|desk|app) (?:feel )?(?:like|into)|turn (?:this|the) (?:room|place|desk) into|redecorate (?:as|like)|room:)\s*(.+)$/i;

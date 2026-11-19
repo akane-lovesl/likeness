@@ -18,6 +18,7 @@ import base64
 import binascii
 import hashlib
 import io
+import itertools
 import json
 import os
 import re
@@ -29,7 +30,7 @@ import threading
 import time
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageStat
 
 from .. import brief, paths
 from ..jobs import Cancelled
@@ -47,6 +48,57 @@ MARK = re.compile(r"^[\s>*_\x60]*(PLAN|DONE|FAILED)\b[\s:*_\x60]*(\{.*\})[\s*_\x
 NUMBERED = re.compile(r"^(\d+)\.(png|jpe?g|webp)$", re.I)
 PICTURES = {".png", ".jpg", ".jpeg", ".webp"}
 KEEP = 40
+
+
+def _composite_region(generated: Image.Image, original: Image.Image, mask: Image.Image) -> Image.Image:
+    """Register the new image near the selection, then feather the edge inward."""
+    width, height = original.size
+    scale = min(1.0, 180.0 / max(width, height))
+    sample_size = (max(24, round(width * scale)), max(24, round(height * scale)))
+    source = original.resize(sample_size, Image.Resampling.BILINEAR)
+    selection = mask.resize(sample_size, Image.Resampling.NEAREST)
+    radius = max(9, (min(sample_size) // 6) | 1)
+    collar = ImageChops.subtract(selection.filter(ImageFilter.MaxFilter(radius)), selection)
+    if sum(collar.histogram()[1:]) < 40:
+        collar = ImageOps.invert(selection)
+
+    def warp(size: tuple[int, int], mode: str, zoom: float, dx: float, dy: float) -> Image.Image:
+        w, h = size
+        sx, sy = w / generated.width, h / generated.height
+        if mode == "fill":
+            sx = sy = max(sx, sy)
+        elif mode == "fit":
+            sx = sy = min(sx, sy)
+        ax, ay = 1 / (sx * zoom), 1 / (sy * zoom)
+        return generated.transform(size, Image.Transform.AFFINE,
+                                   (ax, 0, generated.width / 2 - w * (.5 + dx) * ax,
+                                    0, ay, generated.height / 2 - h * (.5 + dy) * ay), Image.Resampling.BICUBIC)
+
+    def error(mode: str, zoom: float, dx: float, dy: float) -> float:
+        difference = ImageChops.difference(source, warp(sample_size, mode, zoom, dx, dy))
+        return sum(ImageStat.Stat(difference, mask=collar).mean) / 3
+
+    aligned = generated.resize(original.size, Image.Resampling.LANCZOS)
+    if collar.getbbox() and max(ImageStat.Stat(source, mask=collar).stddev) > 4:
+        baseline = error("stretch", 1.0, 0.0, 0.0)
+        best = (baseline, "stretch", 1.0, 0.0, 0.0)
+        if baseline > 3.5 or abs(generated.width / generated.height - width / height) > .02:
+            coarse = itertools.product(("stretch", "fill", "fit"), (.94, .97, 1.0, 1.03, 1.06, 1.10),
+                                       (-.05, -.025, 0.0, .025, .05), (-.08, -.04, 0.0, .04, .08))
+            best = min(best, min((error(*pose), *pose) for pose in coarse), key=lambda result: result[0])
+            for step in (.015, .006, .002):
+                _, mode, zoom, x, y = best
+                offsets = itertools.product((-step, 0.0, step), repeat=3)
+                poses = ((mode, zoom + dz, x + dx, y + dy) for dz, dx, dy in offsets)
+                best = min(best, min((error(*pose), *pose) for pose in poses), key=lambda result: result[0])
+        if best[0] < baseline - .8:
+            aligned = warp(original.size, *best[1:])
+
+    softness = max(1.5, min(width, height) / 180)
+    soft = mask.filter(ImageFilter.GaussianBlur(softness))
+    core = mask.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(softness * .7))
+    feathered = ImageChops.multiply(ImageChops.lighter(soft, core), mask)
+    return Image.composite(aligned, original, feathered)
 
 
 def resolve(command: list[str]) -> list[str]:
@@ -427,8 +479,7 @@ class Codex:
             for index, picture in watcher.ready(generated, tuple(follow.loose), final=final):
                 if region is not None:
                     original, mask = region
-                    edit = picture.resize(original.size, Image.Resampling.LANCZOS)
-                    picture = Image.composite(edit, original, mask)
+                    picture = _composite_region(picture, original, mask)
                 work.result(index, picture, follow.prompt)
 
         try:

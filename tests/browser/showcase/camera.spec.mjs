@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 test.use({ launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-file-for-fake-video-capture=' + resolve('tests/fixtures/camera/kofi.mjpeg')] } });
 
 test('the camera is a mirror: the look sketched live on the face, and the shutter takes that moment to the mirror', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await page.locator('.lb-part[data-part="brows"]').click();
   await page.locator('.lb-style[data-style="arched"]').click();
   await page.locator('.lb-ask__photo').click();
@@ -45,7 +45,7 @@ test('the camera is a mirror: the look sketched live on the face, and the shutte
 });
 
 test('words typed first: the camera opens straight away with the look as it was said, and the shutter keeps it', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await page.locator('.lb-ask__input').click();
   await page.locator('.lb-ask__input').pressSequentially('feathered brows, much fuller', { delay: 15 });
   await page.locator('.lb-ask__go').click();
@@ -58,7 +58,7 @@ test('words typed first: the camera opens straight away with the look as it was 
 });
 
 test('the ring becomes you: a photo of you kept, every look in the ring is on you, and next time you are offered', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await page.locator('.lb-ask__photo').click();
   const live = page.locator('section.lv');
   await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });
@@ -91,7 +91,7 @@ test('the ring becomes you: a photo of you kept, every look in the ring is on yo
 });
 
 test('On me, on a face in the ring: the camera opens with that look on', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const front = page.locator('section.book .lb-card.is-front');
   await expect(front).toHaveClass(/lb-card--sitter/);
   await front.locator('.lb-card__me').click();
@@ -103,7 +103,7 @@ test('On me, on a face in the ring: the camera opens with that look on', async (
 
 test('with a core to spare, the face is read aside (in a worker), and the mirror follows it and keeps it as before', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => 8 }));
-  await page.goto('/');
+  await page.goto('/?looks');
   await page.locator('.lb-ask__photo').click();
   const live = page.locator('section.lv');
   await expect(live).toHaveClass(/has-face/, { timeout: 40_000 });

@@ -49,6 +49,7 @@ const P = {
   room: '<path d="M4 20V9.5L12 4l8 5.5V20"/><path d="M9.5 20v-6h5v6"/>',
   dial: '<circle cx="12" cy="12" r="8"/><path d="M12 12l4-3"/>',
   undo: '<path d="M9 7L4.5 11.5 9 16M5 11.5h9a5 5 0 0 1 0 10h-2"/>',
+  share: '<path d="M12 15V4M8 7.5L12 3.5l4 4"/><path d="M6 11H5v9h14v-9h-1"/>',
   film: '<rect x="4" y="4.5" width="16" height="15" rx="2"/><path d="M8 4.5v15M16 4.5v15M4 9.5h4M4 14.5h4M16 9.5h4M16 14.5h4"/>',
   trash: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13"/>',
   text: '<path d="M5 6h14M12 6v13"/>',
@@ -157,10 +158,11 @@ export function sheet(build, { cls = '', label = '' } = {}) {
 }
 
 /** Reads a file chooser and resolves the chosen files (images only). */
-export function chooseFiles({ multiple = true, capture = false } = {}) {
+/** @param {{ multiple?: boolean, capture?: boolean | 'user' | 'environment' }} [o] */
+export function chooseFiles({ multiple = true, capture = /** @type {boolean | 'user' | 'environment'} */ (false) } = {}) {
   return new Promise(resolve => {
     const input = h('input', { type: 'file', accept: 'image/*', multiple, hidden: true });
-    if (capture) input.setAttribute('capture', 'environment');
+    if (capture) input.setAttribute('capture', capture === true ? 'environment' : String(capture));
     input.addEventListener('change', () => { resolve([...(input.files || [])]); input.remove(); });
     input.addEventListener('cancel', () => { resolve([]); input.remove(); });
     document.body.append(input);

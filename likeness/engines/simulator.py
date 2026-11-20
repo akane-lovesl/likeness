@@ -18,7 +18,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFo
 from ..estimates import DEFAULTS, OPS
 from ..rooms import colours_for
 from ..turns import BackdropAsk, Inputs, LookAsk, RoomAsk, Turn
-from . import Work
+from . import Work, shaped
 
 STAMP = "SIMULATED · NOT A RENDER"
 PROVENANCE = {"kind": "simulated", "label": "Simulated", "detail": "The simulator · a stand-in, not a render"}
@@ -395,7 +395,7 @@ class Simulator:
         work.note(notes[0])
         self._wait(work, total * .14)
         work.stage("draw")
-        pictures = [self.paint(turn, inputs, i) for i in range(turn.n)]
+        pictures = [shaped(self.paint(turn, inputs, i), turn.aspect) for i in range(turn.n)]
         for step, note in ((1, notes[1]), (2, notes[2])):
             self._wait(work, total * .22)
             work.note(note)

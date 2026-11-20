@@ -5,7 +5,7 @@ import { mirrorOn } from '../kit.mjs';
 const room = (page) => page.evaluate(() => document.documentElement.dataset.room);
 
 test('a look mixed from many parts: each pick goes on with the others, on every face in the ring, and opens in the mirror whole', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const book = page.locator('section.book'), hint = book.locator('.lb-hint');
   await expect(hint).toHaveText('Mix a look: pick from as many parts as you like');
   await book.locator('.lb-part[data-part="bangs"]').click();
@@ -44,14 +44,15 @@ test('a look mixed from many parts: each pick goes on with the others, on every 
 });
 
 test('the rooms are a touch away on the Lookbook, and dress all of it', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const book = page.locator('section.book');
-  await expect.poll(() => room(page)).toBe('salon');
+  // a first visit opens in the first style's room, the Little Princess
+  await expect.poll(() => room(page)).toBe('princess');
   const ground = () => book.evaluate(el => getComputedStyle(el).backgroundImage);
   const before = await ground();
   await book.locator('.lb-bar__room').click();
-  await page.locator('.sheet .postcard[data-room="princess"]').click();
-  await expect.poll(() => room(page)).toBe('princess');
+  await page.locator('.sheet .postcard[data-room="noir"]').click();
+  await expect.poll(() => room(page)).toBe('noir');
   await expect.poll(ground).not.toBe(before);
   // the button wears the room it opens
   const swatch = await book.locator('.lb-bar__swatch i').first().evaluate(i => getComputedStyle(i).backgroundColor);
@@ -134,7 +135,7 @@ test('without the studio\'s people, the welcome says what Likeness is for in a l
 
 test('on a photograph a look is painted from the picture itself, not drawn over it; only a cut is still a line', async ({ page }) => {
   await realPeople(page);
-  await page.goto('/');
+  await page.goto('/?looks');
   const book = page.locator('section.book');
   await book.locator('.lb-part[data-part="bangs"]').click();
   await book.locator('.lb-style[data-style="curtain"]').click();
@@ -154,7 +155,7 @@ test('on a photograph a look is painted from the picture itself, not drawn over 
 
 test('a fringe is the person\'s own hair brought forward: its colour and grain are theirs, and a dye takes it with the rest', async ({ page }) => {
   await realPeople(page);
-  await page.goto('/');
+  await page.goto('/?looks');
   const got = await page.evaluate(async () => {
     const { faceOf, hairOf } = await import('/js/studio/face.js');
     const { paintLook, coloursOf } = await import('/js/looks/paint.js');
@@ -185,7 +186,7 @@ test('a fringe is the person\'s own hair brought forward: its colour and grain a
 
 test('a fringe is only as long as the hair it is combed from, and never made of skin: where no hair is found it is left to the pencil', async ({ page }) => {
   await realPeople(page);
-  await page.goto('/');
+  await page.goto('/?looks');
   const got = await page.evaluate(async () => {
     const { faceOf, hairOf } = await import('/js/studio/face.js');
     const { paintLook, coloursOf } = await import('/js/looks/paint.js');
@@ -220,7 +221,7 @@ test('a fringe is only as long as the hair it is combed from, and never made of 
 });
 
 test('the line takes anything: words that are no look say they will be painted, and the desk paints them', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const book = page.locator('section.book'), ask = book.locator('.lb-ask'), input = ask.locator('.lb-ask__input');
   await input.fill('a lighthouse inside a teacup, at dusk');
   await expect(ask).toHaveClass(/is-picture/);
@@ -244,7 +245,7 @@ test('the line takes anything: words that are no look say they will be painted, 
 });
 
 test('in the mirror the parts stay put, and a change can be drawn on the picture or borrowed from a reference', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr'), frame = mirror.locator('.mr-frame');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -299,7 +300,7 @@ test('in the mirror the parts stay put, and a change can be drawn on the picture
 });
 
 test('in the mirror a fringe is painted on the photo at once, its pencil kept for shaping; where no hair is found, the pencil stays', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/ines.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -317,7 +318,7 @@ test('in the mirror a fringe is painted on the photo at once, its pencil kept fo
   await expect(mirror.locator('.mr-sketch g[data-part="cut"]:not(.is-painted)')).toHaveCount(1);
   // a photo whose hair cannot be found (this drawing's): there is nothing to comb a fringe from, so it stays a pencil
   // line, in sight, rather than being made up
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/mei.jpg');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
   await mirror.locator('.mr-note[data-part="bangs"]').click();
@@ -328,7 +329,7 @@ test('in the mirror a fringe is painted on the photo at once, its pencil kept fo
 });
 
 test('a look weeks on: Grow out walks the weeks to its first trim, the fringe falls and the roots come in, the frame dated; asked for, it is sketched so', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/ines.jpg');
   const mirror = page.locator('section.mr'), when = mirror.locator('.mr-when');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -393,7 +394,7 @@ test('a look weeks on: Grow out walks the weeks to its first trim, the fringe fa
 });
 
 test('a look fitted one or two at a time: two versions in turn, the chosen kept, either the easier to live with, the look as fitted after', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/ines.jpg');
   const mirror = page.locator('section.mr'), fit = mirror.locator('.mr-fit');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });

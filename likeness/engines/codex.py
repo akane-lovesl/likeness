@@ -35,7 +35,7 @@ from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageStat
 from .. import brief, paths
 from ..jobs import Cancelled
 from ..rooms import BACKDROPS_SCHEMA, LOOK_SCHEMA, ROOM_SCHEMA
-from ..turns import BackdropAsk, Inputs, LookAsk, RoomAsk, Turn
+from ..turns import SIZES, BackdropAsk, Inputs, LookAsk, RoomAsk, Turn
 from . import EngineError, Work
 
 PACES = {"quick": "Quick", "fine": "Fine", "deep": "Deep"}
@@ -419,7 +419,7 @@ class Codex:
         folder = self._folder("jobs")
         files, attach, mask = self.lay_out(folder, inputs)
         pace = self.pace(turn.pace)
-        text = brief.turn_brief(turn, inputs, files, size=str(self.config.get("size") or "1024x1536"), quality=str(pace.get("quality") or "medium"),
+        text = brief.turn_brief(turn, inputs, files, size=SIZES.get(turn.aspect or "", "") or str(self.config.get("size") or "1024x1536"), quality=str(pace.get("quality") or "medium"),
                                 image_hint=str((self.config.get("images") or {}).get("hint") or IMAGE_HINT))
         (folder / "brief.md").write_text(text, encoding="utf-8")
         work.stage("read")

@@ -4,6 +4,7 @@ is ready, and ends with a short reply. Two engines answer the same protocol:
 
   simulator  paints stand-ins with Pillow, anywhere: for building and testing the whole path, honestly labelled
   codex      Codex CLI makes the pictures with GPT Image, on the workstation
+  openai     GPT Image through the OpenAI API directly: the quickest, streamed (needs OPENAI_API_KEY)
 """
 
 from __future__ import annotations
@@ -73,9 +74,26 @@ class Work:
         self.job.emit("reply", text=_tidy(text, 320), suggestions=ideas[:3])
 
 
+def shaped(image: Image.Image, aspect: str | None) -> Image.Image:
+    """A picture cut to the format the turn asked for (centred, a little above the middle, where a face is)."""
+    if not aspect or aspect == "portrait" and image.height >= image.width * 1.45:
+        return image
+    ratio = {"square": 1.0, "tall": 16 / 9, "portrait": 1.5}.get(aspect, 0)
+    if not ratio:
+        return image
+    w, h = image.size
+    if h / w > ratio:
+        ch = int(w * ratio)
+        top = max(0, min(h - ch, int((h - ch) * .35)))
+        return image.crop((0, top, w, top + ch))
+    cw = int(h / ratio)
+    left = (w - cw) // 2
+    return image.crop((left, 0, left + cw, h))
+
+
 class Engine(Protocol):
     id: str
-    kind: str   # "simulator" or "codex": decides the edition the app labels itself with
+    kind: str   # "simulator", "codex" or "openai": decides the edition the app labels itself with
 
     def describe(self) -> dict: ...
     def provenance(self, turn: Turn) -> dict: ...
@@ -103,4 +121,8 @@ def create(name: str = "auto", config: dict | None = None, home: Path | None = N
         from .codex import Codex
 
         return Codex(config.get("codex", {}), home)
-    raise SystemExit(f"There is no engine called {name}: choose auto, simulator or codex.")
+    if name == "openai":
+        from .openai_images import OpenAIImages
+
+        return OpenAIImages(config.get("openai", {}))
+    raise SystemExit(f"There is no engine called {name}: choose auto, simulator, codex or openai.")

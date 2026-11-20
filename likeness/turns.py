@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field, StringConstraints
 
 Op = Literal["create", "edit", "restyle", "reference", "blend", "region", "backdrop", "remove", "vary", "angles"]
 Pace = Literal["quick", "fine", "deep"]
+Aspect = Literal["portrait", "square", "tall"]
+# what an image model is asked for, by format (a tall wallpaper is painted portrait and composed for the phone)
+SIZES = {"portrait": "1024x1536", "square": "1024x1024", "tall": "1024x1536"}
 Handle = Annotated[str, StringConstraints(pattern=r"^[A-Z]{1,8}$")]
 
 
@@ -67,6 +70,7 @@ class Turn(BaseModel):
     room: RoomIn | None = None
     mood: str | None = Field(None, max_length=40)
     taste: str = Field("", max_length=600)   # what the person always wants, in their words
+    aspect: Aspect | None = None   # the portrait studio's format: portrait 2:3, a square avatar, a tall wallpaper
 
     def asset_ids(self) -> list[str]:
         ids = list(self.handles.values()) + [r.asset for r in self.intent.refs] + [p.mask for p in self.pins if p.mask]

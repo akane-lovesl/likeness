@@ -69,7 +69,7 @@ async function* follow(job, pollOnly) {
 async function* events(job, pollOnly) {
   for await (const ev of follow(job, pollOnly)) {
     if (ev.type === 'partial') yield { type: 'partial', index: ev.index, blob: await fetchBlob(ev.url) };
-    else if (ev.type === 'result') yield { type: 'result', index: ev.index, blob: await fetchBlob(ev.url), w: ev.w, h: ev.h, provenance: ev.provenance, prompt: ev.prompt };
+    else if (ev.type === 'result') yield { type: 'result', index: ev.index, blob: await fetchBlob(ev.url), url: ev.url, w: ev.w, h: ev.h, provenance: ev.provenance, prompt: ev.prompt };
     else if (ev.type === 'failed') throw Object.assign(new Error(ev.message || 'The studio could not finish this.'), { hint: ev.hint, cancelled: ev.cancelled });
     else if (ev.type !== 'accepted') yield ev;
   }
@@ -128,7 +128,7 @@ async function send(spec, inputs, retry = false) {
     look: it.look ? { id: it.look.id, name: it.look.name, prompt: it.look.prompt } : null,
     backdrop: spec.backdrop ? { name: spec.backdrop.name, words: spec.backdrop.words } : null, subject_mask: subjectMask, pins,
     room: { id: spec.room.id, name: spec.room.name, line: spec.room.line, colors: spec.room.colors, voice: spec.room.voice?.done || [] }, mood: spec.mood || null,
-    taste: spec.taste || '',
+    taste: spec.taste || '', aspect: spec.aspect || null,
   };
   return postTurn(body, retry);
 }

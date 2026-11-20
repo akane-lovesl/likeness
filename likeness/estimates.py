@@ -10,6 +10,7 @@ from pathlib import Path
 DEFAULTS = {
     "simulator": {"quick": 2600, "fine": 4400, "deep": 7200},
     "codex": {"quick": 55000, "fine": 60000, "deep": 75000},
+    "openai": {"quick": 9000, "fine": 12000, "deep": 35000},
 }
 OPS = {"create": 1.0, "edit": 1.0, "restyle": 0.95, "reference": 1.12, "blend": 1.2, "region": 1.05, "backdrop": 1.1, "vary": 1.0, "remove": 0.95, "angles": 1.1}
 

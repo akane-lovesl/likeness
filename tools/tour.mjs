@@ -109,7 +109,7 @@ const version = browser.version();
 const ctx = await browser.newContext(PHONE);
 const page = await ctx.newPage();
 // the first time, as someone new: the welcome is asked for (a browser driven by a script is otherwise spared it)
-await page.goto(URL_ + (!ONLY.length || ONLY.includes('welcome') ? '/?welcome' : '/'));
+await page.goto(URL_ + (!ONLY.length || ONLY.includes('welcome') ? '/?welcome' : '/?looks'));
 const edition = (await page.locator('.lb-bar__edition').textContent({ timeout: 30000 }).catch(() => '')) || '?';
 
 await scene('welcome', 'The first time: a sitting on a fictional portrait, the light under a finger, then the Lookbook', page, async ({ shot }) => {
@@ -319,7 +319,7 @@ await scene('rooms', 'Rooms: the whole app dressed, the Lookbook and the mirror 
   await to('salon'); await shot('back in the Salon');
 });
 await scene('live', 'The live mirror, painted as the sample portrait moves', page, async ({ shot, note }) => {
-  await page.goto(URL_ + '/'); await sleep(800);
+  await page.goto(URL_ + '/?looks'); await sleep(800);
   await page.locator('.lb-ask__photo').click();
   const live = page.locator('section.lv');
   await live.waitFor({ timeout: 20000 });
@@ -337,7 +337,7 @@ await browser.close();
 if (!ONLY.length || ONLY.includes('sides')) {
   const b2 = await chromium.launch({ channel, args: camera('camera-turn.mjpeg') });
   const p2 = await (await b2.newContext(PHONE)).newPage();
-  await p2.goto(URL_ + '/');
+  await p2.goto(URL_ + '/?looks');
   await scene('sides', 'Every side of you, with the sample portrait in three poses', p2, async ({ shot }) => {
     await p2.locator('.lb-ask__photo').click();
     await p2.waitForSelector('section.lv.has-face', { timeout: 40000 }); await sleep(800);
@@ -355,7 +355,7 @@ if (!ONLY.length || ONLY.includes('desk')) {
   const p3 = await (await b3.newContext(PHONE)).newPage();
   await scene('desk', 'A picture from words: the same line, the desk paints it', p3, async ({ shot, note }) => {
     // the Lookbook's line takes anything: words that are no look say they will be painted, and go to the desk
-    await p3.goto(URL_ + '/'); await p3.locator('section.book .lb-ask__input').waitFor({ timeout: 30000 }); await sleep(800);
+    await p3.goto(URL_ + '/?looks'); await p3.locator('section.book .lb-ask__input').waitFor({ timeout: 30000 }); await sleep(800);
     const wl = p3.locator('.wl'); if (await wl.count()) { await p3.keyboard.press('Escape'); await sleep(700); }
     const before = await p3.locator('figure.print').count();
     await p3.locator('section.book .lb-ask__input').fill('A lighthouse inside a teacup, at dusk'); await sleep(700); await shot('words that are no look: "Paint it"');

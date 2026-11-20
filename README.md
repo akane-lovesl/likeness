@@ -1,12 +1,20 @@
 # Likeness
 
-**Try a look on before you commit to it.**
+**An artistic portrait studio: choose a world, add one photo, and be painted in it.**
 
-Likeness opens on the **Lookbook**: a ring of faces that turns by itself, each changing one thing in a sweep of light. Curtain bangs, feathered brows, a copper colour, a bob. Pick styles from as many parts as you like and every face in the ring wears your whole look at once. Touch a face to open it in the **mirror**. Or touch the camera and the screen becomes one: your face, live, with the look sketched on it and following you as you move; the shutter takes that moment into the mirror.
+Likeness opens on its **styles**, each one a portrait in its own frame, swiped like a gallery wall: *Little Princess* (ribbons, roses, a pearl tiara, under a pink arch), *Storybook* watercolour, *Anime*, *Old Master* oils in gilt, *Neon City*, *Pop Art*, *Woodblock* and *Clay*, then a style of your own (in words, or from a picture of one). Each plate shows the photograph it was painted from, so what the app does is plain at a glance; hold a plate to see that photograph whole. The whole app wears the style in front: its colours, type, ornaments and weather change through the style's own wipe (a heart, a curtain, a wave) as you swipe.
 
-The mirror reads your face on the device. A line of light passes down it, the parts a look can change are named in the margin (bangs, brows, eyes, lips, beard, colour, cut), and the face glances one way, then the other: drag it and it turns under your finger, there and then. Touch a part and the mirror leans in close to it; pick a style by its drawing, then shape it by hand, and pick from other parts too: they all go on together. Circle what you mean on the picture, or add a reference photo of a cut or a colour to borrow. Drag its marks (the arch of a brow, a fringe down to the lashes, a bob to the shoulders, a colour a shade lighter) and the words for GPT Image write themselves as you go; add your own if you like. The change is sketched over your face first, and turns with it. Then **Try on**: GPT Image sends back four takes, made inside that part's mask and nowhere else. While it works the frame shows it: a light passes over the part, the studio's own words come up with an honest time left, and its previews develop inside the part only, stamped as previews. The first take back is swept in across your face by the same line of light the Lookbook's looks come in by, and the wait's light and words go with it. Scrub through them with a finger, hold the picture to see yourself as you were, keep the one you like, and ask for **every angle**: the frame turns under your finger, from one side round to the other. Ask for another look while one is being made and the studio makes them side by side; everything is kept on the device as it arrives, and *In the studio* says where each one stands.
+One button paints you in it, in three clear steps, each with a way back (the phone's back gesture works too):
 
-It is a phone-shaped web app and a small studio server. Codex CLI with GPT Image makes the pictures, on your own machine.
+1. **Your photo:** a selfie, a photo, one you used before, or one of the studio's invented people.
+2. **Style it** (or skip straight to painting): palette, mood, details (a tiara, ribbon bows, pearls…), backdrop, format (portrait, a square avatar, a wallpaper), how closely it keeps your face, and anything else in your own words. Every tap shows at once on a sketch of you in that palette, and every choice can be undone and redone.
+3. **Painting:** a sketch of you in the style at once (made on the phone, and labelled as one), the studio's stages in the style's own voice, an honest time left, the picture as it develops, and Stop.
+
+The result can be painted again, tweaked, tried in **another style** from the same photo, saved, shared, or taken into the conversation with the studio (*make the bow red*). Everything is kept the moment it is asked for: **Mine** holds every portrait (those still painting, too) and every conversation; a portrait left painting when the page closed is found again; a live studio keeps its own copies; and **your space** (your name, storage the browser is asked not to clear, a backup to carry to another phone) is the groundwork for accounts.
+
+Also inside: the **Studio** tab, a studio you talk to (pictures with handles like @A, looks, pins, backdrops, rooms and today's sky), and the **Lookbook** (`?looks`): hair and make-up tried on a face, fitted by eye, and seen weeks on.
+
+It is a phone-shaped web app and a small studio server. GPT Image makes the pictures on your own machine, through Codex CLI or straight through the OpenAI API.
 
 ## Three editions, never confused
 
@@ -14,7 +22,7 @@ It is a phone-shaped web app and a small studio server. Codex CLI with GPT Image
 |---|---|---|
 | **Showcase** | the device itself: looks are sketched over the face, never rendered (static files, no server) | Sketch |
 | **Live · Simulator** | `likeness serve --engine simulator`: Pillow stand-ins, also stamped on the picture | Simulated |
-| **Live · Workstation** | `likeness serve` with Codex CLI and GPT Image | Render |
+| **Live · Workstation** | `likeness serve` with Codex CLI and GPT Image, or `--engine openai` for GPT Image through the API directly (about ten seconds a portrait, streamed) | Render |
 
 The header identifies the edition. Example portraits carry their source in the catalog and show it in the mirror. The mirror also shows when a face turns on the device. Every angle uses the connected studio.
 
@@ -32,6 +40,7 @@ The live studio needs Python 3.12 and [uv](https://docs.astral.sh/uv/):
 uv sync
 uv run likeness serve                    # Codex when the codex command answers here, otherwise the simulator
 uv run likeness serve --engine simulator
+uv run likeness serve --engine openai    # GPT Image straight through the API: set OPENAI_API_KEY first
 uv run likeness probe codex [--smoke]    # is Codex here, signed in, and speaking every flag the studio uses?
 uv run likeness examples                 # make the Lookbook's people through the engine (relay packet 0004)
 npm run tour -- --url http://127.0.0.1:8787   # the whole product used end to end at a phone's size, filmed into storyboards

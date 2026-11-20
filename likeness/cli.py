@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("serve", help="start the studio")
-    p.add_argument("--engine", default="", help="auto, simulator or codex (default: studio.toml, then auto)")
+    p.add_argument("--engine", default="", help="auto, simulator, codex or openai (default: studio.toml, then auto)")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8787)
     p.add_argument("--open", action="store_true", help="let any device on the network in without pairing")

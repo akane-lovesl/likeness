@@ -78,6 +78,20 @@ class Store:
             image.load()
             return image.copy()
 
+    def made(self, limit: int = 120) -> list[dict]:
+        """What the studio painted here, newest first: each picture's address, size, when, and the words it was made from."""
+        notes = []
+        for path in self.dir.glob("*.json"):
+            try:
+                note = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if note.get("kind") == "made":
+                notes.append(note)
+        notes.sort(key=lambda n: n.get("created", 0), reverse=True)
+        return [{"id": n["id"], "url": self.url(n["id"]), "w": n.get("w"), "h": n.get("h"), "created": n.get("created", 0),
+                 "prompt": str(n.get("prompt", ""))[:1600], "provenance": n.get("provenance", {})} for n in notes[:limit]]
+
     @staticmethod
     def url(asset_id: str) -> str:
         return f"api/assets/{asset_id}"

@@ -58,7 +58,7 @@ test('a turn still developing when the page reloads is picked up again, and land
 test('the mirror tries a look on: four takes inside the part\'s mask, one kept, then every angle of it', async ({ page }) => {
   const turns = [];
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -100,7 +100,7 @@ test('looks asked for one after another are made side by side; the studio list s
   test.setTimeout(180_000);
   const turns = [];
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -141,7 +141,7 @@ test('a look mixed from four parts, drawn on and with a reference, goes to the s
   test.setTimeout(150_000);
   const turns = [];
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -184,7 +184,7 @@ test('a look mixed from four parts, drawn on and with a reference, goes to the s
 test('a look asked for weeks on: the studio is told what the weeks have done, and may change the fringe as far as it has grown', async ({ page }) => {
   const turns = [];
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -206,7 +206,7 @@ test('a look asked for weeks on: the studio is told what the weeks have done, an
 test('a look fitted by eye, one or two at a time, is asked for as it was fitted', async ({ page }) => {
   const turns = [];
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr'), one = mirror.locator('.mr-trial__lens[data-k="0"]');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });

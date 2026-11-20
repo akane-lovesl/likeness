@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { made, mirrorOn, open, pinAndSend, samples, say, stubExamples } from '../kit.mjs';
 
 test('the Lookbook is the way in: a ring of looks that turns under a finger, the parts drawn, the desk a tap away', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const book = page.locator('section.book');
   await expect(book.locator('.lb-bar__edition')).toHaveText('Showcase');
   // until the studio's people are made, the ring holds drawings, and says so
@@ -36,7 +36,7 @@ test('the Lookbook is the way in: a ring of looks that turns under a finger, the
 });
 
 test('the words are read the way a stylist hears them: what to change, and how, each said in its own way', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const heard = await page.evaluate(async () => {
     const { hear } = await import('/js/looks/words.js');
     return ['Curtain bangs, a lot longer, parted left', 'softer brows and a red lip, much deeper', 'a bit shorter', 'A sleek bob, a little longer', 'make me look rested'].map(t => hear(t, 'bangs'));
@@ -49,7 +49,7 @@ test('the words are read the way a stylist hears them: what to change, and how, 
 });
 
 test('left alone, the line says what can be asked, and the ring does it: the face it names comes round wearing it as said', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const shape = page.locator('.lb-caption__shape');
   await expect(page.locator('.lb-caption__part')).toHaveText('BANGS · LENA');
   await expect(shape).toHaveText('to the jaw', { timeout: 6_000 });
@@ -58,7 +58,7 @@ test('left alone, the line says what can be asked, and the ring does it: the fac
 });
 
 test('words are heard as they are typed: the ring turns to the look they name, its face wears it as said, and it opens in the mirror so', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const input = page.locator('.lb-ask__input');
   await input.click();
   await input.pressSequentially('red lips, much deeper', { delay: 15 });
@@ -75,7 +75,7 @@ test('words are heard as they are typed: the ring turns to the look they name, i
 });
 
 test('in the mirror, words pick a look and shape it as they are typed, the mirror going to each part they are about', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/lena.jpg');
   const mirror = page.locator('section.mr'), input = mirror.locator('.mr-ask__input');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -94,7 +94,7 @@ test('in the mirror, words pick a look and shape it as they are typed, the mirro
 });
 
 test('a drawn sitter wears its look in the ring, and opens in the mirror wearing it: its face known, the notes at once, and it says it is drawn', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   const front = page.locator('section.book .lb-card.is-front');
   await expect(front).toHaveClass(/lb-card--sitter/);
   // the look, drawn on the face with the strokes the mirror draws
@@ -109,7 +109,7 @@ test('a drawn sitter wears its look in the ring, and opens in the mirror wearing
 });
 
 test('the mirror reads a face, names its parts in the margin, and sketches a look over it, stamped as a sketch', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/lena.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -131,7 +131,7 @@ test('the mirror reads a face, names its parts in the margin, and sketches a loo
 });
 
 test('a chosen part brings the mirror close, and its look is shaped by hand: the words write themselves', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/mei.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -159,7 +159,7 @@ test('a chosen part brings the mirror close, and its look is shaped by hand: the
 });
 
 test('the face turns under a finger, on the device, and says so while it is turned', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr'), frame = mirror.locator('.mr-frame');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
@@ -181,7 +181,7 @@ test('the face turns under a finger, on the device, and says so while it is turn
 test('once the studio has made its people, the ring is their faces, and a face opens on its looks and every angle', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await stubExamples(page);
-  await page.goto('/');
+  await page.goto('/?looks');
   const book = page.locator('section.book');
   await expect(book.locator('.lb-card--photo')).toHaveCount(4);
   await expect(book.locator('.lb-card--photo .lb-card__tag').first()).toHaveText('GPT Image');
@@ -198,7 +198,7 @@ test('once the studio has made its people, the ring is their faces, and a face o
 
 test('the studio\'s people are read on the device too: each closes on its face, and words are painted on it as a sketch and say so', async ({ page }) => {
   await stubExamples(page);
-  await page.goto('/');
+  await page.goto('/?looks');
   const book = page.locator('section.book');
   await expect(book.locator('.lb-card--photo.has-face')).toHaveCount(4, { timeout: 30_000 });
   const input = book.locator('.lb-ask__input'), front = book.locator('.lb-card.is-front');

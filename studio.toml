@@ -2,7 +2,7 @@
 # (the same shape, only the keys you change). private/ is never committed.
 
 [studio]
-engine = "auto"          # auto: Codex when its command answers here, otherwise the simulator
+engine = "auto"          # auto: Codex when its command answers here, otherwise the simulator; or "openai" (below)
 workers = 2              # turns that may run at the same time
 
 [codex]
@@ -44,3 +44,28 @@ timeout = 150
 [codex.images]
 # How the brief tells Codex to make pictures. Tune this to whatever image tool Codex has on the machine.
 hint = "Use your image generation tool (GPT Image). Where the work changes a picture, give the tool that picture from in/ as its input image, and the edit mask where regions are marked, rather than describing it from scratch."
+
+# The openai engine: GPT Image through the OpenAI API directly (likeness serve --engine openai). The quickest way to a
+# picture, streamed as it develops. The key comes from OPENAI_API_KEY, or from key_file (keep that file under private/).
+[openai]
+# key_file = "private/openai.key"
+size = "1024x1536"
+text_model = "gpt-5.4-mini"   # rooms, looks and backdrop ideas
+
+[openai.pace.quick]
+model = "gpt-image-2.6-flare"
+quality = "low"
+partials = 1             # pictures shown as it develops, where the model sends them
+timeout = 120
+
+[openai.pace.fine]
+model = "gpt-image-2.6-flare"
+quality = "medium"
+partials = 2
+timeout = 180
+
+[openai.pace.deep]
+model = "gpt-image-2.6-sunburst"
+quality = "high"
+partials = 2
+timeout = 300

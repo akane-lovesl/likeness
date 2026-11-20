@@ -1,0 +1,263 @@
+{
+ "by": "GPT Image",
+ "kind": "render",
+ "styles": {
+  "princess": {
+   "ama": {
+    "image": "princess/ama.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a storybook royal portrait in the \"Little Princess\" style: a soft pastel oil painting with delicate visible brushwork, romantic, sweet and refined. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a calm, gentle smile. Colour: a blush-pink and rose-gold palette. With a slender pearl tiara, satin ribbon bows and a lace collar. Behind them: warm light falling through a tall arched window, a soft bokeh of tiny hearts. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "princess/ama-s.webp"
+   },
+   "sofia": {
+    "image": "princess/sofia.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a storybook royal portrait in the \"Little Princess\" style: a soft pastel oil painting with delicate visible brushwork, romantic, sweet and refined. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a calm, gentle smile. Colour: a blush-pink and rose-gold palette. With a slender pearl tiara, satin ribbon bows and a lace collar. Behind them: warm light falling through a tall arched window, a soft bokeh of tiny hearts. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "princess/sofia-s.webp"
+   },
+   "kenji": {
+    "image": "princess/kenji.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a storybook royal portrait in the \"Little Princess\" style: a soft pastel oil painting with delicate visible brushwork, romantic, sweet and refined. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a calm, gentle smile. Colour: a blush-pink and rose-gold palette. With a slender pearl tiara, satin ribbon bows and a lace collar. Behind them: warm light falling through a tall arched window, a soft bokeh of tiny hearts. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "princess/kenji-s.webp"
+   }
+  },
+  "storybook": {
+   "ingrid": {
+    "image": "storybook/ingrid.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as an illustration from a gentle picture book: loose transparent watercolour washes that bloom at the edges, a wandering fine ink line, cold-press paper texture showing through, warm and whimsical. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a gentle, kind expression. Colour: a sage, buttercream and dusty-blue palette. With tiny hand-drawn stars around them. Behind them: a meadow of wildflowers. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "storybook/ingrid-s.webp"
+   },
+   "ama": {
+    "image": "storybook/ama.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as an illustration from a gentle picture book: loose transparent watercolour washes that bloom at the edges, a wandering fine ink line, cold-press paper texture showing through, warm and whimsical. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a gentle, kind expression. Colour: a sage, buttercream and dusty-blue palette. With tiny hand-drawn stars around them. Behind them: a meadow of wildflowers. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "storybook/ama-s.webp"
+   },
+   "mateus": {
+    "image": "storybook/mateus.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as an illustration from a gentle picture book: loose transparent watercolour washes that bloom at the edges, a wandering fine ink line, cold-press paper texture showing through, warm and whimsical. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a gentle, kind expression. Colour: a sage, buttercream and dusty-blue palette. With tiny hand-drawn stars around them. Behind them: a meadow of wildflowers. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "storybook/mateus-s.webp"
+   }
+  },
+  "anime": {
+   "noor": {
+    "image": "anime/noor.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a modern anime key-visual character: clean confident line art, crisp cel shading with soft gradients, luminous detailed eyes, glossy highlights in the hair, cinematic. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a bright, open smile. Colour: a vivid summer-blue and white palette. With hair lifted by the wind and light sparkles in the air. Behind them: a vivid summer sky with towering clouds. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "anime/noor-s.webp"
+   },
+   "maeve": {
+    "image": "anime/maeve.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a modern anime key-visual character: clean confident line art, crisp cel shading with soft gradients, luminous detailed eyes, glossy highlights in the hair, cinematic. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a bright, open smile. Colour: a vivid summer-blue and white palette. With hair lifted by the wind and light sparkles in the air. Behind them: a vivid summer sky with towering clouds. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "anime/maeve-s.webp"
+   },
+   "ama": {
+    "image": "anime/ama.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a modern anime key-visual character: clean confident line art, crisp cel shading with soft gradients, luminous detailed eyes, glossy highlights in the hair, cinematic. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a bright, open smile. Colour: a vivid summer-blue and white palette. With hair lifted by the wind and light sparkles in the air. Behind them: a vivid summer sky with towering clouds. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "anime/ama-s.webp"
+   }
+  },
+  "oil": {
+   "mateus": {
+    "image": "oil/mateus.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a seventeenth-century Old Master oil portrait: dramatic chiaroscuro from a single window light, rich translucent glazes, luminous skin, subtle canvas texture and gentle craquelure, three-quarter view, dignified. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a dignified, steady gaze. Colour: deep umber and olive shadows with warm ochre light. With dark velvet clothing. Behind them: a dark, atmospheric background. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "oil/mateus-s.webp"
+   },
+   "priya": {
+    "image": "oil/priya.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a seventeenth-century Old Master oil portrait: dramatic chiaroscuro from a single window light, rich translucent glazes, luminous skin, subtle canvas texture and gentle craquelure, three-quarter view, dignified. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a dignified, steady gaze. Colour: deep umber and olive shadows with warm ochre light. With dark velvet clothing. Behind them: a dark, atmospheric background. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "oil/priya-s.webp"
+   },
+   "ama": {
+    "image": "oil/ama.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a seventeenth-century Old Master oil portrait: dramatic chiaroscuro from a single window light, rich translucent glazes, luminous skin, subtle canvas texture and gentle craquelure, three-quarter view, dignified. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a dignified, steady gaze. Colour: deep umber and olive shadows with warm ochre light. With dark velvet clothing. Behind them: a dark, atmospheric background. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "oil/ama-s.webp"
+   }
+  },
+  "neon": {
+   "kenji": {
+    "image": "neon/kenji.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a cyberpunk neon portrait: strong coloured rim light, rain-slick reflections on the skin, subtle holographic accents, cinematic film grain, high contrast. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a cool, unbothered look. Colour: magenta and cyan neon light. With a sleek techwear collar and raindrops catching the light. Behind them: a rain-slick night street full of signs, as bokeh. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "neon/kenji-s.webp"
+   },
+   "ama": {
+    "image": "neon/ama.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a cyberpunk neon portrait: strong coloured rim light, rain-slick reflections on the skin, subtle holographic accents, cinematic film grain, high contrast. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a cool, unbothered look. Colour: magenta and cyan neon light. With a sleek techwear collar and raindrops catching the light. Behind them: a rain-slick night street full of signs, as bokeh. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "neon/ama-s.webp"
+   },
+   "noor": {
+    "image": "neon/noor.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a cyberpunk neon portrait: strong coloured rim light, rain-slick reflections on the skin, subtle holographic accents, cinematic film grain, high contrast. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a cool, unbothered look. Colour: magenta and cyan neon light. With a sleek techwear collar and raindrops catching the light. Behind them: a rain-slick night street full of signs, as bokeh. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "neon/noor-s.webp"
+   }
+  },
+  "pop": {
+   "maeve": {
+    "image": "pop/maeve.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a 1960s pop-art screenprint portrait: bold black contour lines, flat saturated colour, Ben-Day halftone dots shading the skin, a solid graphic background, punchy comic-book contrast. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a bold, confident look. Colour: lemon yellow, fire red and cobalt blue. With big hoop earrings. Behind them: a big halftone dot field. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "pop/maeve-s.webp"
+   },
+   "ama": {
+    "image": "pop/ama.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a 1960s pop-art screenprint portrait: bold black contour lines, flat saturated colour, Ben-Day halftone dots shading the skin, a solid graphic background, punchy comic-book contrast. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a bold, confident look. Colour: lemon yellow, fire red and cobalt blue. With big hoop earrings. Behind them: a big halftone dot field. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "pop/ama-s.webp"
+   },
+   "kenji": {
+    "image": "pop/kenji.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a 1960s pop-art screenprint portrait: bold black contour lines, flat saturated colour, Ben-Day halftone dots shading the skin, a solid graphic background, punchy comic-book contrast. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a bold, confident look. Colour: lemon yellow, fire red and cobalt blue. With big hoop earrings. Behind them: a big halftone dot field. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "pop/kenji-s.webp"
+   }
+  },
+  "woodblock": {
+   "priya": {
+    "image": "woodblock/priya.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a traditional Japanese woodblock print portrait: flat areas of colour, fine carved keyblock lines, gentle bokashi gradients, washi paper grain, an elegant composition. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a calm, composed expression. Colour: indigo, vermilion and soft ochre. With a branch of blossom across the frame. Behind them: stylised curling waves. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "woodblock/priya-s.webp"
+   },
+   "ama": {
+    "image": "woodblock/ama.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a traditional Japanese woodblock print portrait: flat areas of colour, fine carved keyblock lines, gentle bokashi gradients, washi paper grain, an elegant composition. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a calm, composed expression. Colour: indigo, vermilion and soft ochre. With a branch of blossom across the frame. Behind them: stylised curling waves. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "woodblock/ama-s.webp"
+   },
+   "ingrid": {
+    "image": "woodblock/ingrid.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Repaint this person as a traditional Japanese woodblock print portrait: flat areas of colour, fine carved keyblock lines, gentle bokashi gradients, washi paper grain, an elegant composition. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a calm, composed expression. Colour: indigo, vermilion and soft ochre. With a branch of blossom across the frame. Behind them: stylised curling waves. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "woodblock/ingrid-s.webp"
+   }
+  },
+  "clay": {
+   "sofia": {
+    "image": "clay/sofia.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Recreate this person as a charming handmade claymation figure: soft plasticine textures with faint fingerprints, rounded friendly features, glossy bead-like eyes, hair sculpted in clay strands, warm stop-motion lighting with soft shadows. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a big cheerful smile. Colour: pastel peach, mint and lilac. With rosy cheeks. Behind them: a seamless pastel studio backdrop. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "clay/sofia-s.webp"
+   },
+   "mateus": {
+    "image": "clay/mateus.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Recreate this person as a charming handmade claymation figure: soft plasticine textures with faint fingerprints, rounded friendly features, glossy bead-like eyes, hair sculpted in clay strands, warm stop-motion lighting with soft shadows. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a big cheerful smile. Colour: pastel peach, mint and lilac. With rosy cheeks. Behind them: a seamless pastel studio backdrop. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "clay/mateus-s.webp"
+   },
+   "ama": {
+    "image": "clay/ama.webp",
+    "model": "gpt-image-2.6-sunburst",
+    "quality": "high",
+    "made": "2026-11-20",
+    "prompt": "Recreate this person as a charming handmade claymation figure: soft plasticine textures with faint fingerprints, rounded friendly features, glossy bead-like eyes, hair sculpted in clay strands, warm stop-motion lighting with soft shadows. Keep their exact face, features, skin tone, hair texture and expression clearly recognisable as them. Expression: a big cheerful smile. Colour: pastel peach, mint and lilac. With rosy cheeks. Behind them: a seamless pastel studio backdrop. Head and shoulders, centred, looking at the viewer, a tall 2:3 portrait. No text, no lettering, no frame, no watermark.",
+    "w": 768,
+    "h": 1152,
+    "thumb": "clay/ama-s.webp"
+   }
+  }
+ },
+ "note": "Example portraits of invented people (the Lookbook cast in web/examples/), painted by GPT Image from the words in web/js/portrait/styles.js. Made with tools/styles.mjs."
+}

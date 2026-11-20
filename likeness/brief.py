@@ -38,6 +38,28 @@ OPS = {
 PIN_MARKS = "①②③④⑤⑥⑦⑧⑨"
 
 
+def direct_brief(turn: Turn, inputs: Inputs) -> str:
+    """The prompt for an image model asked directly (the openai engine): what to do, which picture is which, the words."""
+    op = turn.intent.op if inputs.pictures else "create"
+    lines = [OPS.get(op, OPS["edit"])]
+    if len(inputs.pictures) > 1:
+        order = [inputs.subject or next(iter(inputs.pictures))] + [h for h in inputs.pictures if h != inputs.subject]
+        roles = dict(inputs.refs)
+        lines.append("The images are, in order: " + "; ".join(
+            f"@{h}, " + ("the subject" if i == 0 else ROLE.get(roles.get(h, "with"), ROLE["with"])) for i, h in enumerate(order)) + ".")
+    if turn.text.strip():
+        lines.append(turn.text.strip())
+    for n, note, _mask in inputs.pins:
+        lines.append(f"In the marked region {PIN_MARKS[n - 1]}: {note or 'change this'}.")
+    if turn.look:
+        lines.append(f"The look «{turn.look.name}»: {turn.look.prompt}")
+    if turn.backdrop:
+        lines.append(f"The new place: {turn.backdrop.words}")
+    if turn.taste.strip():
+        lines.append(f"Always (unless said otherwise): {turn.taste.strip()}")
+    return " ".join(line for line in lines if line)[:3900]
+
+
 def turn_brief(turn: Turn, inputs: Inputs, files: dict[str, str], *, size: str, quality: str, image_hint: str) -> str:
     """The brief for one turn. files maps each picture's handle (and mask names) to its path inside the job folder."""
     lines = ["You are the studio hand of Likeness, a personal image studio. Work only inside the current folder.", ""]

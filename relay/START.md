@@ -6,6 +6,32 @@ You are Codex, on the user's Windows computer, and the user has asked you to car
 
 Most of it is yours to do without asking. Where a prompt and reality disagree, believe reality, change the code, and keep the tests honest. The user wants to come back to a studio that works here, beautifully, and to a short, plain account of what was done. It is a long job (the pictures alone take hours), so commit and push as you go. If you are picking it up again, `git log` and the reports show where it got to.
 
+## New since your last run (2026-11-20): the portrait studio
+
+The user tested the app on their phone and asked for a rethink: it should lead with artistic styles, not facial parts; the themes should be seen; the keyboard must stop squashing the page; controls must be roomy, undoable and easy to get back from; waiting must always say what is happening; nothing may be lost. It was rebuilt around that here, and checked in the showcase, on the simulator, and with real GPT Image pictures (through the OpenAI API, from this side). What it is now:
+
+- **The styles come first** (`web/js/portrait/`). The app opens on eight styles (Little Princess, Storybook, Anime, Old Master, Neon City, Pop Art, Woodblock, Clay) and one of your own. Each is a portrait of one of the Lookbook's invented people in that style's own frame, beside the photo it came from (`web/styles/`, GPT Image renders made by `tools/styles.mjs` from the exact words the app sends). The whole app wears the style in front: each style has a room (six new ones in `web/js/room/rooms.js`). The first visit opens on Little Princess, pink.
+- **Painting a portrait** is three steps with a way back from each (the phone's back gesture too, `web/js/core/nav.js`): the photo, *Style it* (palette, mood, details, backdrop, format, likeness, your words; undo and redo for every choice), then the painting (a sketch drawn on the phone at once, labelled as one, then the studio's stages, an honest time left, partial pictures, Stop). The turn is an ordinary `restyle` turn, with one new optional field, `aspect` (portrait, square, tall).
+- **Nothing is lost.** Every portrait is kept in IndexedDB the moment it is asked for (`web/js/portrait/keep.js`); one left painting is resumed after a reload; **Mine** shows portraits and conversations; `GET /api/history` lists what the studio made for this device, so the phone can show what it no longer holds; *your space* has a name, durable storage and a backup file. This is the groundwork for accounts: data is already kept per paired device.
+- **The keyboard.** The stage's height is held at the screen's height without the keyboard (`web/js/core/keyboard.js`, `--app-h`), and new text fields open at the top of the screen.
+- **A faster engine, optional:** `--engine openai` (`likeness/engines/openai_images.py`) calls the OpenAI Images API directly, streamed: about ten seconds a portrait here, against about a minute through Codex. It needs `OPENAI_API_KEY` and bills the user's OpenAI account, so it is never chosen automatically.
+- The Lookbook and the mirror are unchanged, at `?looks`; the desk is the *Studio* tab.
+
+What to do, before or alongside the parts below (they still hold):
+
+1. **Checks.** `git pull`, `npm ci`, `uv sync`, then the three checks. Here: 51 pytest and 69 browser tests.
+2. **Every style, really painted, through Codex.** Serve the studio with the Codex engine, open the app, and paint one of the sample faces in each of the eight styles at Fine, and once as an avatar. Compare each with `web/styles/<style>/*.webp`, made by `gpt-image-2.6-sunburst` at high quality from the same words. Where Codex's picture strays (a frame or lettering drawn in, a different face, the style too weak), first find out why from the job folder; then tune the words in `web/js/portrait/styles.js` (`promptFor`) or the brief, whichever is at fault. Remember that `tools/styles.mjs` made the examples from those words, so a change of words wants the examples made again. That is the user's call, as it costs API money.
+3. **Times.** Note how long each style takes at each pace through Codex. The app's estimate learns them by itself (`private/estimates-codex.json`); make sure the first wait it shows is honest.
+4. **The direct engine, only if the user wants it.** Ask first. If yes, put the key in the environment, or in `private/openai.key` with `[openai].key_file` in `private/studio.toml`; never in the repository. Run `uv run likeness serve --engine openai`, paint the eight styles again, compare speed and quality with Codex, and set `[studio].engine` in `private/studio.toml` to the user's choice. Partial pictures: `gpt-image-2.6-flare` sent none at low quality in the test here; see whether medium or the sunburst model sends them, and keep `partials` in `studio.toml` honest.
+5. **On the phone (Part 6), in this order:**
+   - The keyboard: open *Anything else?* while styling, and the Studio tab's composer. The page must neither shrink nor jump.
+   - The back gesture through photo → Style it → painting, and out to the styles.
+   - Swiping the styles must feel smooth. If the wipe on each settle stutters on the phone, `changeRoom` in `settle()` (`web/js/portrait/home.js`) is the first suspect.
+   - The selfie button opens the front camera.
+   - Share hands the picture to the phone's share sheet.
+   - `npm run build`, so the phone gets the bundle.
+6. **The tour** (`npm run tour`, Part 5) does not yet film the portrait studio. Add its scenes first: the styles, the photo, Style it, the painting, the result, Mine.
+
 ## What Likeness is
 
 A personal image studio, phone-shaped. It has two halves: a web app (`web/`: plain HTML, CSS and ES modules on a 9:16 stage, no build step) and a small studio server (`likeness/`, FastAPI) that runs Codex for the pictures.

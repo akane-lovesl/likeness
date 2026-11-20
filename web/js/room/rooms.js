@@ -114,6 +114,78 @@ export const ROOMS = [
       done: ['A new star, catalogued.', 'Seen for the first time.', 'Brighter than forecast.'],
     },
   },
+  {
+    id: 'storybook', name: 'Storybook', line: 'Watercolour washes, a wandering pen, wildflowers.',
+    colors: { ground: '#f7f2e4', ground2: '#dfe8d3', surface: '#fffcf3', ink: '#2e3a2c', soft: '#6e7a64', accent: '#d9734e', accent2: '#6f9bb5', onAccent: '#fffcf3' },
+    type: 'editorial', frame: 'scallop', ornament: 'flower', motifs: ['flower', 'leaf', 'star'], set: 'window', texture: 'linen',
+    sky: { weather: 'petals', light: 'day' }, wipe: 'leaf', sound: 'wood', motion: 'float', radius: 4,
+    voice: {
+      hello: { morning: 'Once upon a morning…', afternoon: 'Turn the page. What happens next?', evening: 'A chapter before bed?', night: 'The house is asleep. The pen is not.' },
+      placeholder: 'Tell me a little story', send: 'Ink it',
+      stages: { read: 'Reading your page', plan: 'Sketching in pencil', draw: 'Laying the washes', finish: 'Inking the lines' },
+      done: ['And there you are.', 'The ink is still wet.', 'A page to keep.'],
+    },
+  },
+  {
+    id: 'anime', name: 'Anime', line: 'A summer sky, clean lines, a wind that lifts your hair.',
+    colors: { ground: '#eaf5ff', ground2: '#ffe3f0', surface: '#ffffff', ink: '#16244a', soft: '#5a6a92', accent: '#ff4f9a', accent2: '#2fa8ff', onAccent: '#ffffff' },
+    type: 'grotesk', frame: 'round', ornament: 'sparkle', motifs: ['sparkle', 'star', 'heart'], set: 'none', texture: 'none',
+    sky: { weather: 'glints', light: 'day' }, wipe: 'star', sound: 'glass', motion: 'bouncy', radius: 5,
+    voice: {
+      hello: { morning: 'Episode one: a bright new morning!', afternoon: 'The afternoon arc begins.', evening: 'Golden hour. Cue the theme song.', night: 'Late-night special. Let’s go!' },
+      placeholder: 'What’s the scene?', send: 'Action',
+      stages: { read: 'Studying the character', plan: 'Storyboarding', draw: 'Inking and painting cels', finish: 'Adding the sparkle' },
+      done: ['Key visual complete!', 'Main character energy.', 'To be continued…'],
+    },
+  },
+  {
+    id: 'gilded', name: 'Gilded', line: 'Candlelight, umber shadow, a frame of gold leaf.', dark: true,
+    colors: { ground: '#1b130d', ground2: '#3b2616', surface: '#251910', ink: '#f4e7cd', soft: '#bba585', accent: '#d8ab4e', accent2: '#9c3a2e', onAccent: '#1b130d' },
+    type: 'classical', frame: 'brass', ornament: 'crown', motifs: ['sparkle', 'star'], set: 'none', texture: 'grain-heavy',
+    sky: { weather: 'motes', light: 'golden' }, wipe: 'curtain', sound: 'glass', motion: 'calm', radius: 1,
+    voice: {
+      hello: { morning: 'Good morning. The north light is perfect.', afternoon: 'Good afternoon. The sitter may be seated.', evening: 'Good evening. Candles for the glazes.', night: 'A late sitting. Very well.' },
+      placeholder: 'Your commission', send: 'Commission',
+      stages: { read: 'Studying the sitter', plan: 'Laying the umber', draw: 'Glazing', finish: 'Varnishing' },
+      done: ['Your portrait, finished.', 'Hang it where the light is kind.', 'For the gallery.'],
+    },
+  },
+  {
+    id: 'pop', name: 'Pop', line: 'Halftone, primaries and one big feeling.',
+    colors: { ground: '#fff6c9', ground2: '#ffd94d', surface: '#ffffff', ink: '#121212', soft: '#4d4d4d', accent: '#e8202a', accent2: '#1f5fff', onAccent: '#ffffff' },
+    type: 'grotesk', frame: 'square', ornament: 'bolt', motifs: ['star', 'bolt', 'sparkle'], set: 'none', texture: 'dots',
+    sky: { weather: 'confetti', light: 'day' }, wipe: 'star', sound: 'synth', motion: 'bouncy', radius: 0,
+    voice: {
+      hello: { morning: 'POW! Good morning!', afternoon: 'WHAM! What are we making?', evening: 'ZAP! The evening edition.', night: 'Still up? KAPOW.' },
+      placeholder: 'Say it loud', send: 'Print',
+      stages: { read: 'Looking sharp', plan: 'Separating colours', draw: 'Pulling the screens', finish: 'Dotting the dots' },
+      done: ['WOW.', 'Fresh off the press!', 'That’s a cover.'],
+    },
+  },
+  {
+    id: 'woodblock', name: 'Woodblock', line: 'Washi paper, indigo ink, a vermilion seal.',
+    colors: { ground: '#f4ebd9', ground2: '#e3d4b6', surface: '#fbf6ea', ink: '#1f2a44', soft: '#5f6577', accent: '#d2432f', accent2: '#2f5d7c', onAccent: '#fbf6ea' },
+    type: 'editorial', frame: 'square', ornament: 'wave', motifs: ['petal', 'wave'], set: 'none', texture: 'linen',
+    sky: { weather: 'petals', light: 'dawn' }, wipe: 'wave', sound: 'wood', motion: 'calm', radius: .6,
+    voice: {
+      hello: { morning: 'Morning. The blocks are inked.', afternoon: 'Afternoon. The paper is damp and ready.', evening: 'Evening. One more impression.', night: 'Night. The carving can wait; the print cannot.' },
+      placeholder: 'What shall we carve?', send: 'Print',
+      stages: { read: 'Studying the face', plan: 'Carving the keyblock', draw: 'Printing colour by colour', finish: 'Lifting the sheet' },
+      done: ['The first impression.', 'Lifted clean.', 'One for the series.'],
+    },
+  },
+  {
+    id: 'clay', name: 'Clay', line: 'Thumbprints, pastel light, a little wobble.',
+    colors: { ground: '#fdeee4', ground2: '#e2f1ec', surface: '#fffaf6', ink: '#3a2e4a', soft: '#7c6f8e', accent: '#ff8358', accent2: '#6fc0ae', onAccent: '#fffaf6' },
+    type: 'grotesk', frame: 'round', ornament: 'flower', motifs: ['heart', 'flower', 'bubble'], set: 'none', texture: 'grain',
+    sky: { weather: 'bubbles', light: 'day' }, wipe: 'ink', sound: 'wood', motion: 'bouncy', radius: 7,
+    voice: {
+      hello: { morning: 'Morning! The clay is soft.', afternoon: 'Afternoon. Roll up your sleeves.', evening: 'Evening. One more frame?', night: 'Night shoot. Lights, clay, action.' },
+      placeholder: 'What shall we sculpt?', send: 'Sculpt',
+      stages: { read: 'Squishing the clay', plan: 'Shaping the head', draw: 'Sculpting the details', finish: 'Setting the lights' },
+      done: ['Ta-da!', 'Fresh from the oven.', 'Squeeze-ably cute.'],
+    },
+  },
 ];
 
 /** Moods are quick ways to set the sky for the kind of day it is. */

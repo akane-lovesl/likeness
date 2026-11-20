@@ -7,6 +7,7 @@
   GET  /api/jobs/{id}/events        what happens, as it happens (server-sent events); GET /api/jobs/{id} for polling
   POST /api/jobs/{id}/cancel        stop it
   POST /api/rooms, /api/looks, /api/backdrops   words from the studio's model, checked before they reach the app
+  GET  /api/history                 every picture the studio made for this device, newest first (nothing is lost)
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ import hashlib
 import hmac
 import json
 import os
-import re
 import secrets
 import time
 from pathlib import Path
@@ -61,7 +61,7 @@ OWNER_HEADERS = {"Cache-Control": "private, no-store", "Referrer-Policy": "no-re
                  "X-Frame-Options": "DENY", "Permissions-Policy": "geolocation=()",
                  "X-Content-Type-Options": "nosniff"}
 OWNER_COOKIE = "__Host-likeness"
-STATIC_GROUPS = ("css/", "js/", "fonts/", "vendor/", "examples/", "sitters/", "bundle/")
+STATIC_GROUPS = ("css/", "js/", "fonts/", "vendor/", "examples/", "sitters/", "styles/", "bundle/")
 PUBLIC_ASSET_TYPES = {".js", ".mjs", ".css", ".woff2", ".webp", ".task", ".tflite", ".wasm"}
 
 
@@ -111,14 +111,13 @@ def app_shell(builds: dict[str, str], bundled: bool) -> str:
     template = (paths.WEB / "index.html").read_text(encoding="utf-8")
     if os.environ.get("LIKENESS_HIDE_EXAMPLES") == "1":
         return template
-    support = ""
+    # the first plate a new visitor sees (the first style's portrait, and the photo it was painted from), on its way at once
+    support = "".join(f'<link rel="preload" as="image" href="/{builds[group]}/{group}/{path}" fetchpriority="high">'
+                      for group, path in (("styles", "princess/sofia.webp"), ("examples", "sofia/portrait.webp"))
+                      if (paths.WEB / group / path).is_file())
     catalog = paths.WEB / "examples" / "manifest.json"
     if catalog.is_file():
         examples = json.loads(catalog.read_text(encoding="utf-8"))
-        first = next(iter(examples.get("people", [])), {})
-        portrait = first.get("portrait", "")
-        if re.fullmatch(r"[a-z0-9-]+/portrait\.webp", portrait):
-            support += f'<link rel="preload" as="image" href="/{builds["examples"]}/examples/{portrait}" fetchpriority="high">'
         data = json.dumps(examples, separators=(",", ":")).replace("<", "\\u003c")
         support += f'<script id="example-catalog" type="application/json">{data}</script>'
     versions = json.dumps(builds, separators=(",", ":"))
@@ -177,7 +176,7 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
     css = public_build(paths.WEB / "css")
     fonts = public_build(paths.WEB / "fonts")
     style_build = "v" + hashlib.sha256((css + fonts).encode()).hexdigest()[:16]
-    builds = {name: public_build(paths.WEB / name) for name in ("js", "vendor", "examples", "sitters")}
+    builds = {name: public_build(paths.WEB / name) for name in ("js", "vendor", "examples", "sitters", "styles")}
     builds.update(css=style_build, fonts=style_build)
     bundled = paths.ROOT / "workstation" / "bundle" / "studio.js"
     manifest = bundled.with_name("source.txt")
@@ -410,6 +409,10 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
         if path is None or not path.is_file():
             raise HTTPException(409, "The picture needs to be sent again.")
         return path
+
+    @app.get("/api/history")
+    def history(request: Request, limit: int = 120):
+        return {"made": studio_store(request).made(max(1, min(limit, 500)))}
 
     @app.post("/api/rooms")
     def room(ask: RoomAsk):

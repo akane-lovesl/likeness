@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 test.use({ launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-file-for-fake-video-capture=' + resolve('tests/fixtures/camera/kofi-turn.mjpeg')] } });
 
 test('every side of you: a turn of the head catches the front and each side, and the mirror turns through them', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?looks');
   // left alone, the line says things by itself and the ring wears them: what it said is no one's look, and is not taken along
   await expect(page.locator('.lb-caption__shape')).toHaveText('to the jaw', { timeout: 8_000 });
   await page.locator('.lb-part[data-part="brows"]').click();

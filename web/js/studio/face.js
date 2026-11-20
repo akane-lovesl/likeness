@@ -41,6 +41,8 @@ function loader() {
 }
 
 let hairLoading = /** @type {Promise<any> | null} */ (null);
+let portraitWorker = /** @type {Promise<Worker | null> | null} */ (null);
+const portraitReader = () => (portraitWorker ||= faceWorker(true).catch(() => null));
 /** MediaPipe's hair segmenter: one small model that finds hair, and only hair. */
 function hairModel() {
   hairLoading ||= (async () => {
@@ -59,24 +61,36 @@ const hairRead = new WeakMap();
 export function hairOf(c) {
   if (!hairRead.has(c)) hairRead.set(c, (async () => {
     try {
+      const answer = await inspectPortrait(c, 'hair').catch(() => undefined);
+      if (answer !== undefined) return answer ? renderHairMask(answer.data, answer.w, answer.h) : null;
       const seg = await hairModel();
       return await new Promise(resolve => seg.segment(c, (/** @type {any} */ res) => {
         const masks = res?.confidenceMasks, m = masks?.[masks.length - 1]; if (!m) { resolve(null); return; }
-        const w = m.width, h = m.height, data = m.getAsFloat32Array(), out = make(w, h), x = /** @type {CanvasRenderingContext2D} */ (out.getContext('2d')), img = x.createImageData(w, h);
-        let count = 0;
-        for (let i = 0; i < data.length; i++) { const v = Math.max(0, Math.min(1, (data[i] - .28) / .3)); img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = v * 255; if (v > .5) count++; }
-        x.putImageData(img, 0, 0);
-        // close the small holes: blur it, then firm the edge back up
-        const soft = make(w, h), sx = /** @type {CanvasRenderingContext2D} */ (soft.getContext('2d'));
-        sx.filter = 'blur(' + Math.max(1, w / 160).toFixed(1) + 'px)'; sx.drawImage(out, 0, 0); sx.filter = 'none';
-        const s = sx.getImageData(0, 0, w, h);
-        for (let i = 3; i < s.data.length; i += 4) s.data[i] = Math.max(0, Math.min(255, (s.data[i] - 70) * 1.6));
-        sx.putImageData(s, 0, 0);
-        resolve(count / data.length > .004 ? soft : null);
+        resolve(renderHairMask(m.getAsFloat32Array(), m.width, m.height));
       }));
     } catch { return null; }
   })());
   return hairRead.get(c);
+}
+
+/** @param {Float32Array} data @param {number} w @param {number} h */
+function renderHairMask(data, w, h) {
+  const out = make(w, h), x = /** @type {CanvasRenderingContext2D} */ (out.getContext('2d')), img = x.createImageData(w, h);
+  let count = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = Math.max(0, Math.min(1, (data[i] - .28) / .3));
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 255;
+    img.data[i * 4 + 3] = v * 255;
+    if (v > .5) count++;
+  }
+  if (count / data.length <= .004) return null;
+  x.putImageData(img, 0, 0);
+  const soft = make(w, h), sx = /** @type {CanvasRenderingContext2D} */ (soft.getContext('2d', { willReadFrequently: true }));
+  sx.filter = 'blur(' + Math.max(1, w / 160).toFixed(1) + 'px)'; sx.drawImage(out, 0, 0); sx.filter = 'none';
+  const clean = sx.getImageData(0, 0, w, h);
+  for (let i = 3; i < clean.data.length; i += 4) clean.data[i] = Math.max(0, Math.min(255, (clean.data[i] - 70) * 1.6));
+  sx.putImageData(clean, 0, 0);
+  return soft;
 }
 
 const read = new WeakMap();
@@ -86,10 +100,13 @@ const read = new WeakMap();
  */
 export function faceOf(c) {
   if (!read.has(c)) read.set(c, (async () => {
+    const w = c.width, h = c.height;
+    if (!w || !h) return null;
+    const answer = await inspectPortrait(c, 'face').catch(() => undefined);
+    if (answer !== undefined) return answer ? boxed(framePoints(answer.pts, w, h), w, h) : null;
     try {
       const marker = await loader(), res = marker.detect(c), lm = res?.faceLandmarks?.[0];
       if (!lm?.length) return null;
-      const w = c.width, h = c.height;
       return boxed(lm.map((/** @type {any} */ p) => ({ x: p.x * w, y: p.y * h, z: (p.z || 0) * w })), w, h);
     } catch { return null; }
   })());
@@ -125,6 +142,13 @@ function boxed(pts, w, h) {
   return { pts, w, h, box: [x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0] };
 }
 
+/** @param {Float32Array} raw @param {number} w @param {number} h @returns {Pt[]} */
+function framePoints(raw, w, h) {
+  const pts = [];
+  for (let i = 0; i < raw.length; i += 3) pts.push({ x: raw[i] * w, y: raw[i + 1] * h, z: raw[i + 2] * w });
+  return pts;
+}
+
 /** @typedef {{ sx: number, sy: number, sw: number, sh: number }} Crop the part of a video a viewer shows */
 
 /** Whether the graphics here are drawn in software (no chip to speak of), where the CPU reads a face faster. */
@@ -149,25 +173,49 @@ function videoModel() {
   return videoLoading;
 }
 
+/** @param {boolean} still @returns {Promise<Worker | null>} */
+async function faceWorker(still) {
+  if (typeof Worker !== 'function' || typeof createImageBitmap !== 'function') return null;
+  const w = new Worker(assetUrl('js/studio/follow.worker.js'));
+  const ok = await new Promise(done => {
+    const late = setTimeout(() => done(false), 15000);
+    w.onmessage = e => { clearTimeout(late); done(e.data?.type === 'ready'); };
+    w.onerror = () => { clearTimeout(late); done(false); };
+    w.postMessage({ type: 'init', vendor: VENDOR, still, cpu: still || softwareGL() });
+  });
+  w.onmessage = w.onerror = null;
+  if (!ok) { w.terminate(); return null; }
+  return w;
+}
+
 let asideMade = /** @type {Promise<Worker | null> | null} */ (null);
-/** The worker that reads faces aside from the page: made once and kept (the model takes a moment to load); null where none can be had. */
 function asideWorker() {
-  asideMade ||= (async () => {
-    if (typeof Worker !== 'function' || typeof createImageBitmap !== 'function') return null;
-    const w = new Worker(assetUrl('js/studio/follow.worker.js'));
-    const ok = await new Promise(done => {
-      const late = setTimeout(() => done(false), 15000);
-      w.onmessage = (e) => { clearTimeout(late); done(e.data?.type === 'ready'); };
-      w.onerror = () => { clearTimeout(late); done(false); };
-      w.postMessage({ type: 'init', vendor: VENDOR, cpu: softwareGL() });
-    });
-    if (!ok) { w.terminate(); return null; }
-    return w;
-  })();
+  asideMade ||= faceWorker(false);
   asideMade.then(w => { if (!w) asideMade = null; }, () => { asideMade = null; });
   return asideMade;
 }
 let asked = 0;
+
+/** @param {HTMLCanvasElement} canvas @param {'face' | 'hair'} kind @returns {Promise<any>} */
+async function inspectPortrait(canvas, kind) {
+  const worker = await portraitReader();
+  if (!worker) return undefined;
+  const scale = Math.min(1, 720 / Math.max(canvas.width, canvas.height));
+  const bitmap = await createImageBitmap(canvas, { resizeWidth: Math.max(1, Math.round(canvas.width * scale)), resizeHeight: Math.max(1, Math.round(canvas.height * scale)) });
+  const id = ++asked;
+  return new Promise(resolve => {
+    const done = value => {
+      clearTimeout(timer); worker.removeEventListener('message', answer); resolve(value);
+    };
+    const answer = (/** @type {MessageEvent} */ e) => {
+      if (e.data?.type === kind && e.data.id === id) done(e.data.failed ? undefined : (e.data.pts || e.data.data) ? e.data : null);
+    };
+    const timer = setTimeout(() => done(undefined), 4500);
+    worker.addEventListener('message', answer);
+    try { worker.postMessage({ type: kind === 'face' ? 'frame' : 'hair', bitmap, id }, [bitmap]); }
+    catch { bitmap.close(); done(undefined); }
+  });
+}
 /**
  * A face followed through a video, read aside from the page (in a worker), so the page goes on drawing while a face is
  * read: the frame showing now is handed over whenever the last reading is back, and the latest face is there to draw

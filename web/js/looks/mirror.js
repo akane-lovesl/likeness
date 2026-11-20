@@ -183,6 +183,7 @@ export function openMirror(o) {
   const byWords = /** @type {Set<string>} */ (new Set());
   for (const x of o.words ? hear(o.words) : []) picks = picks.map(q => (q.part === x.part ? (byWords.add(q.part), { ...q, heard: x.shape }) : q));
   let part = '', shown = -1, busy = false, spotsUp = false, washing = 0, swap = 0;
+  let preparing = false;
   // the weeks after the salon: how many the frame shows the look at, and whether the mirror is looking ahead
   let weeks = 0, timing = false, moved = false, timeWalk = 0, sketchRaf = 0, fadeNext = false, timePainting = false, timeAgain = false;
   /** The fades from one week to the next, while they run. @type {Animation[]} */
@@ -296,9 +297,10 @@ export function openMirror(o) {
   const mine = person ? h('button.mr-bar__mine', { type: 'button', onclick: () => onMe() }, h('span', { html: icon('camera') }), 'On me')
     : h('button.mr-bar__mine.mr-bar__show', { type: 'button', hidden: true, 'aria-label': 'Show it: the look, large, to show someone', onclick: () => showing(true) }, h('span', { html: icon('expand') }), 'Show');
   const showWords = h('ol.mr-show__words');
+  const saveBtn = h('button.mr-show__save', { type: 'button', onclick: () => saveCard() }, h('span', { html: icon('page') }), 'Save the card');
   const showEl = h('div.mr-show', { hidden: true }, showWords,
     h('div.mr-show__row', null,
-      h('button.mr-show__save', { type: 'button', onclick: () => saveCard() }, h('span', { html: icon('page') }), 'Save the card'),
+      saveBtn,
       h('button.mr-show__done', { type: 'button', onclick: () => showing(false) }, 'Done')));
   const bar = h('header.mr-bar', null, back, h('span.mr-bar__edition', { 'data-mode': studio.mode }, studio.label), activityPill(), mine);
   // a reference, clipped to the mirror's corner like a photo tucked into its frame
@@ -1306,17 +1308,33 @@ export function openMirror(o) {
 
   /** Tries the picks (and any words) on: four takes from a live studio, a sketch here. */
   async function tryOn() {
-    if (refLoading) await refLoading;
-    if (busy) return;
-    const own = input.value.trim(), parts = [...new Set([...picks.map(q => q.part), ...partsIn(own)])];
-    if (!parts.length && !own && !marks.length && !ref) { ask.classList.remove('is-asking'); void ask.offsetWidth; ask.classList.add('is-asking'); return; }
+    if (busy || preparing) return;
+    const own = input.value.trim(), now = picks.slice(), parts = [...new Set([...now.map(q => q.part), ...partsIn(own)])];
+    const drawn = marks.slice(), wk = timing ? weeks : 0, take = takes[shown] || null, borrowed = ref, loadingRef = refLoading;
+    const pace = settings.get('pace', 'fine');
+    if (!parts.length && !own && !drawn.length && !borrowed && !loadingRef) { ask.classList.remove('is-asking'); void ask.offsetWidth; ask.classList.add('is-asking'); return; }
     if (drawingNow) drawing(false);
     tray(false); input.blur();
-    // a sketch is made here, one at a time; the studio is asked for as many as you like, and works on them side by side
-    if (!live) { busy = true; try { await sketchIt(); } catch (e) { toast(e instanceof Error ? e.message : 'That did not work'); } finally { busy = false; } return; }
-    if (active.length) toast((active.length === 1 ? 'Making both' : 'Making ' + (active.length + 1) + ' at once') + ': the studio works on them side by side', 2600);
-    try { await render(parts, own); }
+    const prep = on => { preparing = on; goBtn.toggleAttribute('aria-busy', on); };
+    prep(true);
+    if (!live) busy = true;
+    let start;
+    try {
+      await afterPaint();
+      if (!live) { await sketchIt(); return; }
+      if (loadingRef) await loadingRef;
+      if (active.length) toast((active.length === 1 ? 'Making both' : 'Making ' + (active.length + 1) + ' at once') + ': the studio works on them side by side', 2600);
+      const request = { now, drawn, borrowed: loadingRef ? ref : borrowed, wk, take, pace };
+      if (parts.length || own || drawn.length || request.borrowed) {
+        start = await prepareRender(parts, own, request);
+      }
+    }
     catch (e) { toast(e instanceof Error ? e.message : 'That did not work'); }
+    finally { if (!live) busy = false; prep(false); }
+    if (start) {
+      try { await start(); }
+      catch (e) { if (current === self) toast(e instanceof Error ? e.message : 'That did not work'); }
+    }
   }
   /** The print a change starts from: the selected take or an original that can be reused. @param {Take | null} t */
   async function subject(t = takes[shown] || null) {
@@ -1337,10 +1355,10 @@ export function openMirror(o) {
     imports.set(from, ready);
     try { return await ready; } finally { imports.delete(from); }
   }
-  /** Four takes from the studio: inside the parts' masks when the face was read, over the whole picture when not. @param {string[]} parts @param {string} own */
-  async function render(parts, own) {
-    const now = picks.slice(), drawn = marks.slice(), borrowed = ref, wk = timing ? weeks : 0;
-    const s = await subject(), pic2 = s === print && base ? base : await canvasOf(s.blob), f = s === print ? face : await faceOf(pic2);
+  /** Prepare the selected photo and regions before starting a turn. @param {string[]} parts @param {string} own
+   * @param {{ now: Pick[], drawn: typeof marks, borrowed: typeof ref, wk: number, take: Take | null, pace: string }} request */
+  async function prepareRender(parts, own, { now, drawn, borrowed, wk, take, pace }) {
+    const s = await subject(take), pic2 = s === print && base ? base : await canvasOf(s.blob), f = s === print ? face : await faceOf(pic2);
     const masked = f && parts.length && !parts.includes('cut') ? parts : [];
     let mask = null;
     // asked weeks on, the studio is told what the weeks have done, and may change what has grown since
@@ -1385,9 +1403,11 @@ export function openMirror(o) {
     const said = (titleOf(now) || own || (drawn.length ? 'As drawn' : borrowed ? 'Like the reference' : '')) + (wk ? ' · ' + weeksSaid(wk) + ' on' : '');
     const intent = mask ? { op: 'region', subject: s.id, refs, look: null, n: 4, pace: null, pins: [{ print: s.id, n: 1, note: words, mask }] } : { op: 'edit', subject: s.id, refs, look: null, n: 4, pace: null, pins: [] };
     const slots = Array.from({ length: 4 }, () => ({ url: '', label: '', kind: '', pending: true, picks: now, weeks: wk }));
-    takes.push(...slots);
-    paintTakes();
-    await follow(onItem => runTurn({ text: mask ? 'Changes to @' + s.handle : '@' + s.handle + ' ' + words, said, intent, pace: settings.get('pace', 'fine'), n: 4, mirrorWeeks: wk, onItem }), slots, mask);
+    return () => {
+      takes.push(...slots);
+      paintTakes();
+      return follow(onItem => runTurn({ text: mask ? 'Changes to @' + s.handle : '@' + s.handle + ' ' + words, said, intent, pace, n: 4, mirrorWeeks: wk, onItem }), slots, mask);
+    };
   }
   /**
    * Follow a turn even when another finishes first. An angle turn has no slots in the takes row.
@@ -1683,6 +1703,9 @@ export function openMirror(o) {
     if (!on) { lean(0, 0); return; }
     if (reduced) return;
     if (o.turns?.length === 3 && shown < 0) { startTurning(o.turns, 1, 'loop'); return; }
+    await afterPaint();
+    if (!showingNow) return;
+    prepareTurn?.();
     if (turn && (await mount()) && showingNow) {
       const t0 = performance.now();
       const step = (/** @type {number} */ t) => { if (!showingNow || !el.isConnected) return; const s = (t - t0) / 1000; lean(Math.sin(s * .9) * .13 * Math.min(1, s / 1.4), Math.sin(s * .55) * .02); sway = requestAnimationFrame(step); };
@@ -1691,6 +1714,13 @@ export function openMirror(o) {
   }
   /** The card: the look on you (and every side of you, where caught), in its words, as one picture to keep or to send. */
   async function saveCard() {
+    if (saveBtn.hasAttribute('aria-busy')) return;
+    saveBtn.setAttribute('aria-busy', 'true');
+    try { await afterPaint(); await downloadCard(); }
+    catch { toast('The card could not be saved'); }
+    finally { saveBtn.removeAttribute('aria-busy'); }
+  }
+  async function downloadCard() {
     const s = await surface(); if (!s) return;
     const both = o.turns?.length === 3 && shown < 0 ? [o.turns[0], o.turns[2]] : [];
     const imgs = await Promise.all(both.map(t => new Promise(done => { const i = new Image(); i.onload = () => done(i); i.onerror = () => done(null); i.src = t.src; })));
@@ -1753,12 +1783,13 @@ export function openMirror(o) {
         hairOf(base).then(m => { if (m && current === self) turn?.hair(m, f); });
       };
       if (!known) void reading();
+      const autoTurn = shown < 0 && !picks.length && !after && !o.go && o.turns?.length !== 3;
       const warmTurn = () => {
-        if (!prepareTurn) return;
+        if (!prepareTurn || part || showingNow || document.hidden) return;
         prepareTurn();
-        if (shown < 0 && !part && !after && !o.go && o.turns?.length !== 3) void hello();
+        if (shown < 0) void hello();
       };
-      setTimeout(warmTurn, 360);
+      if (autoTurn) setTimeout(warmTurn, 440);
     }
     placeNotes(); paintPicks(); menu();
     turnBtn.hidden = !(live || person?.looks.some(l => l.angles?.length) || o.turns?.length === 3);

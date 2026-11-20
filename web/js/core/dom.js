@@ -64,7 +64,7 @@ export const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const frame = () => new Promise(r => requestAnimationFrame(() => r(undefined)));
 /** Yield to the current frame before preparing a more expensive visual result. */
-export const afterPaint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+export const afterPaint = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))));
 export const stage = () => /** @type {HTMLElement} */ (document.getElementById('stage'));
 export const screens = () => /** @type {HTMLElement} */ (document.getElementById('screens'));
 const versions = JSON.parse(document.getElementById('studio-versions')?.textContent || '{}');

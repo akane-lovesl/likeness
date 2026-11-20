@@ -120,9 +120,24 @@ const LIP_TINT = /** @type {Record<string, string>} */ ({ nude: '#c98b7a', red: 
 /** @param {string} part @param {string} style @param {number} [shade] lighter above 0, deeper below @returns {string | null} */
 export function tintOf(part, style, shade = 0) {
   const t = part === 'colour' ? styleOf(part, style)?.sketch?.colour : part === 'lips' ? LIP_TINT[style] : null;
-  return t ? shadeOf(t, shade) : null;
+  return t ? (part === 'colour' ? hairShade(t, shade) : shadeOf(t, shade)) : null;
 }
 
+/**
+ * A hair colour a shade lighter (v above 0) or deeper (below), the way a colourist mixes it: the same tone either way,
+ * lighter by its value with nearly all of its warmth kept (honey a shade lighter is a lighter honey, not a grey one),
+ * deeper as the same colour darker. @param {string} hex @param {number} v
+ */
+export function hairShade(hex, v) {
+  if (v <= 0) return shadeOf(hex, v);
+  const c = parseInt(hex.slice(1), 16), [r, g, b] = [c >> 16, (c >> 8) & 255, c & 255].map(x => x / 255);
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  const h = !d ? 0 : mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const k = Math.min(1, v) * .45, val = mx + (1 - mx) * k, sat = (mx ? d / mx : 0) * (1 - .3 * k);
+  const C = val * sat, X = C * (1 - Math.abs(h % 2 - 1)), m = val - C;
+  const [p, q, s] = h < 1 ? [C, X, 0] : h < 2 ? [X, C, 0] : h < 3 ? [0, C, X] : h < 4 ? [0, X, C] : h < 5 ? [X, 0, C] : [C, 0, X];
+  return '#' + [p, q, s].map(x => Math.round((x + m) * 255).toString(16).padStart(2, '0')).join('');
+}
 /** A colour made lighter (v above 0) or deeper (below), up to nearly half way to white or black. @param {string} hex @param {number} v */
 export function shadeOf(hex, v) {
   if (!v) return hex;

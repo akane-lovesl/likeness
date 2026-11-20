@@ -29,6 +29,7 @@ import { turner } from './turn.js';
 import { openLive, canLive } from './live.js';
 import { coat, dyeHair } from './tint.js';
 import { ages, aged, upkeepOf, upkeepSaid, weeksSaid, noteAt, grownWords, rootsOf, markOf, WEEKS, GROW } from './time.js';
+import { planOf, stepsFor, questionOf, answerSaid, stepSaid } from './trial.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const INK = '#fff4e0';
@@ -49,6 +50,8 @@ const timeLeft = (left, gone) => (left > 4500 ? 'about ' + Math.ceil(left / 5000
 let current = /** @type {{ close: (now?: boolean) => void } | null} */ (null);
 /** Whether Grow out has been shown once already (it is lit up the first time). */
 let toldWhen = false;
+/** Whether Fit it has been shown once already (it is lit up the first time), and whether a fitting has asked its first question. */
+let toldFit = false, toldTrial = false;
 
 /** A photo chosen from the device, kept as a print on the desk. @returns {Promise<any | null>} */
 export async function bringPhoto() {
@@ -150,6 +153,11 @@ export function openMirror(o) {
   let weeks = 0, timing = false, moved = false, timeWalk = 0, sketchRaf = 0, fadeNext = false, timePainting = false, timeAgain = false;
   /** The fades from one week to the next, while they run. @type {Animation[]} */
   let fading = [];
+  // the fitting: whether the look is being fitted, and how far it has got (the steps it asks, the question now, the
+  // looks on the two lenses, which is on, whether they take turns by themselves still, the look it began as)
+  let trialing = false;
+  /** @type {null | { steps: import('./trial.js').Step[], i: number, q: import('./trial.js').Question | null, shown: (HTMLCanvasElement | null)[], ready: boolean, on: number, auto: number, byHand: boolean, from: Pick[], answering: boolean, n: number, asked: number, parts: number }} */
+  let trial = null;
   /** What was drawn on the picture, each mark in its colour, as shares of the picture's width and height. @type {{ ink: string, w: number, pts: { x: number, y: number }[] }[]} */
   let marks = [];
   let drawingNow = false, ink = '#ff3b5c';
@@ -186,6 +194,8 @@ export function openMirror(o) {
   const paintEl = /** @type {HTMLCanvasElement} */ (h('canvas.mr-paint', { 'aria-hidden': 'true' }));
   // a week as it was, fading as the next comes up through it
   const ghost = /** @type {HTMLCanvasElement} */ (h('canvas.mr-ghost', { 'aria-hidden': 'true' }));
+  // the fitting's two looks, each made whole on its own lens, shown one and then the other
+  const optA = /** @type {HTMLCanvasElement} */ (h('canvas.mr-opt', { 'aria-hidden': 'true' })), optB = /** @type {HTMLCanvasElement} */ (h('canvas.mr-opt', { 'aria-hidden': 'true' }));
   const sk = document.createElementNS(SVG, 'svg'); sk.setAttribute('class', 'mr-sketch'); sk.setAttribute('aria-hidden', 'true'); sk.setAttribute('preserveAspectRatio', 'none');
   const notes = h('div.mr-notes'), lines = document.createElementNS(SVG, 'svg'); lines.setAttribute('class', 'mr-lines'); lines.setAttribute('aria-hidden', 'true');
   const stampEl = h('span.mr-stamp');
@@ -195,7 +205,7 @@ export function openMirror(o) {
   const handlesEl = h('div.mr-handles'), sayEl = h('div.mr-say', { 'aria-live': 'polite' });
   // what leans in when a part is chosen: the picture and everything drawn on it, not the notes in its margins
   const marksEl = /** @type {HTMLCanvasElement} */ (h('canvas.mr-marks', { 'aria-hidden': 'true' }));
-  const lens = h('div.mr-lens', null, pic, over, glint, preview, turnView, wash, paintEl, ghost, read, workEl, sk, marksEl, handlesEl);
+  const lens = h('div.mr-lens', null, pic, over, preview, turnView, wash, paintEl, ghost, optA, optB, glint, read, workEl, sk, marksEl, handlesEl);
   const INKS = ['#ff3b5c', '#ffd43b', '#ffffff'];
   const drawBar = h('div.mr-drawbar', { role: 'toolbar', 'aria-label': 'Drawing' },
     ...INKS.map((c, i) => h('button.mr-drawbar__ink', { type: 'button', 'aria-label': ['Red', 'Yellow', 'White'][i] + ' pen', 'aria-pressed': String(i === 0), style: { '--pen': c }, onclick: (/** @type {Event} */ e) => { ink = c; drawBar.querySelectorAll('.mr-drawbar__ink').forEach(b => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } })),
@@ -205,10 +215,15 @@ export function openMirror(o) {
   // the weeks after the salon, for a look that grows (a fringe, a colour's roots, a cut, brows, a beard): asked for on the
   // frame; then the frame says what the weeks have done, and is dated the day it would be, the way a camera once
   // printed the date in the corner of a picture
-  const whenBtn = h('button.mr-when', { type: 'button', hidden: true, 'aria-label': 'Grow it out: the look in the weeks after the salon', onclick: () => timeMode(true) }, h('span', { html: icon('weeks') }), 'Grow out');
+  const whenBtn = h('button.mr-pill.mr-when', { type: 'button', hidden: true, 'aria-label': 'Grow it out: the look in the weeks after the salon', onclick: () => timeMode(true) }, h('span', { html: icon('weeks') }), h('span.mr-pill__say', null, 'Grow out'));
   const capSay = h('span.mr-cap__say'), capDate = /** @type {HTMLTimeElement} */ (h('time.mr-cap__date'));
   const capEl = h('p.mr-cap', { 'aria-hidden': 'true' }, capSay, capDate);
-  const frame = h('div.mr-frame', null, lens, lines, notes, sayEl, stampEl, keepBtn, turnBtn, whenBtn, dial, capEl, wordsEl, drawBar);
+  // the fitting, asked for on the frame beside Grow out: two versions of the look, one and then the other, and which
+  // looks more like you, until it fits; the frame says which is on, then what was chosen
+  const fitBtn = h('button.mr-pill.mr-fit', { type: 'button', hidden: true, 'aria-label': 'Fit it: two versions at a time, and which is more you', onclick: () => trialMode(true) }, h('span', { html: icon('lenses') }), h('span.mr-pill__say', null, 'Fit it'));
+  const modesEl = h('div.mr-modes', null, fitBtn, whenBtn);
+  const trialSay = h('span.mr-trialcap__say'), trialCap = h('p.mr-trialcap', { 'aria-hidden': 'true' }, trialSay);
+  const frame = h('div.mr-frame', null, lens, lines, notes, sayEl, stampEl, keepBtn, turnBtn, modesEl, dial, capEl, trialCap, wordsEl, drawBar);
   const takesRow = h('div.mr-takes', { role: 'listbox', 'aria-label': 'Takes' });
   const chips = PARTS.map(p => h('button.mr-part', { type: 'button', 'data-part': p.id, 'aria-pressed': 'false', onclick: () => choose(p.id) },
     h('span.mr-part__glyph', { html: plateSVG(p.id, p.styles[0].id) }), h('span.mr-part__name', null, p.name)));
@@ -222,6 +237,16 @@ export function openMirror(o) {
     h('span.mr-time__ticks', { 'aria-hidden': 'true' }, ...Array.from({ length: WEEKS + 1 }, (_, k) => h('i' + (k % 4 ? '' : '.is-month'), { style: { '--x': String(k / WEEKS) } }))),
     h('i.mr-time__fill', { 'aria-hidden': 'true' }), marksRow, headEl, range);
   const timeBar = h('div.mr-time', { hidden: true, role: 'group', 'aria-label': 'The weeks after the salon' }, ruler, h('button.mr-time__done', { type: 'button', onclick: () => timeMode(false) }, 'Done'));
+  // fitting, the dock is a pair of lenses, lit as each look is shown and touched to choose it, with Either between them
+  // under the questions to come, as dots, and a line saying what is being looked at
+  const trialWhat = h('span.mr-trial__what', { 'aria-live': 'polite' }), trialDots = h('span.mr-trial__dots', { 'aria-hidden': 'true' });
+  const lensBtn = (/** @type {number} */ k) => /** @type {HTMLButtonElement} */ (h('button.mr-trial__lens', { type: 'button', 'data-k': String(k), 'aria-label': String(k + 1), onclick: () => answer(k),
+    onfocus: () => flipTo(k, true), onpointerenter: (/** @type {PointerEvent} */ e) => { if (e.pointerType === 'mouse') flipTo(k, true); } }, h('b', null, String(k + 1))));
+  const oneBtn = lensBtn(0), twoBtn = lensBtn(1);
+  const eitherBtn = h('button.mr-trial__either', { type: 'button', 'aria-label': 'Either: the easier to live with, or as it was', onclick: () => answer(-1) }, 'Either');
+  const trialBar = h('div.mr-trial', { hidden: true, role: 'group', 'aria-label': 'One, or two?' },
+    h('div.mr-trial__head', null, trialWhat, h('button.mr-trial__done', { type: 'button', onclick: () => trialMode(false) }, 'Done')),
+    h('div.mr-trial__body', null, oneBtn, h('div.mr-trial__mid', null, trialDots, eitherBtn), twoBtn));
   const tokens = h('div.mr-ask__tokens');
   // more ways to say it than words: draw on the picture, or bring a picture whose look to borrow
   const trayEl = h('div.mr-tray', { role: 'menu', 'aria-label': 'More ways to ask' },
@@ -231,7 +256,7 @@ export function openMirror(o) {
   const input = /** @type {HTMLInputElement} */ (h('input.mr-ask__input', { type: 'text', 'aria-label': 'Anything else', placeholder: 'Touch a part of the face, or say it', autocomplete: 'off', enterkeyhint: 'go', value: o.words || '', oninput: () => { paintGo(); listen(); }, onfocus: () => hint(), onblur: () => hint() }));
   const goBtn = h('button.mr-ask__go', { type: 'submit' }, h('span', { html: icon('sparkle') }), h('span.mr-ask__label', null, 'Try on'));
   const ask = h('form.mr-ask', { onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); tryOn(); } }, addBtn, h('div.mr-ask__field', null, tokens, input), goBtn);
-  const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => (timing ? timeMode(false) : showingNow ? showing(false) : close()) });
+  const back = h('button.mr-bar__back', { type: 'button', 'aria-label': 'Back', html: icon('back'), onclick: () => (timing ? timeMode(false) : trialing ? trialMode(false) : showingNow ? showing(false) : close()) });
   // on a drawn face, the look is tried on you next; on you, it is shown to someone (the one who will cut it)
   const mine = person ? h('button.mr-bar__mine', { type: 'button', onclick: () => onMe() }, h('span', { html: icon('camera') }), 'On me')
     : h('button.mr-bar__mine.mr-bar__show', { type: 'button', hidden: true, 'aria-label': 'Show it: the look, large, to show someone', onclick: () => showing(true) }, h('span', { html: icon('expand') }), 'Show');
@@ -244,7 +269,7 @@ export function openMirror(o) {
   // a reference, clipped to the mirror's corner like a photo tucked into its frame
   const refEl = h('button.mr-ref', { type: 'button', hidden: true, 'aria-label': 'The reference: remove it', onclick: () => { ref = null; paintRef(); paintPicks(); hint(); } }, h('img', { alt: '' }), h('span.mr-ref__say', null, 'Reference'), h('i.mr-ref__x', { html: icon('close') }));
   const stageEl = h('div.mr-stage', null, frame, refEl, takesRow);
-  const el = h('section.mr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mirror', 'data-mode': studio.mode }, glow, bar, stageEl, h('div.mr-dock', null, partsRow, stylesRow, timeBar, trayEl, ask), showEl);
+  const el = h('section.mr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mirror', 'data-mode': studio.mode }, glow, bar, stageEl, h('div.mr-dock', null, partsRow, stylesRow, timeBar, trialBar, trayEl, ask), showEl);
   stage().append(el);
   const from = o.from?.getBoundingClientRect() || null;
 
@@ -259,12 +284,12 @@ export function openMirror(o) {
     const row = takesRow.getBoundingClientRect().height, hh = Math.max(80, r.height - row - r.width * .04);
     let fw = Math.min(r.width * .84, hh * ar), fh = fw / ar; if (fh > hh) { fh = hh; fw = fh * ar; }
     frame.style.width = fw.toFixed(1) + 'px'; frame.style.height = fh.toFixed(1) + 'px';
-    clearTimeout(sizing); if (soon) { sizing = setTimeout(() => fit(), 140); focus(part); return; }
+    clearTimeout(sizing); if (soon) { sizing = setTimeout(() => fit(), 140); focusNow(); return; }
     const dpr = Math.min(2, devicePixelRatio || 1), sharp = Math.max(1, (base?.width || 0) / (fw * dpr));
     // the outline and the wash as sharp as the picture itself, for when the mirror leans in close
-    for (const c of [read, wash, paintEl, ghost, turnView, marksEl]) { const k = c === turnView ? 1 : sharp, w = Math.round(fw * dpr * k), hgt = Math.round(fh * dpr * k); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
+    for (const c of [read, wash, paintEl, ghost, optA, optB, turnView, marksEl]) { const k = c === turnView ? 1 : sharp, w = Math.round(fw * dpr * k), hgt = Math.round(fh * dpr * k); if (c.width !== w || c.height !== hgt) { c.width = w; c.height = hgt; } }
     turn?.draw();
-    if (part) mark(part); paintWash(); focus(part); paintHandles(); paintMarks(); placeRef();
+    if (part) mark(part); paintWash(); focusNow(); paintHandles(); paintMarks(); placeRef(); drawOpts();
   }
   const dpr = () => Math.min(2, devicePixelRatio || 1);
   const ctx = (/** @type {HTMLCanvasElement} */ c) => /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
@@ -361,7 +386,7 @@ export function openMirror(o) {
   /** A part, chosen: it is outlined on the face and its styles come up under the parts; chosen again, it is put down. @param {string} id */
   function choose(id) {
     const p = partById(id); if (!p) return;
-    stopGreeting(); if (timing) timeMode(false);
+    stopGreeting(); if (timing) timeMode(false); if (trialing) trialMode(false);
     if (part === id && !partsRow.hidden) { unchoose(); return; }
     part = id; read.classList.toggle('is-quiet', fresh().some(q => q.part === id));
     chips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.part === id))); lit();
@@ -377,8 +402,8 @@ export function openMirror(o) {
    * by gliding, not jumping: the frame and the parts are moved where they land, then eased there from where they were.
    */
   function menu() {
-    const glide = [frame, partsRow, timeBar], was = glide.map(e => e.getBoundingClientRect());
-    partsRow.hidden = timing; stylesRow.hidden = timing || !part; timeBar.hidden = !timing; el.classList.toggle('has-menu', !!part && !timing); hint();
+    const glide = [frame, partsRow, timeBar, trialBar], was = glide.map(e => e.getBoundingClientRect());
+    partsRow.hidden = timing || trialing; stylesRow.hidden = timing || trialing || !part; timeBar.hidden = !timing; trialBar.hidden = !trialing; ask.hidden = trialing; el.classList.toggle('has-menu', !!part && !timing && !trialing); hint();
     if (reduced || !el.isConnected) return;
     glide.forEach((e, i) => {
       const a = was[i], b = e.getBoundingClientRect(); if (!a.height || !b.height) return;
@@ -424,7 +449,11 @@ export function openMirror(o) {
     const grows = !!face && ages(picks);
     if (timing && !grows) timeMode(false);
     if (timing) { paintRuler(); paintTime(weeks); }
-    if (whenBtn.hidden === (grows && !timing)) { whenBtn.hidden = !(grows && !timing); if (!whenBtn.hidden && !toldWhen) { toldWhen = true; whenBtn.classList.add('is-new'); setTimeout(() => whenBtn.classList.remove('is-new'), 3200); } }
+    const ahead = grows && !timing && !trialing;
+    if (whenBtn.hidden === ahead) { whenBtn.hidden = !ahead; if (ahead && !toldWhen) { toldWhen = true; whenBtn.classList.add('is-new'); setTimeout(() => whenBtn.classList.remove('is-new'), 3200); } }
+    // the fitting, for a look with something in it to ask about
+    const fits = !!face && !!base && !timing && !trialing && picks.some(q => q.style.id !== 'clean');
+    if (fitBtn.hidden === fits) { fitBtn.hidden = !fits; if (fits && !toldFit) { toldFit = true; fitBtn.classList.add('is-new'); setTimeout(() => fitBtn.classList.remove('is-new'), 3200); } }
     paintGo(); if (sketch) drawSketch(); paintWash(); paintHandles();
     if (!person) mine.hidden = !face || !picks.length;
   }
@@ -468,6 +497,7 @@ export function openMirror(o) {
     stopGreeting(); clearTimeout(timeWalk);
     const focused = timeBar.contains(document.activeElement) || whenBtn === document.activeElement;
     if (on) {
+      if (trialing) trialMode(false);
       if (drawingNow) drawing(false);
       tray(false); input.blur();
       if (part) { part = ''; chips.forEach(c => c.setAttribute('aria-pressed', 'false')); lit(); ctx(read).clearRect(0, 0, read.width, read.height); focus(''); }
@@ -554,6 +584,204 @@ export function openMirror(o) {
 
   // —— more ways to ask: drawing on the picture, and a picture whose look to borrow ——
   /** The + tray, open or shut. @param {boolean} on */
+  // —— the fitting: one, or two? The look fitted to the face by eye, the way lenses are ——
+  /** Looks made whole for the fitting, kept while it runs (the one chosen is asked about again). @type {Map<string, HTMLCanvasElement>} */
+  const lensKept = new Map();
+  const pause = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
+  /** The ways a pick can be shaped on this face. @param {import('./trial.js').Fitting} q */
+  const shapesFor = (q) => (face ? controlsOf(face, q.part, q.style.id, q.shape).map(c => c.id) : []);
+  /**
+   * A look made whole on one canvas, as the frame shows it: its colours washed in, its painted parts painted, the rest
+   * in pencil. @param {Pick[]} look @returns {Promise<HTMLCanvasElement | null>}
+   */
+  async function lensOf(look) {
+    const f = face, b = base; if (!f || !b) return null;
+    const key = paintEl.width + '|' + look.map(q => q.part + ':' + q.style.id + ':' + shapeKey(q)).join('|');
+    const had = lensKept.get(key); if (had) return had;
+    const c = P.make(paintEl.width, paintEl.height), x = ctx(c);
+    const w = look.some(q => tintOf(q.part, q.style.id)) ? await washOf(b, f, look, 0) : null;
+    if (w) { x.globalAlpha = .95; x.drawImage(w, 0, 0, c.width, c.height); x.globalAlpha = 1; }
+    const want = look.filter(q => PAINTED.has(q.part)), tone = want.length ? await tonesOf(b) : null;
+    const pc = want.length ? paintLook(b, f, want.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], c.width / f.w, { ...tone, dye: dyeOf(look), roots: null }) : null;
+    if (pc) x.drawImage(pc, 0, 0, c.width, c.height);
+    // (what is not painted, a cut or a fringe where no hair was found, in pencil as the frame draws it)
+    x.save(); x.setTransform(c.width / f.w, 0, 0, c.height / f.h, 0, 0);
+    x.strokeStyle = INK; x.lineCap = 'round'; x.lineJoin = 'round'; x.shadowColor = 'rgba(0,0,0,.6)'; x.shadowBlur = Math.max(2, c.width / 300);
+    for (const q of look) if (!pc?.painted.has(q.part)) for (const s of markup(f, q.part, q.style.id, q.shape)) { x.lineWidth = s.w; x.stroke(new Path2D(s.d)); }
+    x.restore();
+    if (lensKept.size >= 8) lensKept.delete(/** @type {string} */ (lensKept.keys().next().value));
+    lensKept.set(key, c);
+    return c;
+  }
+  /**
+   * The fitting, begun or ended. Begun, the dock is a pair of lenses with Either between them, and the frame shows each
+   * question's two looks, one and then the other, coming close to the part they differ in. Ended (at the last answer, or
+   * at any time), the look stays as fitted so far, painted as the frame paints it. @param {boolean} on
+   */
+  function trialMode(on) {
+    if (on === trialing || (on && (!face || !base || showingNow || making))) return;
+    const steps = on ? planOf(picks, shapesFor) : [];
+    if (on && !steps.length) return;
+    stopGreeting();
+    const focused = trialBar.contains(document.activeElement) || fitBtn === document.activeElement;
+    if (on) {
+      if (timing) timeMode(false);
+      if (drawingNow) drawing(false);
+      tray(false); input.blur();
+      if (part) { part = ''; chips.forEach(c => c.setAttribute('aria-pressed', 'false')); lit(); ctx(read).clearRect(0, 0, read.width, read.height); }
+      if (shown >= 0) show(-1);
+      // the look as the frame paints it now, held on the first lens until the first question's two are made
+      const held = P.make(paintEl.width, paintEl.height), hx = ctx(held);
+      hx.globalAlpha = .95; hx.drawImage(wash, 0, 0); hx.globalAlpha = 1; hx.drawImage(paintEl, 0, 0);
+      trial = { steps, i: -1, q: null, shown: [held, null], ready: false, on: 0, auto: 0, byHand: false, from: picks.slice(), answering: false, n: 0, asked: 0, parts: new Set(steps.map(s => s.part)).size };
+      drawOpts(); optA.classList.add('is-on'); optB.classList.remove('is-on');
+      el.classList.add('is-trial');
+    } else if (trial) { clearTimeout(trial.auto); trial = null; }
+    trialing = on;
+    sayCap(''); trialWhat.textContent = ''; [oneBtn, twoBtn, eitherBtn].forEach(b => b.classList.remove('is-lit', 'is-chosen'));
+    menu(); paintPicks();
+    if (!reduced) (on ? trialBar : partsRow).animate([{ opacity: 0, translate: '0 3cqw' }, { opacity: 1, translate: '0 0' }], { duration: 440, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+    if (focused) (on ? oneBtn : fitBtn).focus({ preventScroll: true });
+    if (on) { paintDots(); setTimeout(() => { if (trial && trial.i < 0) nextQ(); }, reduced ? 0 : 380); return; }
+    // ended: the look as fitted is painted as the frame paints it, and takes the lenses' place once it is there (the
+    // same look on both, so the change is not seen)
+    focusNow(); lensKept.clear(); el.classList.remove('is-trial-making');
+    paintedKey = lookNow().filter(q => PAINTED.has(q.part)).map(q => q.part + q.style.id).join();
+    const back = () => { if (trialing) return; el.classList.add('is-settling'); el.classList.remove('is-trial'); optA.classList.remove('is-on'); optB.classList.remove('is-on'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('is-settling'))); };
+    paintWash().then(back, back);
+  }
+  /** The next question: its two looks made whole first, then shown one and then the other until one is chosen. */
+  async function nextQ() {
+    const t = trial; if (!t || !face) return;
+    t.answering = false; t.q = null; t.ready = false;
+    for (t.i++; t.i < t.steps.length; t.steps.splice(t.i, 1)) {
+      const s = t.steps[t.i], q = questionOf(s, picks, t.n, id => styleOf(s.part, id)); if (!q) continue;
+      paintDots();
+      el.classList.add('is-trial-making');
+      const a = await lensOf(/** @type {Pick[]} */ (picks.map(p => (p.part === s.part ? q.looks[0] : p)))); if (trial !== t) return;
+      // (a breath between the two, so the frame is never held up for both at once)
+      await new Promise(r => requestAnimationFrame(r)); if (trial !== t) return;
+      const b = await lensOf(/** @type {Pick[]} */ (picks.map(p => (p.part === s.part ? q.looks[1] : p)))); if (trial !== t) return;
+      // two that look the same here (a fringe on hair too short to show it) ask nothing: never a question with no answer to see
+      const d = a && b ? apart(a, b) : { plain: 0, mean: 0 }, z2 = zoomOf(s.part, 1.6).z ** 2;
+      if (d.plain * z2 < PLAIN && d.mean * z2 < SHIFT) continue;
+      // asked: the frame comes close to the part, and says (the first time) what to look for
+      trialWhat.textContent = stepSaid(s) + (toldTrial ? '' : ' · which is more you?');
+      focus(s.part, 1.6);
+      el.classList.remove('is-trial-making'); toldTrial = true; t.q = q; t.asked++;
+      t.shown = [a, b]; t.ready = true; drawOpts();
+      oneBtn.setAttribute('aria-label', '1: ' + q.said[0]); twoBtn.setAttribute('aria-label', '2: ' + q.said[1]);
+      flipTo(0);
+      return;
+    }
+    el.classList.remove('is-trial-making');
+    paintDots(); finished();
+  }
+  /**
+   * Two looks can be told apart where enough of what is seen of the frame (as close as it has come) changes plainly, or
+   * all of it a little (a shade over the whole of the hair): below both, they look the same.
+   */
+  const PLAIN = .002, SHIFT = .6;
+  /** How far apart two looks are, seen small: the share of the frame that changes plainly, and the change on average. @param {HTMLCanvasElement} a @param {HTMLCanvasElement} b */
+  function apart(a, b) {
+    const w = 160, hh = Math.max(1, Math.round(w * a.height / a.width));
+    const [da, db] = [a, b].map(c => { const s = P.make(w, hh), x = ctx(s); x.drawImage(c, 0, 0, w, hh); return x.getImageData(0, 0, w, hh).data; });
+    let n = 0, sum = 0;
+    for (let i = 0; i < da.length; i += 4) {
+      const d = Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]), al = Math.abs(da[i + 3] - db[i + 3]);
+      if (d > 42 || al > 42) n++;
+      sum += (d + al) / 4;
+    }
+    return { plain: n / (w * hh), mean: sum / (w * hh) };
+  }
+  /** One of the two on the face and its lens lit, the two taking turns by themselves until a hand turns them. @param {number} k @param {boolean} [byHand] */
+  function flipTo(k, byHand = false) {
+    const t = trial; if (!t?.ready || t.answering) return;
+    clearTimeout(t.auto); if (byHand) t.byHand = true;
+    t.on = k;
+    optA.classList.toggle('is-on', k === 0); optB.classList.toggle('is-on', k === 1);
+    oneBtn.classList.toggle('is-lit', k === 0); twoBtn.classList.toggle('is-lit', k === 1);
+    sayCap(k ? '…or two?' : 'One…');
+    if (!t.byHand && !reduced) t.auto = setTimeout(() => flipTo(1 - k), 1500);
+  }
+  /** One of the two chosen, or (at -1) either: it is the look now, said back on the frame, and the next is asked. @param {number} k */
+  async function answer(k) {
+    const t = trial, q = t?.q, s = t?.steps[t.i]; if (!t || !q || !s || !t.ready || t.answering) return;
+    t.answering = true; clearTimeout(t.auto); t.n++;
+    const keep = k >= 0 ? k : q.either, chosen = keep >= 0 ? q.looks[keep] : q.was;
+    picks = picks.map(p => (p.part === s.part ? { ...p, style: /** @type {import('./vocab.js').Style} */ (chosen.style), shape: chosen.shape } : p));
+    paintPicks();
+    navigator.vibrate?.(8);
+    sayCap(answerSaid(q, k));
+    (k === 0 ? oneBtn : k === 1 ? twoBtn : eitherBtn).classList.add('is-chosen');
+    if (keep >= 0) { optA.classList.toggle('is-on', keep === 0); optB.classList.toggle('is-on', keep === 1); oneBtn.classList.toggle('is-lit', keep === 0); twoBtn.classList.toggle('is-lit', keep === 1); }
+    else {
+      // either, and so as it was: made whole, and shown in the pair's place
+      oneBtn.classList.remove('is-lit'); twoBtn.classList.remove('is-lit');
+      const c = await lensOf(picks); if (trial !== t) return;
+      t.shown = [c, null]; drawOpts(); optA.classList.add('is-on'); optB.classList.remove('is-on');
+    }
+    if (s.kind === 'style' && chosen.style.id !== q.was.style.id) replan(s.part);
+    paintDots();
+    // the next two are made while this answer is said (once its words are in), so the next question is there at once
+    await Promise.all([pause(reduced ? 650 : 1150), pause(reduced ? 0 : 340).then(() => ahead(t))]); if (trial !== t) return;
+    [oneBtn, twoBtn, eitherBtn].forEach(b => b.classList.remove('is-chosen'));
+    nextQ();
+  }
+  /** The next question's two looks, made whole ahead and kept, so that asking it is at once. @param {NonNullable<typeof trial>} t */
+  async function ahead(t) {
+    for (let i = t.i + 1; i < t.steps.length; i++) {
+      const s = t.steps[i], q = questionOf(s, picks, t.n, id => styleOf(s.part, id)); if (!q) continue;
+      for (const look of q.looks) { if (trial !== t) return; await lensOf(/** @type {Pick[]} */ (picks.map(p => (p.part === s.part ? look : p)))); await new Promise(r => requestAnimationFrame(r)); }
+      return;
+    }
+  }
+  /** A part given a new style is asked about in its own shapes, in place of the old one's. @param {string} p */
+  function replan(p) {
+    const t = trial, q = picks.find(k => k.part === p); if (!t || !q) return;
+    const head = t.steps.slice(0, t.i + 1), rest = t.steps.slice(t.i + 1).filter(s => !(s.part === p && s.kind === 'shape'));
+    t.steps = [...head, ...stepsFor(q, shapesFor(q), t.parts).filter(s => s.kind === 'shape'), ...rest].slice(0, 10);
+  }
+  /** All asked: the look is fitted, the frame says so as a light passes over it, and the mirror is back. */
+  async function finished() {
+    const t = trial; if (!t) return;
+    const moved = picks.some(q => { const was = t.from.find(p => p.part === q.part); return !was || was.style.id !== q.style.id || shapeKey(was) !== shapeKey(q); });
+    t.answering = true; oneBtn.classList.remove('is-lit'); twoBtn.classList.remove('is-lit');
+    trialWhat.textContent = !t.asked ? 'Nothing to choose' : moved ? 'Fitted to you' : 'As it was';
+    sayCap(!t.asked ? 'Nothing here to choose between.' : moved ? 'Fitted to you.' : 'It fitted you already.');
+    if (!reduced) { glint.classList.remove('is-on'); void glint.offsetWidth; glint.classList.add('is-on'); }
+    await pause(reduced ? 900 : 1700); if (trial !== t) return;
+    glint.classList.remove('is-on');
+    trialMode(false);
+  }
+  /** The questions as dots: those answered filled, the one being asked ringed. */
+  function paintDots() {
+    const t = trial; if (!t) return;
+    const at = t.answering ? t.i + 1 : t.i;
+    trialDots.replaceChildren(...t.steps.map((_, i) => h('i' + (i < at ? '.is-done' : i === at ? '.is-now' : ''))));
+  }
+  /** The looks on the lenses' canvases (again, once the frame has been sized anew). */
+  function drawOpts() {
+    const t = trial; if (!t) return;
+    [optA, optB].forEach((c, k) => { const x = ctx(c), src = t.shown[k]; x.clearRect(0, 0, c.width, c.height); if (src) x.drawImage(src, 0, 0, c.width, c.height); });
+  }
+  /** What the frame says while fitting: which is on, then what was chosen. @param {string} text */
+  function sayCap(text) {
+    if (trialSay.textContent === text) return;
+    trialSay.textContent = text;
+    if (text && !reduced) trialSay.animate([{ opacity: 0, filter: 'blur(3px)', translate: '0 .8cqw' }, { opacity: 1, filter: 'blur(0)', translate: '0 0' }], { duration: 280, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+  }
+  /** The frame brought close to what is being looked at: the chosen part, or, fitting, the part being asked about. */
+  function focusNow() { if (trialing && trial) focus(trial.steps[trial.i]?.part || '', 1.6); else focus(part); }
+  /** The fitting's keys: 1 or 2 to choose, E for either, the arrows to look at each. @param {KeyboardEvent} e */
+  function trialKey(e) {
+    if (!trial || e.altKey || e.ctrlKey || e.metaKey) return false;
+    const k = /** @type {Record<string, number>} */ ({ 1: 0, 2: 1, e: -1, E: -1 })[e.key];
+    if (k !== undefined) { e.preventDefault(); answer(k); return true; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); flipTo(e.key === 'ArrowLeft' ? 0 : 1, true); return true; }
+    return false;
+  }
+
   function tray(on) { trayEl.classList.toggle('is-open', on); addBtn.setAttribute('aria-expanded', String(on)); }
   /**
    * Drawing on the picture: a finger draws instead of turning it, the pen's bar comes up in the frame, and the marks stay
@@ -624,6 +852,8 @@ export function openMirror(o) {
     read.classList.toggle('is-quiet', now.some(q => q.part === part));
   }
   async function paintWash() {
+    // (while fitting, the lenses show the look: it is painted here again once the fitting is over)
+    if (trialing) { washing++; return; }
     const n = ++washing, now = lookNow(), wk = timing ? weeks : 0;
     const w = face && base && now.some(q => tintOf(q.part, q.style.id)) ? await washOf(base, face, now, wk) : null;
     if (n !== washing) return;
@@ -678,6 +908,7 @@ export function openMirror(o) {
   function show(i, instant = false, arrived = false) {
     const t = i < 0 ? origin : takes[i]; if (!t || t.pending) return;
     if (i >= 0 && timing) timeMode(false);
+    if (i >= 0 && trialing) trialMode(false);
     shown = i;
     over.classList.remove('is-in', 'is-sweep'); glint.classList.remove('is-on'); clearTimeout(swap);
     if (instant || reduced) pic.src = t.url;
@@ -715,18 +946,22 @@ export function openMirror(o) {
   // —— leaning in: a part chosen brings the mirror close to it, where its handles have room ——
   let zoom = { z: 1, tx: 0, ty: 0 };
   /** The mirror brought close to a part (or, with none, back out). @param {string} id */
-  function focus(id) {
+  function focus(id, most = 2.6) {
+    zoom = zoomOf(id, most); const { z, tx, ty } = zoom;
+    lens.style.transform = z > 1.01 ? 'translate(' + tx.toFixed(1) + 'px, ' + ty.toFixed(1) + 'px) scale(' + z.toFixed(3) + ')' : '';
+    lens.style.setProperty('--z', z.toFixed(3));
+    el.classList.toggle('is-close', z > 1.01);
+  }
+  /** How close the mirror would come to a part, and where it would stand: no nearer than most. @param {string} id @param {number} [most] */
+  function zoomOf(id, most = 2.6) {
     const fr = frame.getBoundingClientRect(), fw = fr.width, fh = fr.height, box = id && face ? partBox(id) : null;
     let z = 1, tx = 0, ty = 0;
     if (box && face && fw) {
       const k = fw / face.w, [x0, y0, x1, y1] = box;
-      z = clamp(Math.min(fw / Math.max(1, (x1 - x0) * k * 1.5), fh / Math.max(1, (y1 - y0) * k * 2.1)), 1, 2.6);
+      z = clamp(Math.min(fw / Math.max(1, (x1 - x0) * k * 1.5), fh / Math.max(1, (y1 - y0) * k * 2.1)), 1, most);
       tx = clamp(fw / 2 - (x0 + x1) / 2 * k * z, fw - fw * z, 0); ty = clamp(fh / 2 - (y0 + y1) / 2 * k * z, fh - fh * z, 0);
     }
-    zoom = { z, tx, ty };
-    lens.style.transform = z > 1.01 ? 'translate(' + tx.toFixed(1) + 'px, ' + ty.toFixed(1) + 'px) scale(' + z.toFixed(3) + ')' : '';
-    lens.style.setProperty('--z', z.toFixed(3));
-    el.classList.toggle('is-close', z > 1.01);
+    return { z, tx, ty };
   }
   /** Where a part is, as a box in the picture's pixels; none for the whole head (a cut, a colour). @param {string} id */
   function partBox(id) {
@@ -746,7 +981,7 @@ export function openMirror(o) {
   const NAMES = /** @type {Record<string, string>} */ ({ arch: 'arch', full: 'fullness', tail: 'tails', length: 'length', part: 'parting', long: 'length', volume: 'volume', shade: 'shade' });
   let taught = false;
   /** The chosen part's pick, if it is drawn over the picture on show (so it can be shaped). */
-  const shapeable = () => { const q = part && !timing ? picks.find(p => p.part === part) : null; return q && face && fresh().includes(q) ? q : null; };
+  const shapeable = () => { const q = part && !timing && !trialing ? picks.find(p => p.part === part) : null; return q && face && fresh().includes(q) ? q : null; };
   /** The handles for the chosen part's style, where its strokes now are. @param {import('./markup.js').Control[]} [known] */
   function paintHandles(known) {
     const q = shapeable(), cs = known || (q && face ? controlsOf(face, q.part, q.style.id, q.shape) : []), f = face;
@@ -896,6 +1131,8 @@ export function openMirror(o) {
       if (/** @type {HTMLElement} */ (e.target).closest('button')) return false;
       stopGreeting();
       if (drawingNow) { const at = toShare(e.clientX, e.clientY); marks.push({ ink, w: .011, pts: [at] }); paintMarks(); return; }
+      // fitting, a touch shows the other look, and holding shows the face as it was
+      if (trialing) { held0 = true; hold = setTimeout(() => requestAnimationFrame(() => { if (!held0 || !trialing) return; comparing = true; frame.classList.add('is-comparing'); over.src = origin.url; over.classList.add('is-held'); }), 280); return; }
       anim?.stop(); if (turning) { p0 = turning.p; return; }
       if (turn && face) { ready = false; mount().then(ok => { ready = ok; }).catch(() => {}); }
       // (decided a frame later: a finger that moved while the device was busy, painting the face to turn, has its moves
@@ -906,6 +1143,7 @@ export function openMirror(o) {
     move: d => {
       if (drawingNow) { marks[marks.length - 1]?.pts.push(toShare(d.x, d.y)); paintMarks(); return; }
       if (Math.abs(d.dx) > 8 || Math.abs(d.dy) > 8) { clearTimeout(hold); held0 = false; }
+      if (trialing) return;
       if (turning) { turnTo(clamp(p0 - d.dx / (frame.clientWidth * .45), 0, turning.ring.length - 1)); return; }
       if (turn && !comparing && (leaning || Math.abs(d.dx) > 8)) {
         if (!leaning) { leaning = true; held.y = turn.yaw; held.p = pitchNow; }
@@ -919,6 +1157,7 @@ export function openMirror(o) {
       clearTimeout(hold); held0 = false;
       if (turning) { const to = Math.round(clamp(turning.p - d.vx / (frame.clientWidth * .45) * .25, 0, turning.ring.length - 1)); anim = spring({ from: turning.p, to, velocity: -d.vx / (frame.clientWidth * .45), stiffness: 140, damping: 22, onUpdate: v => turnTo(v) }); return; }
       if (comparing) { comparing = false; frame.classList.remove('is-comparing'); over.classList.remove('is-held'); return; }
+      if (trialing) { if (Math.abs(d.dx) < 8 && Math.abs(d.dy) < 8 && trial) flipTo(1 - trial.on, true); return; }
       if (leaning) {
         leaning = false; cancelAnimationFrame(steering); steering = 0;
         if (!ready) { held.y = held.p = 0; return; }
@@ -1319,7 +1558,7 @@ export function openMirror(o) {
    */
   async function showing(on) {
     if (on === showingNow || (on && (!face || !picks.length))) return;
-    stopGreeting(); if (on && timing) timeMode(false);
+    stopGreeting(); if (on && timing) timeMode(false); if (on && trialing) trialMode(false);
     showingNow = on;
     if (on && part) unchoose();
     if (on) showWords.replaceChildren(...picks.map((q, i) => h('li.mr-show__word', { style: { '--d': (140 + i * 90) + 'ms' } },
@@ -1365,7 +1604,7 @@ export function openMirror(o) {
 
   function close(now = false) {
     if (current !== self) return; current = null;
-    stops.forEach(f => f()); stopGreeting(); stopTurning(); cancelAnimationFrame(sway); clearTimeout(timeWalk); cancelAnimationFrame(sketchRaf);
+    stops.forEach(f => f()); stopGreeting(); stopTurning(); cancelAnimationFrame(sway); clearTimeout(timeWalk); cancelAnimationFrame(sketchRaf); if (trial) clearTimeout(trial.auto);
     if (now || reduced) { el.remove(); return; }
     el.classList.remove('is-in'); el.classList.add('is-out'); setTimeout(() => el.remove(), 420);
   }
@@ -1378,7 +1617,7 @@ export function openMirror(o) {
   new ResizeObserver(() => fit()).observe(stageEl);
   new ResizeObserver(() => fit(true)).observe(takesRow);
   requestAnimationFrame(() => { el.classList.add('is-in'); fit(); if (from) flip(frame, from, { duration: 620 }); });
-  const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Escape') { if (timing) timeMode(false); else if (showingNow) showing(false); else close(); } };
+  const onKey = (/** @type {KeyboardEvent} */ e) => { if (trialing && trialKey(e)) return; if (e.key === 'Escape') { if (timing) timeMode(false); else if (trialing) trialMode(false); else if (showingNow) showing(false); else close(); } };
   document.addEventListener('keydown', onKey); stops.push(() => document.removeEventListener('keydown', onKey));
 
   (async () => {

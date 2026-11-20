@@ -17,7 +17,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SCENES = ['welcome', 'ring', 'words', 'mix', 'mirror', 'weeks', 'tryon', 'show', 'marks', 'you', 'rooms', 'live', 'sides', 'desk'];
+const SCENES = ['welcome', 'ring', 'words', 'mix', 'mirror', 'fit', 'weeks', 'tryon', 'show', 'marks', 'you', 'rooms', 'live', 'sides', 'desk'];
 const arg = (name, fallback) => { const i = process.argv.indexOf('--' + name); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback; };
 const URL_ = arg('url', 'http://127.0.0.1:8787').replace(/\/$/, '');
 const OUT = resolve(ROOT, arg('out', 'relay/0004-lookbook/out/tour'));
@@ -148,6 +148,38 @@ await scene('mirror', 'The mirror, on a face from the ring', page, async ({ shot
     await shot('dragged sideways: it turns'); await page.mouse.up(); await sleep(1000); await shot('let go');
   }
   await page.locator('section.mr .mr-bar__back').click(); await sleep(900);
+});
+await scene('fit', 'Fit it: one, or two? The look fitted to the face by eye, the way lenses are', page, async ({ shot, note }) => {
+  const book = page.locator('section.book'), mirror = page.locator('section.mr');
+  for (const [part, style] of [['bangs', 'curtain'], ['colour', 'copper']]) { await book.locator('.lb-part[data-part="' + part + '"]').click(); await sleep(600); await book.locator('.lb-style[data-style="' + style + '"]').click(); await sleep(700); }
+  await book.locator('.lb-card.is-front').click(); await mirror.waitFor({ timeout: 20000 });
+  await mirror.locator('.mr-fit').waitFor({ timeout: 40000 }); await sleep(1500); await shot('the look, and Fit it');
+  await mirror.locator('.mr-fit').click();
+  const cap = () => mirror.locator('.mr-trialcap').textContent().catch(() => '');
+  // where the fitting is: a question ready (its two made, one lit), fitted, or over
+  const state = () => page.waitForFunction(() => {
+    const m = document.querySelector('section.mr'); if (!m?.classList.contains('is-trial')) return 'out';
+    if (/^(Fitted|It fitted)/.test(document.querySelector('.mr-trialcap')?.textContent || '')) return 'fitted';
+    return !m.classList.contains('is-trial-making') && document.querySelector('.mr-trial__lens.is-lit') && !document.querySelector('.is-chosen') ? 'ready' : false;
+  }, null, { timeout: 30000 }).then(h => h.jsonValue());
+  const asked = [];
+  for (const [k, a] of ['2', '1', 'e', '1', '2', '1', '2', '1', '2', '1'].entries()) {
+    const now = await state(); if (now !== 'ready') break;
+    const q = await mirror.locator('.mr-trial__what').textContent(), labels = await mirror.locator('.mr-trial__lens').evaluateAll(bs => bs.map(b => b.getAttribute('aria-label')));
+    if (k < 2) { await sleep(250); await shot(q + ', ' + labels[0]); await sleep(1500); await shot(q + ', ' + labels[1]); }
+    if (a === 'e') await mirror.locator('.mr-trial__either').click(); else await mirror.locator('.mr-trial__lens[data-k="' + (Number(a) - 1) + '"]').click();
+    await sleep(450); const said = await cap(); asked.push(q + ': ' + said);
+    if (k < 3) await shot(said);
+  }
+  note('asked: ' + asked.join(' / '));
+  if ((await state()) === 'fitted') { await sleep(500); await shot(await cap()); }
+  await page.waitForFunction(() => !document.querySelector('section.mr')?.classList.contains('is-trial'), null, { timeout: 20000 });
+  await sleep(1000); await shot('fitted: ' + (await mirror.locator('.mr-token').allTextContents()).join(', '));
+  await mirror.locator('.mr-bar__back').click(); await sleep(900);
+  // put back as it was, for the scenes after
+  while (await book.locator('.lb-token').count()) { await book.locator('.lb-token').first().click(); await sleep(300); }
+  const open = book.locator('.lb-part[aria-pressed="true"]'); if (await open.count()) await open.click();
+  await sleep(800);
 });
 await scene('weeks', 'Weeks on: the look in the weeks after the salon, its upkeep marked', page, async ({ shot, note }) => {
   const book = page.locator('section.book'), mirror = page.locator('section.mr');

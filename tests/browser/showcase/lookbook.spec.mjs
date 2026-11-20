@@ -384,3 +384,82 @@ test('a look weeks on: Grow out walks the weeks to its first trim, the fringe fa
   await expect(mirror).not.toHaveClass(/is-when/);
   await expect(mirror).toBeVisible();
 });
+
+test('a look fitted one or two at a time: two versions in turn, the chosen kept, either the easier to live with, the look as fitted after', async ({ page }) => {
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/ines.jpg');
+  const mirror = page.locator('section.mr'), fit = mirror.locator('.mr-fit');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  // nothing to fit until there is a look
+  await expect(fit).toBeHidden();
+  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-style[data-style="blunt"]').click();
+  await mirror.locator('.mr-part[data-part="colour"]').click();
+  await mirror.locator('.mr-style[data-style="platinum"]').click();
+  await expect(fit).toBeVisible();
+  await fit.click();
+  // the dock is a pair of lenses; the parts, the line and the takes make way
+  await expect(mirror).toHaveClass(/is-trial/);
+  await expect(mirror.locator('.mr-parts')).toBeHidden();
+  await expect(mirror.locator('.mr-ask')).toBeHidden();
+  const what = mirror.locator('.mr-trial__what'), cap = mirror.locator('.mr-trialcap');
+  const one = mirror.locator('.mr-trial__lens[data-k="0"]'), two = mirror.locator('.mr-trial__lens[data-k="1"]');
+  // the fringe first: as it is, or the one a stylist would suggest beside it, shown one and then the other
+  await expect(one).toHaveAttribute('aria-label', '1: Blunt, as it is', { timeout: 20_000 });
+  await expect(two).toHaveAttribute('aria-label', '2: Wispy');
+  await expect(what).toHaveText('The fringe · which is more you?');
+  await expect(one).toHaveClass(/is-lit/);
+  await expect(cap).toHaveText('One…');
+  await expect(two).toHaveClass(/is-lit/, { timeout: 4_000 });
+  await expect(cap).toHaveText('…or two?');
+  // the two are different looks on the face
+  const differ = () => mirror.evaluate(el => { const [a, b] = [...el.querySelectorAll('.mr-opt')].map(c => /** @type {HTMLCanvasElement} */ (c).getContext('2d').getImageData(0, 0, c.width, c.height).data); let n = 0; for (let i = 0; i < a.length; i += 16) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 3] - b[i + 3]) > 24) n++; return n / (a.length / 16); });
+  expect(await differ()).toBeGreaterThan(.005);
+  // a touch on the face turns them by hand, and then they stay
+  const lit = async () => ((await one.getAttribute('class')) || '').includes('is-lit') ? 0 : 1;
+  const was = await lit();
+  await mirror.locator('.mr-frame').click({ position: { x: 90, y: 160 } });
+  await expect.poll(lit).toBe(1 - was);
+  await page.waitForTimeout(1900);
+  expect(await lit()).toBe(1 - was);
+  // two: said back on the frame
+  await two.click();
+  await expect(cap).toHaveText('Two: Wispy.');
+  // then its length, both ways from where it is, then a half step
+  await expect(what).toHaveText('The fringe · length', { timeout: 10_000 });
+  await expect(one).toHaveAttribute('aria-label', '1: longer');
+  await expect(two).toHaveAttribute('aria-label', '2: shorter');
+  await one.click();
+  await expect(cap).toHaveText('One: longer.');
+  await expect(one).toHaveAttribute('aria-label', '1: a little shorter', { timeout: 10_000 });
+  await mirror.locator('.mr-trial__either').click();
+  await expect(cap).toHaveText('Either: as it is, then.');
+  // the colour: either is the one that keeps longer before it wants seeing to
+  await expect(what).toHaveText('The colour', { timeout: 10_000 });
+  await expect(one).toHaveAttribute('aria-label', '1: Honey');
+  await expect(two).toHaveAttribute('aria-label', '2: Platinum, as it is');
+  await page.keyboard.press('e');
+  await expect(cap).toHaveText('Either: Honey, as it keeps 2 months longer.');
+  // by the keys
+  await expect(what).toHaveText('The colour · shade', { timeout: 10_000 });
+  await expect(one).toHaveAttribute('aria-label', '1: deeper');
+  await page.keyboard.press('ArrowRight');
+  await expect(two).toHaveClass(/is-lit/);
+  await page.keyboard.press('1');
+  await expect(cap).toHaveText('One: deeper.');
+  await expect(two).toHaveAttribute('aria-label', '2: a little deeper', { timeout: 10_000 });
+  await page.keyboard.press('2');
+  // all asked: fitted, and the mirror is back with the look as fitted
+  await expect(cap).toHaveText('Fitted to you.', { timeout: 10_000 });
+  await expect(mirror).not.toHaveClass(/is-trial/, { timeout: 10_000 });
+  await expect(mirror.locator('.mr-parts')).toBeVisible();
+  await expect(fit).toBeVisible();
+  await expect(mirror.locator('.mr-token')).toHaveText([/^Wispy/, /^Honey.*much deeper/]);
+  // again, and away part way: what was chosen stays
+  await fit.click();
+  await expect(one).toHaveAttribute('aria-label', /^1: /, { timeout: 20_000 });
+  await page.keyboard.press('Escape');
+  await expect(mirror).not.toHaveClass(/is-trial/);
+  await expect(mirror.locator('.mr-token')).toHaveText([/^Wispy/, /^Honey.*much deeper/]);
+  await expect(mirror).toBeVisible();
+});

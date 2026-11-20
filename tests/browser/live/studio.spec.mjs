@@ -201,3 +201,29 @@ test('a look asked for weeks on: the studio is told what the weeks have done, an
   await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(4, { timeout: 90_000 });
   await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated · 6 weeks on');
 });
+
+test('a look fitted by eye, one or two at a time, is asked for as it was fitted', async ({ page }) => {
+  const turns = [];
+  page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/api/turns')) turns.push(r.postDataJSON()); });
+  await page.goto('/');
+  await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
+  const mirror = page.locator('section.mr'), one = mirror.locator('.mr-trial__lens[data-k="0"]');
+  await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-style[data-style="curtain"]').click();
+  await mirror.locator('.mr-fit').click();
+  await expect(one).toHaveAttribute('aria-label', '1: Curtain, as it is', { timeout: 20_000 });
+  await one.click();
+  await expect(one).toHaveAttribute('aria-label', '1: longer', { timeout: 10_000 });
+  await one.click();
+  await expect(mirror.locator('.mr-trialcap')).toHaveText('One: longer.');
+  // that is enough: Done keeps what was chosen, and it is what the studio is asked for
+  await mirror.locator('.mr-trial__done').click();
+  await expect(mirror).not.toHaveClass(/is-trial/);
+  await expect(mirror.locator('.mr-token')).toHaveText([/^Curtain.*longer/]);
+  await mirror.locator('.mr-ask__go').click();
+  await expect.poll(() => turns.length, { timeout: 20_000 }).toBe(1);
+  expect(turns[0].pins[0].note).toContain('longer, falling past the cheekbones');
+  await expect(mirror.locator('.mr-take:not(.is-origin):not(.is-pending)')).toHaveCount(4, { timeout: 90_000 });
+  await expect(mirror.locator('.mr-stamp')).toHaveText('Simulated');
+});

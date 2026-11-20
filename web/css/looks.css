@@ -310,7 +310,7 @@ html:not([data-dark]) .mr-glow { filter: blur(13cqw) saturate(1.2) brightness(1.
 
 @media (prefers-reduced-motion: reduce) {
   .book *, .book *::before, .book *::after, .mr *, .mr *::before, .mr *::after { animation: none !important; transition: none !important; }
-  .book .ln path, .mr .ln path, .mr-sketch path, .lb-card__sketch path { stroke-dashoffset: 0 !important; }
+  .book .ln path, .mr .ln path, .mr-sketch path, .mr-lines path, .lb-card__sketch path { stroke-dashoffset: 0 !important; }
   .lb-card__after { clip-path: none; }
   .lb-card__paint, .mr-paint { -webkit-mask: none !important; mask: none !important; }
 }
@@ -468,16 +468,20 @@ html:not([data-dark]) .mr-glow { filter: blur(13cqw) saturate(1.2) brightness(1.
    the frame's notes and handles step back, a caption says what the weeks have done, and the frame is dated the day it
    would be, in a camera's orange; in the dock, a ruler from today to three months on: a tick a week, taller each month,
    and a mark where the look will want seeing to, lit once the weeks reach it. */
-.mr-when { position: absolute; left: 3cqw; bottom: 3cqw; z-index: 3; display: flex; align-items: center; gap: 1.5cqw; height: 9cqw; padding: 0 3.4cqw 0 2.5cqw; border: 0; border-radius: 99cqw; overflow: hidden; background: rgb(12 10 9 / .5); backdrop-filter: blur(8px); color: #fff !important; font: 500 2.05cqw/1 var(--font-mono) !important; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; transition: opacity .3s, scale .2s var(--lk-pop); }
-.mr-when[hidden] { display: none; }
-.mr .mr-when .ic { width: 4.4cqw; height: 4.4cqw; }
-.mr-when:active { scale: .94; }
-.mr-when.is-new::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgb(255 244 224 / .5) 50%, transparent 65%) 100% 0 / 300% 100% no-repeat; animation: mr-when-glint 1.5s .9s cubic-bezier(.65, 0, .3, 1) both; }
+.mr-modes { position: absolute; left: 3cqw; bottom: 3cqw; z-index: 3; display: flex; gap: 1.6cqw; transition: opacity .3s .35s; }
+.mr-pill { position: relative; display: flex; align-items: center; gap: 1.5cqw; height: 9cqw; padding: 0 3.4cqw 0 2.5cqw; border: 0; border-radius: 99cqw; overflow: hidden; background: rgb(12 10 9 / .5); backdrop-filter: blur(8px); color: #fff !important; font: 500 2.05cqw/1 var(--font-mono) !important; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; transition: scale .2s var(--lk-pop); }
+.mr-pill[hidden] { display: none; }
+.mr .mr-pill .ic { width: 4.4cqw; height: 4.4cqw; }
+.mr-pill:active { scale: .94; }
+/* (on a take, the heart to keep it shares the frame's foot: the two say themselves by their icons alone, and their names) */
+.mr.is-take .mr-pill { padding: 0 2.4cqw; }
+.mr.is-take .mr-pill__say { display: none; }
+.mr-pill.is-new::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgb(255 244 224 / .5) 50%, transparent 65%) 100% 0 / 300% 100% no-repeat; animation: mr-when-glint 1.5s .3s cubic-bezier(.65, 0, .3, 1) both; }
+.mr-when.is-new::after { animation-delay: 1.1s; }
 @keyframes mr-when-glint { from { background-position: 100% 0; } to { background-position: 0 0; } }
-/* (out of the way while the studio works, the frame turns, a pen draws, the face as it was is held up, or it is shown;
-   back only once the studio's words have gone) */
-.mr.is-working .mr-when, .mr.is-turning .mr-when, .mr-frame.is-drawing .mr-when, .mr-frame.is-comparing .mr-when, .mr.is-showing .mr-when { opacity: 0; pointer-events: none; transition-delay: 0s; }
-.mr-when { transition-delay: .35s, 0s; }
+/* (out of the way while the studio works, the frame turns, a pen draws, the face as it was is held up, it is shown,
+   or looked ahead or fitted; back only once the studio's words have gone) */
+.mr.is-working .mr-modes, .mr.is-turning .mr-modes, .mr-frame.is-drawing .mr-modes, .mr-frame.is-comparing .mr-modes, .mr.is-showing .mr-modes, .mr.is-when .mr-modes, .mr.is-trial .mr-modes { opacity: 0; pointer-events: none; transition-delay: 0s; }
 .mr.is-when :is(.mr-notes, .mr-lines, .mr-handles, .mr-keep) { opacity: 0 !important; pointer-events: none !important; }
 /* a name in the margin, out of sight, is out of reach too (its own pointer-events would otherwise keep it touchable) */
 .mr.is-when .mr-note, .mr.is-showing .mr-note, .mr-frame.is-drawing .mr-note, .mr.is-turning .mr-note, .mr-frame.is-comparing .mr-note { pointer-events: none; }
@@ -485,11 +489,11 @@ html:not([data-dark]) .mr-glow { filter: blur(13cqw) saturate(1.2) brightness(1.
 .mr.is-when .mr-takes { opacity: 0; pointer-events: none; height: 0; padding-top: 0; }
 .mr-ghost { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; }
 .mr-frame.is-device-turn .mr-ghost, .mr-frame.is-comparing .mr-ghost, .mr.is-turning .mr-ghost { visibility: hidden; }
-.mr-cap { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; margin: 0; padding: 18cqw 4.4cqw 3.8cqw; display: flex; align-items: flex-end; justify-content: space-between; gap: 3cqw; color: #fff; pointer-events: none;
+.mr-cap, .mr-trialcap { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; margin: 0; padding: 18cqw 4.4cqw 3.8cqw; display: flex; align-items: flex-end; justify-content: space-between; gap: 3cqw; color: #fff; pointer-events: none;
   background: linear-gradient(180deg, transparent, rgb(10 8 7 / .3) 42%, rgb(10 8 7 / .74)); opacity: 0; translate: 0 2.4cqw; transition: opacity .35s, translate .5s var(--lk-ease); }
 .mr.is-when .mr-cap { opacity: 1; translate: 0 0; transition-delay: .12s; }
 .mr.is-when.is-working .mr-cap, .mr.is-when.is-turning .mr-cap, .mr-frame.is-comparing .mr-cap { opacity: 0; transition-delay: 0s; }
-.mr-cap__say { min-width: 0; font: italic 400 4.3cqw/1.22 var(--font-text); font-variation-settings: 'opsz' 48, 'SOFT' 100; text-wrap: balance; text-shadow: 0 .2cqw 1.6cqw rgb(0 0 0 / .45); }
+.mr-cap__say, .mr-trialcap__say { min-width: 0; font: italic 400 4.3cqw/1.22 var(--font-text); font-variation-settings: 'opsz' 48, 'SOFT' 100; text-wrap: balance; text-shadow: 0 .2cqw 1.6cqw rgb(0 0 0 / .45); }
 .mr-cap__date { flex: none; padding-bottom: .5cqw; font: 500 2.75cqw/1 var(--font-mono); letter-spacing: .1em; color: #ffa040; text-shadow: 0 0 .7cqw rgb(255 126 28 / .9), 0 0 2.6cqw rgb(255 100 20 / .5); }
 .mr-time { display: flex; align-items: center; gap: 2.6cqw; }
 .mr-time[hidden] { display: none; }
@@ -517,6 +521,49 @@ html:not([data-dark]) .mr-glow { filter: blur(13cqw) saturate(1.2) brightness(1.
 .mr .mr-time__done { flex: none; height: 9.5cqw; padding: 0 4.4cqw; border-radius: 99cqw; border: 1px solid var(--lk-line); background: var(--lk-glass); color: var(--lk-ink) !important; font: 500 2.4cqw/1 var(--font-mono) !important; letter-spacing: .12em; text-transform: uppercase; }
 .mr-token--when .mr-token__plate { background: var(--lk-accent); color: var(--lk-on-accent); }
 .mr .mr-token--when .mr-token__plate .ic { width: 4cqw; height: 4cqw; }
+/* the fitting: one, or two? Fitting, the frame comes close to the part being asked about and shows its two looks, one
+   and then the other, each made whole on its own canvas, while its own paint steps aside; a caption says which is on,
+   then what was chosen. In the dock, a pair of lenses (lit as each is shown, filled once chosen) with Either between
+   them, under the questions as dots and a line saying what is being looked at. */
+.mr-opt { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; }
+.mr.is-trial .mr-opt { transition: opacity .14s linear; }
+.mr.is-trial .mr-opt.is-on { opacity: 1; }
+.mr.is-trial :is(.mr-wash, .mr-paint, .mr-sketch, .mr-read, .mr-ghost) { opacity: 0 !important; transition: none !important; }
+.mr.is-settling :is(.mr-wash, .mr-paint, .mr-sketch) { transition: none !important; }
+.mr-frame.is-comparing .mr-opt, .mr-frame.is-device-turn .mr-opt { visibility: hidden; }
+.mr.is-trial :is(.mr-notes, .mr-lines, .mr-handles, .mr-keep, .mr-turn) { opacity: 0 !important; pointer-events: none !important; }
+.mr.is-trial .mr-note { pointer-events: none; }
+.mr.is-trial .mr-takes { opacity: 0; pointer-events: none; height: 0; padding-top: 0; }
+.mr.is-trial .mr-trialcap { opacity: 1; translate: 0 0; transition-delay: .12s; }
+.mr-frame.is-comparing .mr-trialcap { opacity: 0; transition-delay: 0s; }
+.mr .mr-ask[hidden] { display: none; }
+.mr-trial { display: grid; gap: 2.2cqw; }
+.mr-trial[hidden] { display: none; }
+.mr-trial__head { display: flex; align-items: center; justify-content: space-between; gap: 3cqw; min-height: 7cqw; padding-left: 1.2cqw; }
+.mr-trial__what { min-width: 0; font: 500 2.15cqw/1.2 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--lk-soft); }
+.mr .mr-trial__done { flex: none; height: 7.4cqw; padding: 0 3.8cqw; border-radius: 99cqw; border: 1px solid var(--lk-line); background: var(--lk-glass); color: var(--lk-ink) !important; font: 500 2.2cqw/1 var(--font-mono) !important; letter-spacing: .12em; text-transform: uppercase; }
+.mr-trial__body { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2.6cqw; padding: 0 1.6cqw; }
+.mr .mr-trial__lens { position: relative; width: 18.5cqw; height: 18.5cqw; padding: 0; border-radius: 50%; display: grid; place-items: center; border: .6cqw solid var(--lk-line);
+  background: radial-gradient(circle at 33% 28%, rgb(255 255 255 / .2), transparent 38%), radial-gradient(circle, transparent 61%, rgb(255 244 224 / .07) 63%, transparent 66%), var(--lk-glass);
+  backdrop-filter: blur(10px); color: var(--lk-ink) !important; transition: border-color .18s, box-shadow .25s, background-color .2s, scale .2s var(--lk-pop), opacity .25s; }
+.mr-trial__lens b { font: 400 9.4cqw/1 var(--font-display); font-variation-settings: 'opsz' 144; translate: 0 -.4cqw; transition: color .18s; }
+.mr-trial__lens.is-lit { border-color: var(--lk-accent); box-shadow: 0 0 0 .7cqw color-mix(in srgb, var(--lk-accent) 20%, transparent), 0 0 5cqw color-mix(in srgb, var(--lk-accent) 32%, transparent); }
+.mr-trial__lens.is-lit b { color: var(--lk-accent); animation: mr-trial-lit .34s var(--lk-pop); }
+@keyframes mr-trial-lit { from { scale: 1.16; } to { scale: 1; } }
+.mr-trial__lens:active { scale: .93; }
+.mr-trial__lens.is-chosen { background: var(--lk-accent); border-color: var(--lk-accent); animation: mr-trial-chosen .5s var(--lk-pop); }
+.mr-trial__lens.is-chosen b { color: var(--lk-on-accent); }
+@keyframes mr-trial-chosen { 0% { scale: .9; } 60% { scale: 1.06; } 100% { scale: 1; } }
+.mr-trial__mid { display: grid; justify-items: center; gap: 2.4cqw; }
+.mr-trial__dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 1.3cqw; max-width: 100%; }
+.mr-trial__dots i { width: 1.5cqw; height: 1.5cqw; box-sizing: border-box; border-radius: 50%; border: 1px solid var(--lk-soft); transition: background .3s, border-color .3s, scale .3s; }
+.mr-trial__dots i.is-done { background: var(--lk-accent); border-color: var(--lk-accent); }
+.mr-trial__dots i.is-now { border-color: var(--lk-ink); scale: 1.35; }
+.mr .mr-trial__either { height: 8cqw; padding: 0 4.2cqw; border-radius: 99cqw; border: 1px solid var(--lk-line); background: transparent; color: var(--lk-ink) !important; font: 500 2.2cqw/1 var(--font-mono) !important; letter-spacing: .14em; text-transform: uppercase; transition: background-color .2s, color .2s, border-color .2s, opacity .25s; }
+.mr .mr-trial__either.is-chosen { background: var(--lk-accent); border-color: var(--lk-accent); color: var(--lk-on-accent) !important; }
+.mr.is-trial-making :is(.mr-trial__lens, .mr-trial__either) { opacity: .4; pointer-events: none; }
+.mr-trial__lens:focus-visible, .mr-trial__either:focus-visible, .mr-trial__done:focus-visible { outline: .5cqw solid var(--lk-accent); outline-offset: .8cqw; }
+@media (prefers-reduced-motion: reduce) { .mr.is-trial .mr-opt { transition: none; } .mr-trial__lens.is-chosen { animation: none; } }
 .mr-take[data-weeks]::after { content: attr(data-weeks) 'w'; position: absolute; right: .6cqw; bottom: .6cqw; padding: .5cqw .8cqw; border-radius: 99cqw; background: rgb(12 10 9 / .62); color: #ffa040; font: 500 1.6cqw/1 var(--font-mono); letter-spacing: .06em; }
 .mr-show__keep { margin-top: .4cqw; font: 500 1.95cqw/1.35 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--lk-faint); }
 

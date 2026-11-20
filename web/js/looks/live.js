@@ -16,7 +16,7 @@ import { studio } from '../studio/studio.js';
 import { partById, styleOf, plateSVG, tintOf } from './vocab.js';
 import { markup } from './markup.js';
 import { coat, dyeHair } from './tint.js';
-import { paintLook, coloursOf, PAINTED } from './paint.js';
+import { paintLook, coloursOf, PAINTED, refreshHairTexture } from './paint.js';
 
 /** @typedef {{ part: string, style: import('./vocab.js').Style, shape?: Record<string, number>, said?: string }} Pick */
 /** One side of you, caught: the picture with the look on it, and the face in it (null where it could not be read again). @typedef {{ src: string, face?: import('../studio/face.js').Face | null }} Side */
@@ -169,6 +169,7 @@ export function openLive(o) {
 
     // —— the mirror itself: each frame, the camera (mirrored, as you see yourself) and the look on the face in it ——
     const small = P.make(192, 256), base = P.make(2, 2);
+    const previewSource = P.make(2, 2);
     let mask = /** @type {HTMLCanvasElement | null} */ (null);
     /** @type {Map<string, { c: HTMLCanvasElement, at: number }>} each colour laid on the hair, kept a moment (a tile each) */
     const tints = new Map();
@@ -333,7 +334,8 @@ export function openLive(o) {
     const paints = new Map();
     /** @type {ReturnType<typeof coloursOf> | null} */ let tone = null;
     let toneAt = -1e9, cost = 40, nextPaint = 0, ticks = 0, paintedTick = -1;
-    let paintScale = .88;
+    let paintScale = .72;
+    let paintYaw = 1, textureAt = 0;
     const corners = (/** @type {any} */ f) => [f.pts[33], f.pts[263]];
     /** The painted parts of a look, as a key. @param {Pick[]} ps */
     const keyOf = (ps) => ps.filter(q => PAINTED.has(q.part) || q.part === 'colour').map(q => q.part + ':' + q.style.id + ':' + JSON.stringify(q.shape || {})).join('|');
@@ -345,7 +347,7 @@ export function openLive(o) {
       const now = performance.now();
       const hm = maskNow();
       // read again now and then, and at once when the hair is first found (until then a fringe waits, in pencil)
-      if (!tone || now - toneAt > 1200 || (hm && !tone.mask)) { tone = coloursOf(pic, f, hm); toneAt = now; }
+      if (!tone || now - toneAt > 1200 || (hm && !tone.mask)) { tone = coloursOf(pic, f, hm, pic === previewSource); toneAt = now; }
       const [bx, by, bw, bh] = f.box, box = [bx - bw * .5, by - bh * .8, bw * 2, bh * 2.05];
       const colour = ps.find(q => q.part === 'colour'), dye = colour ? tintOf('colour', colour.style.id, colour.shape?.shade || 0) : '';
       const layer = paintLook(pic, f, ps.filter(q => PAINTED.has(q.part)).map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), box, px / box[2], { ...tone, mask: hm, dye: dye || '' });
@@ -360,11 +362,24 @@ export function openLive(o) {
       const key = keyOf(ps) + '@' + Math.round(px / 60), had = paints.get(key), now = performance.now();
       if ((!had || now >= nextPaint) && paintedTick !== ticks) {
         paintedTick = ticks;
-        const t0 = performance.now(), snap = P.make(base.width, base.height); ctx(snap).drawImage(base, 0, 0);
-        const got = paintNow(snap, f, ps, Math.max(140, px * paintScale)), took = performance.now() - t0;
-        paintScale = Math.max(.52, Math.min(1, paintScale * Math.max(.86, Math.min(1.04, Math.sqrt(22 / Math.max(1, took))))));
+        const t0 = performance.now();
+        const shrink = Math.min(1, 448 / Math.max(base.width, base.height));
+        const w = Math.max(2, Math.round(base.width * shrink)), h = Math.max(2, Math.round(base.height * shrink));
+        const yaw = yawOf(f);
+        if (Math.abs(yaw - paintYaw) > .16 || now - textureAt > 3000 || previewSource.width !== w || previewSource.height !== h) {
+          if (previewSource.width !== w || previewSource.height !== h) { previewSource.width = w; previewSource.height = h; }
+          paintYaw = yaw; textureAt = now;
+          refreshHairTexture(previewSource);
+        }
+        ctx(previewSource).drawImage(base, 0, 0, w, h);
+        const smallFace = reframed(f, w, h);
+        const got = paintNow(previewSource, smallFace, ps, Math.max(120, px * paintScale)), took = performance.now() - t0;
+        paintScale = Math.max(.46, Math.min(1, paintScale * Math.max(.82, Math.min(1.04, Math.sqrt(18 / Math.max(1, took))))));
         cost = cost * .6 + took * .4; nextPaint = now + Math.max(100, cost * 3); el.dataset.paint = String(Math.round(cost));
-        if (got) paints.set(key, { ...got, e: corners(f), at: now, used: now });
+        if (got) {
+          const [x, y, width, height] = got.box;
+          paints.set(key, { ...got, box: [x * base.width / w, y * base.height / h, width * base.width / w, height * base.height / h], e: corners(f), at: now, used: now });
+        }
       }
       const p = paints.get(key); if (!p) return null;
       p.used = now;

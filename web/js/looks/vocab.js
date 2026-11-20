@@ -100,10 +100,18 @@ export function lookName(part, style) {
 /** A short title for what was picked: "Curtain bangs", "Copper · Bob". @param {{ part: string, style: Style }[]} picks */
 export const titleOf = (picks) => picks.map(p => (['bangs', 'brows'].includes(p.part) ? p.style.name + ' ' + partById(p.part)?.name.toLowerCase() : p.style.name)).join(' · ');
 
+/** @type {Map<string, string>} */
+const plates = new Map();
 /** One part in one style, drawn as its chip shows it. @param {string} part @param {string} style */
 export function plateSVG(part, style) {
+  const key = part + '/' + style;
+  const cached = plates.get(key);
+  if (cached !== undefined) return cached;
   const s = styleOf(part, style);
-  return s ? sketchSVG(sketchFor(part, s), { view: VIEWS[part], only: part }) : '';
+  if (!s) return '';
+  const svg = sketchSVG(sketchFor(part, s), { view: VIEWS[part], only: part });
+  plates.set(key, svg);
+  return svg;
 }
 
 /** The parts a request names in its own words ("longer bangs", "fuller brows"), in the order they are offered. */

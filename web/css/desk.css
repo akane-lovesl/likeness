@@ -1,11 +1,14 @@
 /* The desk: where the conversation happens. */
-.desk__bar { flex: none; position: relative; z-index: 5; display: flex; align-items: center; gap: 1.4cqw; padding: calc(var(--set-top, 0cqw) + env(safe-area-inset-top) + 3cqw) 3.4cqw 1.4cqw 4.6cqw; }
-.desk__mark { display: flex; align-items: center; gap: 1.8cqw; min-width: 0; padding: 1cqw 1.6cqw 1cqw 0; border-radius: 99cqw; }
+.desk__bar { flex: none; position: relative; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 1.4cqw; padding: calc(var(--set-top, 0cqw) + env(safe-area-inset-top) + 3cqw) 3.4cqw 1.4cqw 4.6cqw; }
+.desk__mark { display: flex; align-items: center; gap: 1.8cqw; flex: none; padding: 1cqw 1.6cqw 1cqw 0; border-radius: 99cqw; }
 .desk__mark .orn { width: 5.2cqw; height: 5.2cqw; color: var(--accent); flex: none; transition: transform var(--t-mid) var(--ease-pop); }
 .desk__mark:active .orn { transform: rotate(-14deg) scale(.9); }
 .wordmark { font-family: var(--font-display); font-weight: var(--d-weight); font-size: calc(7.2cqw * var(--d-scale)); line-height: 1; letter-spacing: var(--d-track); text-transform: var(--d-case); white-space: nowrap; font-variation-settings: 'opsz' 96, 'SOFT' 100, 'WONK' 1; }
 .desk__bar .edition { margin-left: .4cqw; }
 .desk__tools { margin-left: auto; display: flex; align-items: center; gap: .6cqw; }
+@media (max-width: 480px) {
+  .desk__bar .edition { order: 1; margin-left: 0; }
+}
 .sky-btn .orn { width: 5.6cqw; height: 5.6cqw; color: var(--accent); animation: sky-bob calc(var(--tempo) * 3.2s) ease-in-out infinite alternate; }
 @keyframes sky-bob { to { transform: translateY(-.5cqw) rotate(6deg); } }
 

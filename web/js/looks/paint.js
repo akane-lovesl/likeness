@@ -63,10 +63,14 @@ export function along(d, step) {
 
 /** What a picture's pixels are, read once, at a size enough for its tones. @type {WeakMap<object, { c: HTMLCanvasElement, k: number }>} */
 const read = new WeakMap();
-/** @param {CanvasImageSource & { width: number, height: number }} pic @param {import('../studio/face.js').Face} f */
-function pixels(pic, f) {
-  let r = read.get(pic);
-  if (!r) { const k = Math.min(1, 720 / Math.max(f.w, f.h)), c = make(f.w * k, f.h * k); ctx(c).drawImage(pic, 0, 0, c.width, c.height); r = { c, k }; read.set(pic, r); }
+/** @param {CanvasImageSource & { width: number, height: number }} pic @param {import('../studio/face.js').Face} f @param {boolean} [moving] */
+function pixels(pic, f, moving = false) {
+  let r = moving ? null : read.get(pic);
+  if (!r) {
+    if (moving) return { c: /** @type {HTMLCanvasElement} */ (pic), k: 1 };
+    const k = Math.min(1, 720 / Math.max(f.w, f.h)), c = make(f.w * k, f.h * k);
+    ctx(c).drawImage(pic, 0, 0, c.width, c.height); r = { c, k }; read.set(pic, r);
+  }
   return r;
 }
 /**
@@ -102,10 +106,10 @@ function measure(f) {
 /**
  * The colours a look is painted in, from the picture: the hair (from the hair found in it if given, else what above the
  * forehead is neither skin nor wall, else the brows' darkest), the brows, and the skin (for the shadows cast on it).
- * @param {CanvasImageSource & { width: number, height: number }} pic @param {import('../studio/face.js').Face} f @param {(CanvasImageSource & { width: number, height: number }) | null} [hairMask]
+ * @param {CanvasImageSource & { width: number, height: number }} pic @param {import('../studio/face.js').Face} f @param {(CanvasImageSource & { width: number, height: number }) | null} [hairMask] @param {boolean} [moving]
  */
-export function coloursOf(pic, f, hairMask = null) {
-  const r = pixels(pic, f), m = measure(f), s = shapesOf(f);
+export function coloursOf(pic, f, hairMask = null, moving = false) {
+  const r = pixels(pic, f, moving), m = measure(f), s = shapesOf(f);
   const brows = tonesIn(r, s.brows), skin = tonesIn(r, [[m.P(50), m.P(101), m.P(118), m.P(117)], [m.P(280), m.P(330), m.P(347), m.P(346)]]);
   let hair = null;
   if (hairMask) {
@@ -136,6 +140,8 @@ export function coloursOf(pic, f, hairMask = null) {
 
 /** How straight a picture's hair is, read once. @type {WeakMap<object, number>} */
 const straightness = new WeakMap();
+/** Re-evaluate strand direction when the live camera exposes a different side. @param {HTMLCanvasElement} frame */
+export function refreshHairTexture(frame) { straightness.delete(frame); }
 /**
  * How straight the hair is, 0 (curls, running every way) to 1 (strands all running one way): in small blocks round the
  * top of the head, at a size where the forehead is 32 pixels, how much the light's edges agree on a direction. Each

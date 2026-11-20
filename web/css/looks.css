@@ -15,9 +15,8 @@ html:not([data-dark]) :is(.book, .mr, .lv) { --lk-deep: color-mix(in srgb, var(-
 
 /* —— the Lookbook —— */
 .book { z-index: 82; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-columns: minmax(0, 1fr); overflow: hidden;
-  background: radial-gradient(95% 52% at 50% 40%, var(--lk-bg-2) 0%, var(--lk-bg) 64%, color-mix(in srgb, var(--lk-bg) 86%, #000) 100%);
-  transition: opacity .2s var(--lk-ease), scale .24s var(--lk-ease), visibility 0s; }
-.book.is-away { opacity: 0; scale: 1.02; pointer-events: none; visibility: hidden; transition: opacity .2s var(--lk-ease), scale .24s var(--lk-ease), visibility 0s .24s; }
+  background: radial-gradient(95% 52% at 50% 40%, var(--lk-bg-2) 0%, var(--lk-bg) 64%, color-mix(in srgb, var(--lk-bg) 86%, #000) 100%); }
+.book.is-away { display: none; }
 .lb-light { position: absolute; left: 50%; top: 40%; width: 150cqw; height: 150cqw; margin: -75cqw 0 0 -75cqw; border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--lk-accent) calc(var(--lk-lamp) * 100%), transparent), color-mix(in srgb, var(--lk-accent) 4%, transparent) 55%, transparent); animation: lk-breathe 9s ease-in-out infinite; }
 .lb-bar { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; column-gap: 2.6cqw; row-gap: 2.2cqw; padding: 5.2cqw 5cqw 0; }
@@ -50,8 +49,9 @@ html:not([data-dark]) :is(.book, .mr, .lv) { --lk-deep: color-mix(in srgb, var(-
 .lb-orbit::after { content: ''; position: absolute; left: 16%; right: 16%; bottom: 3%; height: 9cqw; pointer-events: none; background: radial-gradient(closest-side, var(--lk-shadow), transparent); }
 .lb-ring { position: absolute; left: 50%; top: 48%; width: 0; height: 0; transform-style: preserve-3d; }
 .lb-card { position: absolute; left: 0; top: 0; width: var(--cw, 60cqw); aspect-ratio: 3 / 4; padding: 0; border: 0; border-radius: 4.4cqw; overflow: hidden; background: var(--lk-deep);
-  box-shadow: 0 5cqw 12cqw var(--lk-shadow), 0 0 0 1px var(--lk-line); backface-visibility: hidden; filter: brightness(var(--lit, 1)); will-change: transform, opacity;
+  box-shadow: 0 5cqw 12cqw var(--lk-shadow), 0 0 0 1px var(--lk-line); backface-visibility: hidden; will-change: transform, opacity;
   animation: lk-rise .7s var(--d, 0s) var(--lk-ease) backwards; }
+.lb-card::after { content: ''; position: absolute; inset: 0; z-index: 1; background: #000; opacity: var(--shade-card, 0); pointer-events: none; }
 .lb-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .lb-card--plate { background: radial-gradient(120% 90% at 50% 28%, #fdf9f2, var(--lk-paper) 58%, #e3d8c8); }
 .lb-card--plate::before { content: ''; position: absolute; inset: 3cqw; border-radius: 2.6cqw; border: 1px solid rgb(42 33 27 / .1); pointer-events: none; }
@@ -115,17 +115,17 @@ div.lb-card__after { position: absolute; inset: 0; }
 
 .lb-styles, .mr-styles { display: flex; gap: 2.4cqw; overflow-x: auto; scrollbar-width: none; padding: 1.2cqw .4cqw; margin: 0 -.4cqw; scroll-snap-type: x proximity; }
 /* the Lookbook's styles: a row of one height for every part, opening and closing smoothly, the ring easing to make room */
-.lb-styles { height: 26.7cqw; box-sizing: border-box; transition: height .45s var(--lk-ease), opacity .3s, margin .45s var(--lk-ease); }
+.lb-styles { height: 26.7cqw; box-sizing: border-box; }
 .lb-styles.is-shut { height: 0; margin-top: -3.2cqw; padding-block: 0; opacity: 0; pointer-events: none; }
 /* what the parts are for, and what to do next, over them */
 .lb-hint { margin: 0 0 -1.4cqw; text-align: center; font: italic 400 3.3cqw/1.25 var(--font-text); color: var(--lk-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-styles::-webkit-scrollbar, .mr-styles::-webkit-scrollbar, .lb-ask__field::-webkit-scrollbar, .mr-ask__field::-webkit-scrollbar { display: none; }
-.lb-style, .mr-style { flex: none; width: 16.6cqw; display: grid; grid-template-rows: auto 6.4cqw; gap: 1.3cqw; justify-items: center; align-content: start; padding: 0; border: 0; background: none; color: var(--lk-soft) !important; font: italic 400 2.9cqw/1.1 var(--font-text) !important; scroll-snap-align: start; animation: lk-rise .45s var(--d, 0s) var(--lk-ease) backwards; }
+.lb-style, .mr-style { flex: none; width: 16.6cqw; display: grid; grid-template-rows: auto 6.4cqw; gap: 1.3cqw; justify-items: center; align-content: start; padding: 0; border: 0; background: none; color: var(--lk-soft) !important; font: italic 400 2.9cqw/1.1 var(--font-text) !important; scroll-snap-align: start; }
 .lb-style__plate, .mr-style__plate { width: 16.6cqw; height: 16.6cqw; border-radius: 3.2cqw; display: grid; place-items: center; overflow: hidden; background: radial-gradient(circle at 50% 30%, #fffbf4, var(--lk-paper) 75%);
   box-shadow: 0 1.2cqw 3cqw var(--lk-shadow); transition: transform .35s var(--lk-pop), box-shadow .3s; }
 .lb-style__plate svg, .mr-style__plate svg { width: 96%; height: 96%; }
 .lb-style__name, .mr-style__name { max-width: 100%; text-align: center; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: break-word; hyphens: auto; }
-.lb-style .ln:not(.base) path, .mr-style .ln:not(.base) path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: lk-draw .8s calc(var(--d, 0s) + var(--k) * 50ms + .1s) cubic-bezier(.45, .05, .2, 1) forwards; }
+.lb-style .ln:not(.base) path, .mr-style .ln:not(.base) path { stroke-dashoffset: 0; }
 .lb-style[aria-selected="true"], .mr-style[aria-selected="true"] { color: var(--lk-ink) !important; }
 /* in a dark room the swatches are lit like cards under a lamp: the one chosen (or picked) in full, the rest a step back,
    so the face stays the brightest thing on the screen */

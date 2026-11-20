@@ -100,7 +100,7 @@ function loopOf(m) {
   return size > .04 && Math.hypot(a.x - b.x, a.y - b.y) < size * .25;
 }
 
-/** Each picture's parts as last recoloured (its mask, and the colour put on it): weeks on, only the roots are new. @type {WeakMap<HTMLCanvasElement, Map<string, { tint: string, mask: HTMLCanvasElement, layer: HTMLCanvasElement }>>} */
+/** Each picture's last colour by part, reused while the preview is being reshaped. @type {WeakMap<HTMLCanvasElement, Map<string, { tint: string, mask: HTMLCanvasElement | null, layer: HTMLCanvasElement }>>} */
 const dyedAt = new WeakMap();
 /**
  * The new colours, painted where they go (the hair, the lips) and nowhere else: the picture itself recoloured inside
@@ -117,14 +117,18 @@ async function washOf(pic, f, picks, weeks = 0) {
   for (const q of picks) {
     const tint = tintOf(q.part, q.style.id, q.shape?.shade || 0); if (!tint || !f) continue;
     let was = kept.get(q.part);
-    const m = was?.mask || await maskOf(pic, f, q.part); if (!m) continue;
+    const m = q.part === 'colour' ? was?.mask || await maskOf(pic, f, q.part) : null;
+    if (q.part === 'colour' && !m) continue;
     if (!was || was.tint !== tint) {
-      const layer = P.copy(pic), lx = /** @type {CanvasRenderingContext2D} */ (layer.getContext('2d'));
-      if (q.part === 'colour') dyeHair(lx, tint, m); else coat(lx, tint, q.part);
-      lx.globalCompositeOperation = 'destination-in'; lx.globalAlpha = 1; lx.drawImage(m, 0, 0);
+      const layer = m ? P.copy(pic) : lipWash(pic, f, tint);
+      if (m) {
+        const lx = /** @type {CanvasRenderingContext2D} */ (layer.getContext('2d'));
+        dyeHair(lx, tint, m);
+        lx.globalCompositeOperation = 'destination-in'; lx.drawImage(m, 0, 0);
+      }
       kept.set(q.part, was = { tint, mask: m, layer });
     }
-    const roots = q.part === 'colour' && weeks > 0 ? rootsOf(f, m, weeks, q.style.id) : null;
+    const roots = m && weeks > 0 ? rootsOf(f, m, weeks, q.style.id) : null;
     if (roots) {
       const grown = P.copy(was.layer), gx = /** @type {CanvasRenderingContext2D} */ (grown.getContext('2d'));
       gx.globalCompositeOperation = 'destination-out'; gx.drawImage(roots, 0, 0, grown.width, grown.height);
@@ -133,6 +137,35 @@ async function washOf(pic, f, picks, weeks = 0) {
     any = true;
   }
   return any ? c : null;
+}
+
+/** Paint just the mouth window, with the same soft edge as the full-frame mask. @param {HTMLCanvasElement} pic @param {Face} face @param {string} tint */
+function lipWash(pic, face, tint) {
+  const out = P.make(pic.width, pic.height), x = out.getContext('2d');
+  if (!x) return out;
+  const paths = shapesOf(face).lips, points = paths.flat(), blur = Math.max(1.5, pic.width / 260);
+  const pad = Math.ceil(blur * 4);
+  const left = Math.max(0, Math.floor(Math.min(...points.map(p => p.x))) - pad);
+  const top = Math.max(0, Math.floor(Math.min(...points.map(p => p.y))) - pad);
+  const right = Math.min(pic.width, Math.ceil(Math.max(...points.map(p => p.x))) + pad);
+  const bottom = Math.min(pic.height, Math.ceil(Math.max(...points.map(p => p.y))) + pad);
+  const w = Math.max(1, right - left), h = Math.max(1, bottom - top);
+  const window = P.make(w, h), paint = window.getContext('2d');
+  const mask = P.make(w, h), mx = mask.getContext('2d');
+  if (!paint || !mx) return out;
+  paint.drawImage(pic, left, top, w, h, 0, 0, w, h);
+  coat(paint, tint, 'lips');
+  mx.filter = 'blur(' + blur.toFixed(1) + 'px)';
+  mx.fillStyle = '#fff';
+  for (const ring of paths) {
+    mx.beginPath();
+    ring.forEach((p, i) => i ? mx.lineTo(p.x - left, p.y - top) : mx.moveTo(p.x - left, p.y - top));
+    mx.closePath(); mx.fill();
+  }
+  paint.globalCompositeOperation = 'destination-in';
+  paint.drawImage(mask, 0, 0);
+  x.drawImage(window, left, top);
+  return out;
 }
 /** A face's forehead, brow to hairline, in its picture's pixels: what the hair grows by is measured in it. @param {Face} f */
 const foreheadOf = (f) => { const bh = f.box[3]; return Math.max(bh * .12, Math.min(f.pts[105].y, f.pts[334].y) - (f.pts[10].y - bh * .02)); };
@@ -400,7 +433,7 @@ export function openMirror(o) {
       ...p.styles.map((s, i) => h('button.mr-style', { type: 'button', role: 'option', 'data-style': s.id, style: { '--d': (i * 55) + 'ms' }, 'aria-selected': String(picks.some(q => q.part === id && q.style.id === s.id)), onclick: () => pick(id, s.id) },
         h('span.mr-style__plate', { html: plateSVG(id, s.id) }), h('span.mr-style__name', null, s.name))));
     menu();
-    if (!reduced) stylesRow.animate([{ opacity: 0, translate: '6% 0' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    if (!reduced) stylesRow.animate([{ opacity: .85, translate: '2% 0' }, { opacity: 1, translate: '0 0' }], { duration: 140, easing: 'cubic-bezier(.2,.8,.2,1)' });
     mark(id); focus(id); paintHandles();
   }
   /**
@@ -408,7 +441,8 @@ export function openMirror(o) {
    * by gliding, not jumping: the frame and the parts are moved where they land, then eased there from where they were.
    */
   function menu() {
-    const glide = [frame, partsRow, timeBar, trialBar], was = glide.map(e => e.getBoundingClientRect());
+    const glide = [frame, partsRow, timeBar, trialBar];
+    const was = reduced ? [] : glide.map(e => e.getBoundingClientRect());
     partsRow.hidden = timing || trialing; stylesRow.hidden = timing || trialing || !part; timeBar.hidden = !timing; trialBar.hidden = !trialing; ask.hidden = trialing; el.classList.toggle('has-menu', !!part && !timing && !trialing); hint();
     if (reduced || !el.isConnected) return;
     glide.forEach((e, i) => {
@@ -876,9 +910,15 @@ export function openMirror(o) {
     /** @type {ReturnType<typeof paintLook>} */ let c = null;
     if (want.length && face && base) {
       const f = face, b = base, src = await onShow(); if (n !== washing) return;
-      const tone = await tonesOf(src || b); if (n !== washing) return;
-      c = paintLook(src || b, f, want.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], paintEl.width / f.w, { ...tone, dye: dyeOf(now), roots: w?.roots || null });
-    }
+      const source = src || b, dye = dyeOf(now);
+      const key = JSON.stringify([paintEl.width, paintEl.height, wk, dye, ...want.map(q => [q.part, q.style.id, q.shape])]);
+      if (lastLayer?.source === source && lastLayer.key === key) c = lastLayer.canvas;
+      else {
+        const tone = await tonesOf(source); if (n !== washing) return;
+        c = paintLook(source, f, want.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })), [0, 0, f.w, f.h], paintEl.width / f.w, { ...tone, dye, roots: w?.roots || null });
+        lastLayer = { source, key, canvas: c };
+      }
+    } else lastLayer = null;
     // from one week to the next, the last fades as the next comes up through it
     const fade = fadeNext && !reduced; fadeNext = false;
     if (fade) { const gx = ctx(ghost); gx.clearRect(0, 0, ghost.width, ghost.height); gx.globalAlpha = .95; gx.drawImage(wash, 0, 0, ghost.width, ghost.height); gx.globalAlpha = 1; gx.drawImage(paintEl, 0, 0, ghost.width, ghost.height); }
@@ -899,6 +939,7 @@ export function openMirror(o) {
       ...[wash, paintEl].map(c => c.animate([{ opacity: 0 }, { opacity: getComputedStyle(c).opacity }], { duration: 340, easing: 'cubic-bezier(.2, .7, .3, 1)' }))];
   }
   let paintedKey = '';
+  let lastLayer = /** @type {{source: HTMLCanvasElement, key: string, canvas: ReturnType<typeof paintLook>} | null} */ (null);
   /** The colours of each picture shown, read once each (a render's hair is not the portrait's). @type {WeakMap<HTMLCanvasElement, Promise<ReturnType<typeof coloursOf>>>} */
   const toned = new WeakMap();
   const tonesOf = (/** @type {HTMLCanvasElement} */ c) => { const f = /** @type {Face} */ (face); if (!toned.has(c)) toned.set(c, hairOf(c).catch(() => null).then(m => coloursOf(c, f, m))); return /** @type {Promise<ReturnType<typeof coloursOf>>} */ (toned.get(c)); };
@@ -1129,6 +1170,7 @@ export function openMirror(o) {
   // a tap picks the part under it, and holding shows the face as it was
   let hold = 0, comparing = false, turning = /** @type {null | Turning} */ (null), showingNow = false, sway = 0, p0 = 0, anim = /** @type {{ stop(): void } | null} */ (null);
   let leaning = false, ready = false, pitchNow = 0, stampWas = /** @type {[string, string] | null} */ (null);
+  let prepareTurn = /** @type {(() => void) | null} */ (null);
   // whether the finger has moved (or lifted) since it went down: a hold is only a hold if not
   let held0 = false;
   let greeting = 0;
@@ -1152,6 +1194,7 @@ export function openMirror(o) {
       // fitting, a touch shows the other look, and holding shows the face as it was
       if (trialing) { held0 = true; hold = setTimeout(() => requestAnimationFrame(() => { if (!held0 || !trialing) return; comparing = true; frame.classList.add('is-comparing'); over.src = origin.url; over.classList.add('is-held'); }), 280); return; }
       anim?.stop(); if (turning) { p0 = turning.p; return; }
+      if (!turn) prepareTurn?.();
       if (turn && face) { ready = false; mount().then(ok => { ready = ok; }).catch(() => {}); }
       // (decided a frame later: a finger that moved while the device was busy, painting the face to turn, has its moves
       // heard first, so a drag is never taken for a hold)
@@ -1701,9 +1744,21 @@ export function openMirror(o) {
     if (!el.isConnected) return;
     if (!face) { el.classList.add('no-face'); toast(base ? 'No face found: a change goes over the whole picture' : 'That picture could not be read', 2800); }
     else {
-      try { turn = turner(turnView, face); } catch { turn = null; }
-      if (turn && base) { const f = face; hairOf(base).then(m => { if (m) turn?.hair(m, f); }); }
+      const f = face;
+      prepareTurn = () => {
+        prepareTurn = null;
+        if (current !== self) return;
+        try { turn = turner(turnView, f); } catch { turn = null; }
+        if (!turn || !base) return;
+        hairOf(base).then(m => { if (m && current === self) turn?.hair(m, f); });
+      };
       if (!known) void reading();
+      const warmTurn = () => {
+        if (!prepareTurn) return;
+        prepareTurn();
+        if (shown < 0 && !part && !after && !o.go && o.turns?.length !== 3) void hello();
+      };
+      setTimeout(warmTurn, 360);
     }
     placeNotes(); paintPicks(); menu();
     turnBtn.hidden = !(live || person?.looks.some(l => l.angles?.length) || o.turns?.length === 3);
@@ -1733,7 +1788,7 @@ export function openMirror(o) {
       if (takes.length) show(0);
       return;
     }
-    if (o.go) tryOn(); else if (o.turns?.length === 3 && shown < 0 && !reduced) setTimeout(() => { if (el.isConnected && !turning) startTurning(/** @type {import('./live.js').Side[]} */ (o.turns), 1, true); }, 500); else if (face && shown < 0) hello();
+    if (o.go) tryOn(); else if (o.turns?.length === 3 && shown < 0 && !reduced) setTimeout(() => { if (el.isConnected && !turning) startTurning(/** @type {import('./live.js').Side[]} */ (o.turns), 1, true); }, 500);
   })();
 
   const self = { close };

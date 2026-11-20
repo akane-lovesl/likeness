@@ -154,7 +154,7 @@ let asideMade = /** @type {Promise<Worker | null> | null} */ (null);
 function asideWorker() {
   asideMade ||= (async () => {
     if (typeof Worker !== 'function' || typeof createImageBitmap !== 'function') return null;
-    const w = new Worker(new URL('./follow.worker.js', import.meta.url));
+    const w = new Worker(assetUrl('js/studio/follow.worker.js'));
     const ok = await new Promise(done => {
       const late = setTimeout(() => done(false), 15000);
       w.onmessage = (e) => { clearTimeout(late); done(e.data?.type === 'ready'); };
@@ -178,6 +178,8 @@ let asked = 0;
  */
 export async function followerAside() {
   const worker = await asideWorker(); if (!worker) return null;
+  const frame = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(1, 1) : null;
+  const draw = frame?.getContext('2d') || null;
   let busy = false, on = true, last = 0, at = 0, took = 0, mine = 0, from = 0;
   let prev = /** @type {Pt[] | null} */ (null), face = /** @type {Face | null} */ (null);
   /** @type {null | { crop: Crop, w: number, h: number, vw: number, vh: number, t0: number }} */ let q = null;
@@ -202,7 +204,17 @@ export async function followerAside() {
       busy = true; const t = Math.max(last + 1, performance.now()); last = t;
       const id = mine = ++asked;
       q = { crop: { ...crop }, w, h, vw: video.videoWidth, vh: video.videoHeight, t0: performance.now() };
-      createImageBitmap(video).then(bitmap => { if (!on || id !== mine) { bitmap.close(); busy = false; return; } worker.postMessage({ type: 'frame', bitmap, t, id }, [bitmap]); }, () => { busy = false; });
+      const send = (/** @type {ImageBitmap} */ bitmap) => {
+        if (!on || id !== mine) { bitmap.close(); busy = false; return; }
+        worker.postMessage({ type: 'frame', bitmap, t, id }, [bitmap]);
+      };
+      if (frame && draw) {
+        const scale = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight));
+        const width = Math.round(video.videoWidth * scale), height = Math.round(video.videoHeight * scale);
+        if (frame.width !== width || frame.height !== height) { frame.width = width; frame.height = height; }
+        try { draw.drawImage(video, 0, 0, width, height); send(frame.transferToImageBitmap()); }
+        catch { busy = false; }
+      } else createImageBitmap(video).then(send, () => { busy = false; });
     },
     get face() { return face; },
     get at() { return at; },

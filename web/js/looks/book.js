@@ -101,7 +101,7 @@ function lookbook() {
   paintSwatch(); on('room', paintSwatch);
   const bar = h('header.lb-bar', null, h('div.lb-bar__brand', null, h('button.lb-bar__mark', { type: 'button', title: 'How it works', 'aria-label': 'Likeness: how it works', onclick: () => welcome({ force: true }) }, 'Likeness'), edition), activityPill(), whoseEl, roomBtn, desk);
   const parts = h('div.lb-parts', { role: 'toolbar', 'aria-label': 'What to change' }, ...PARTS.map(p => h('button.lb-part', { type: 'button', 'data-part': p.id, 'aria-pressed': 'false', onclick: () => choosePart(p.id) },
-    h('span.lb-part__glyph', { html: plateSVG(p.id, p.styles[0].id) }), h('span.lb-part__name', null, p.name))));
+    h('span.lb-part__glyph', { data: { style: p.styles[0].id }, html: plateSVG(p.id, p.styles[0].id) }), h('span.lb-part__name', null, p.name))));
   const hint = h('p.lb-hint', { 'aria-live': 'polite' });
   const styles = h('div.lb-styles.is-shut', { role: 'listbox', 'aria-label': 'Styles' });
   const photoBtn = h('button.lb-ask__photo', { type: 'button', 'aria-label': 'Your face: the camera, or a photo', title: 'Your face: the camera, or a photo', html: icon('camera'), onclick: () => pickPhoto() });
@@ -123,6 +123,7 @@ function lookbook() {
   let part = '';
 
   function deal(/** @type {Card[]} */ list) {
+    anim?.stop();
     cards = list; step = 360 / Math.max(5, list.length);
     els = list.map((c, i) => {
       const card = h('button.lb-card', { type: 'button', role: 'option', 'aria-label': titleOf(c), style: { '--d': (60 + i * 55) + 'ms' }, onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0) tap(i); } });
@@ -179,7 +180,7 @@ function lookbook() {
       const a = ((i * step + spin) % 360 + 540) % 360 - 180, f = Math.cos(a * Math.PI / 180);
       card.style.transform = 'translate(-50%, -50%) rotateY(' + a.toFixed(2) + 'deg) translateZ(' + R.toFixed(1) + 'px)';
       card.style.opacity = f < -.15 ? '0' : Math.min(1, .2 + f).toFixed(3);
-      card.style.setProperty('--lit', (.38 + .62 * Math.pow(Math.max(0, f), 1.6)).toFixed(3));
+      card.style.setProperty('--shade-card', (.62 - .62 * Math.pow(Math.max(0, f), 1.6)).toFixed(3));
       card.style.visibility = f < -.2 ? 'hidden' : 'visible';
       if (Math.abs(a) < bestA) { bestA = Math.abs(a); best = i; }
     });
@@ -283,6 +284,7 @@ function lookbook() {
     if (photo) open({ print: photo, picks, words: input.value, from: els[i] }); else pickPhoto(els[i]);
   }
   function choosePart(/** @type {string} */ id) {
+    touched = Date.now(); anim?.stop();
     part = part === id ? '' : id;
     parts.querySelectorAll('.lb-part').forEach(b => b.setAttribute('aria-pressed', String(b.getAttribute('data-part') === part)));
     styles.classList.toggle('is-shut', !part);
@@ -309,12 +311,18 @@ function lookbook() {
    */
   function pick(/** @type {string} */ p, /** @type {string} */ id) {
     const s = styleOf(p, id); if (!s) return;
+    touched = Date.now(); anim?.stop();
     const had = picks.find(q => q.part === p), was = mixing();
     picks = had && had.style.id === id ? picks.filter(q => q !== had) : [...picks.filter(q => q.part !== p), { part: p, style: s }];
     parts.querySelectorAll('.lb-part').forEach(b => {
-      const id0 = b.getAttribute('data-part') || '', q = picks.find(x => x.part === id0), glyph = b.querySelector('.lb-part__glyph');
+      const id0 = b.getAttribute('data-part') || '', q = picks.find(x => x.part === id0);
+      const glyph = /** @type {HTMLElement | null} */ (b.querySelector('.lb-part__glyph'));
       b.classList.toggle('is-picked', !!q);
-      if (glyph) glyph.innerHTML = plateSVG(id0, q ? q.style.id : partById(id0)?.styles[0].id || '');
+      const next = q ? q.style.id : partById(id0)?.styles[0].id || '';
+      if (glyph && glyph.dataset.style !== next) {
+        glyph.dataset.style = next;
+        glyph.innerHTML = plateSVG(id0, next);
+      }
     });
     hintNow();
     if (was || mixing()) {

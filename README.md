@@ -101,6 +101,8 @@ tools/serve.mjs      the static server for the showcase
 
 Checks: `npm run check` (types), `uv run pytest`, and `npm test` (Chrome at a 9:16 viewport, showcase and live simulator).
 
+Run `npm run build` before starting a Studio intended for access over a network. The server uses the bundled scripts when their sources are current and can also serve the original browser modules directly.
+
 ## Privacy
 
-Your pictures, the studio's jobs, pairing keys and settings live in `private/`, which git ignores. The faces in the repository are the Lookbook's people, who do not exist (rendered by GPT Image from words), and the drawn sitters in `tests/fixtures/sitters/` (the Lookbook wears them too, from `web/sitters/`). The mirror reads a face on the device; a picture leaves it only when you ask a studio for something. The live mirror's camera is read frame by frame on the device and nothing of it is kept but a photo you take.
+Conversation and album history is kept in the current browser profile. For a Studio opened with an owner access link, the server uses an independent workspace for each paired browser. A browser can retrieve only its own uploads and results, even when it uses the same link as another device. Phone history survives a refresh in the same profile. Uploads and jobs explicitly sent for rendering stay in the workstation's Git-ignored `private/` area. The camera preview and face tracking run on the device. The public assets contain the fictional Lookbook portraits and the drawn test fixtures.

@@ -61,15 +61,22 @@ OWNER_HEADERS = {"Cache-Control": "private, no-store", "Referrer-Policy": "no-re
                  "X-Frame-Options": "DENY", "Permissions-Policy": "geolocation=()",
                  "X-Content-Type-Options": "nosniff"}
 OWNER_COOKIE = "__Host-likeness"
-STATIC_GROUPS = ("css/", "js/", "fonts/", "vendor/", "examples/", "sitters/")
+STATIC_GROUPS = ("css/", "js/", "fonts/", "vendor/", "examples/", "sitters/", "bundle/")
+PUBLIC_ASSET_TYPES = {".js", ".mjs", ".css", ".woff2", ".webp", ".task", ".tflite", ".wasm"}
 
 
 class StudioFiles(StaticFiles):
     """Keep the shell current while the browser reuses the unchanged public assets."""
 
-    def __init__(self, builds: dict[str, str]) -> None:
+    def __init__(self, builds: dict[str, str], bundle: Path | None) -> None:
         super().__init__(directory=paths.WEB)
         self.builds = builds
+        self.bundle = bundle
+
+    def lookup_path(self, path):
+        if path == os.path.join("bundle", "studio.js") and self.bundle and self.bundle.is_file():
+            return str(self.bundle), self.bundle.stat()
+        return super().lookup_path(path)
 
     def get_path(self, scope):
         path = super().get_path(scope)
@@ -84,7 +91,8 @@ class StudioFiles(StaticFiles):
         response = await super().get_response(path, scope)
         supplied = scope["path"].lstrip("/").partition("/")[0]
         if supplied == self.builds.get(path.partition(os.sep)[0]) and response.status_code in (200, 304):
-            response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+            visibility = "public" if scope.get("state", {}).get("public_asset") else "private"
+            response.headers["Cache-Control"] = f"{visibility}, max-age=31536000, immutable"
         else:
             response.headers["Cache-Control"] = "private, no-cache"
         return response
@@ -97,6 +105,29 @@ def public_build(directory: Path) -> str:
             digest.update(file.relative_to(directory).as_posix().encode())
             digest.update(hashlib.sha256(file.read_bytes()).digest())
     return "v" + digest.hexdigest()[:16]
+
+
+def app_shell(builds: dict[str, str], bundled: bool) -> str:
+    template = (paths.WEB / "index.html").read_text(encoding="utf-8")
+    if os.environ.get("LIKENESS_HIDE_EXAMPLES") == "1":
+        return template
+    support = ""
+    catalog = paths.WEB / "examples" / "manifest.json"
+    if catalog.is_file():
+        examples = json.loads(catalog.read_text(encoding="utf-8"))
+        first = next(iter(examples.get("people", [])), {})
+        portrait = first.get("portrait", "")
+        if re.fullmatch(r"[a-z0-9-]+/portrait\.webp", portrait):
+            support += f'<link rel="preload" as="image" href="/{builds["examples"]}/examples/{portrait}" fetchpriority="high">'
+        data = json.dumps(examples, separators=(",", ":")).replace("<", "\\u003c")
+        support += f'<script id="example-catalog" type="application/json">{data}</script>'
+    versions = json.dumps(builds, separators=(",", ":"))
+    support += f'<script id="studio-versions" type="application/json">{versions}</script>'
+    for directory in ("css", "fonts", "js"):
+        template = template.replace(f'"{directory}/', f'"/{builds[directory]}/{directory}/')
+    if bundled:
+        template = template.replace(f'"/{builds["js"]}/js/main.js"', f'"/{builds["bundle"]}/bundle/studio.js"')
+    return template.replace("<!-- studio-state -->", support + "<!-- studio-state -->", 1)
 
 
 def owner_link_token(secret: bytes) -> str:
@@ -148,6 +179,22 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
     style_build = "v" + hashlib.sha256((css + fonts).encode()).hexdigest()[:16]
     builds = {name: public_build(paths.WEB / name) for name in ("js", "vendor", "examples", "sitters")}
     builds.update(css=style_build, fonts=style_build)
+    bundled = paths.ROOT / "workstation" / "bundle" / "studio.js"
+    manifest = bundled.with_name("source.txt")
+    bundle = bundled if bundled.is_file() and manifest.is_file() and manifest.read_text(encoding="ascii").strip() == builds["js"] else None
+    if bundle:
+        builds["bundle"] = "v" + hashlib.sha256(bundle.read_bytes()).hexdigest()[:16]
+    shell = app_shell(builds, bundle is not None)
+    # The shared cache serves only shipped assets in explicitly versioned groups.
+    public_assets = {
+        f"/{version}/{file.relative_to(paths.WEB).as_posix()}"
+        for group, version in builds.items()
+        if group != "bundle"
+        for file in (paths.WEB / group).rglob("*")
+        if file.is_file() and file.suffix in PUBLIC_ASSET_TYPES and file.resolve().is_relative_to(paths.WEB.resolve())
+    }
+    if bundle:
+        public_assets.add(f'/{builds["bundle"]}/bundle/studio.js')
 
     def owner_device(cookie: str) -> str | None:
         device, sep, mac = cookie.partition(".")
@@ -157,8 +204,8 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
                 return device
         return None
 
-    def owner_session(request: Request, response):
-        device = owner_device(request.cookies.get(OWNER_COOKIE, "")) or secrets.token_hex(16)
+    def owner_session(request: Request, response, device: str | None = None):
+        device = device or owner_device(request.cookies.get(OWNER_COOKIE, "")) or secrets.token_hex(16)
         signed = hmac.new(session_key, device.encode("ascii"), hashlib.sha256).hexdigest()
         response.set_cookie(OWNER_COOKIE, f"{device}.{signed}", max_age=31536000,
                             secure=True, httponly=True, samesite="strict", path="/")
@@ -172,10 +219,20 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
     async def paired(request: Request, call_next):
         """Only this machine, or a device that has scanned the pairing code, may come in."""
         if owner_secret:
+            if request.method in {"GET", "HEAD"} and request.url.path in public_assets:
+                request.state.public_asset = True
+                response = await call_next(request)
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                return response
             if link_only and request.method == "GET" and request.url.path.startswith("/open/"):
                 supplied = request.url.path[len("/open/"):]
                 if len(supplied) == 64 and secrets.compare_digest(supplied.encode("utf-8"), link_key.encode("ascii")):
-                    return owner_session(request, RedirectResponse("/", status_code=303, headers=OWNER_HEADERS))
+                    # Start the app in the authenticated response; its assets are relative to the site root.
+                    device = owner_device(request.cookies.get(OWNER_COOKIE, "")) or secrets.token_hex(16)
+                    request.state.device = device
+                    response = page_response(request, entered=True)
+                    response.headers.update(OWNER_HEADERS)
+                    return owner_session(request, response, device)
                 return HTMLResponse("Open your access link again.", status_code=403, headers=OWNER_HEADERS)
             if link_only and request.url.path == "/open":
                 if request.method == "GET":
@@ -235,29 +292,22 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
     app.get("/studio.json")(describe)
     app.get("/api/health")(describe)
 
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
-    def home_page(request: Request):
-        template = (paths.WEB / "index.html").read_text(encoding="utf-8")
+    def page_response(request: Request, *, entered: bool = False):
         info = json.dumps(describe(request), ensure_ascii=True).replace("<", "\\u003c")
         embedded = f'<script id="studio-state" type="application/json">{info}</script>'
-        if os.environ.get("LIKENESS_HIDE_EXAMPLES") != "1":
-            catalog = paths.WEB / "examples" / "manifest.json"
-            if catalog.is_file():
-                catalog_content = catalog.read_text(encoding="utf-8")
-                catalog_json = json.loads(catalog_content)
-                first = next(iter(catalog_json.get("people", [])), {})
-                portrait = first.get("portrait", "")
-                if re.fullmatch(r"[a-z0-9-]+/portrait\.webp", portrait):
-                    embedded += f'<link rel="preload" as="image" href="/{builds["examples"]}/examples/{portrait}" fetchpriority="high">'
-                examples = json.dumps(catalog_json, separators=(",", ":")).replace("<", "\\u003c")
-                embedded += f'<script id="example-catalog" type="application/json">{examples}</script>'
-            versions = json.dumps(builds, separators=(",", ":"))
-            embedded += f'<script id="studio-versions" type="application/json">{versions}</script>'
-            for directory in ("css", "fonts", "js"):
-                template = template.replace(f'"{directory}/', f'"/{builds[directory]}/{directory}/')
-        return HTMLResponse(template.replace("<!-- studio-state -->", embedded, 1),
+        page = shell.replace("<!-- studio-state -->", embedded, 1)
+        if entered:
+            page = page.replace("<head>", """<head>
+<base href="/">
+<script>history.replaceState(null, "", "/");</script>""", 1)
+        return HTMLResponse(page,
                             headers={"cache-control": "private, no-store"})
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
+    @app.head("/", response_class=HTMLResponse, include_in_schema=False)
+    def home_page(request: Request):
+        return page_response(request)
     if os.environ.get("LIKENESS_HIDE_EXAMPLES") == "1":
         @app.get("/examples/manifest.json", include_in_schema=False)
         def no_examples() -> None:
@@ -376,5 +426,5 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
             raise EngineError("No ideas came back this time.", "Try again, or say where you would like to be.")
         return {"backdrops": ideas}
 
-    app.mount("/", StudioFiles(builds), name="web")
+    app.mount("/", StudioFiles(builds, bundle), name="web")
     return app

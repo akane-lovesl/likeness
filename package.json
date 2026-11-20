@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Likeness — a personal image studio you talk to. Rooms, weather, and pictures made by conversation.",
   "scripts": {
+    "build": "node tools/build.mjs",
     "serve": "node tools/serve.mjs",
     "sitters": "node tools/sitters.mjs",
     "tour": "node tools/tour.mjs",
@@ -13,6 +14,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",
+    "esbuild": "0.28.2",
     "typescript": "^7.0.2"
   }
 }

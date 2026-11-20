@@ -7,7 +7,7 @@
  */
 import { h, icon, toast, chooseFiles, stage, clamp, fitting } from '../core/dom.js';
 import { drag, flip, spring, reduced } from '../core/motion.js';
-import { on, emit } from '../core/bus.js';
+import { on } from '../core/bus.js';
 import { progressAt } from '../core/estimate.js';
 import { studio } from '../studio/studio.js';
 import * as P from '../studio/painter.js';
@@ -42,6 +42,7 @@ const HINTS = /** @type {Record<string, string>} */ ({ bangs: 'a little longer, 
 /** @typedef {{ part: string, style: string, words?: string, image: string, takes?: string[], angles?: string[] }} Look */
 /** @typedef {{ id: string, name?: string, kind?: string, portrait: string, looks: Look[] }} Person */
 /** @typedef {{ url: string, label: string, kind: string, print?: any, picks?: Pick[], look?: Look, pending?: boolean, p?: number, preview?: string, weeks?: number }} Take a picture in the frame; weeks, how long after the salon it shows the look */
+/** @typedef {{ slots: Take[], mask: HTMLCanvasElement | null, words: string, preview: string, item: any }} MirrorJob */
 /** What the mirror says at each stage of a turn while the studio works, until the studio says something itself. */
 const STAGE_SAYS = /** @type {Record<string, string>} */ ({ read: 'Looking closely', plan: 'Working out how', draw: 'Making it', finish: 'Nearly there' });
 /** How long is left, as a person would say it; once past what was expected, how long it has been. @param {number} left @param {number} gone */
@@ -160,20 +161,21 @@ export function openMirror(o) {
   let trial = null;
   /** What was drawn on the picture, each mark in its colour, as shares of the picture's width and height. @type {{ ink: string, w: number, pts: { x: number, y: number }[] }[]} */
   let marks = [];
+  /** @type {WeakMap<Take, typeof marks>} */ const marksByTake = new WeakMap();
   let drawingNow = false, ink = '#ff3b5c';
   /** A picture whose look to borrow. @type {{ print: any, url: string } | null} */
   let ref = null;
   /** A reference being read and kept, still: a Try on waits for it. @type {Promise<void> | null} */
   let refLoading = null;
-  // how many of the studio's turns are under way here, and which is the latest (the frame shows that one's wait)
-  let making = 0, lead = -1;
+  // Each job keeps its own takes as earlier slots appear or are removed.
+  /** @type {MirrorJob[]} */ const active = [];
   /** @type {ReturnType<typeof turner>} */ let turn = null;
   const surfaces = new WeakMap();
   const dealt = new WeakSet(), developed = new WeakSet();
   /** @type {Take[]} */ const takes = [];
   /** @type {import('../studio/face.js').Face | null} */ let face = null;
   /** @type {HTMLCanvasElement | null} */ let base = null;
-  /** @type {any} */ let examplePrint = null;
+  /** @type {WeakMap<Take, Promise<any>>} */ const imports = new WeakMap();
   const made = person?.kind === 'render' ? { label: 'GPT Image', kind: 'render' } : person?.kind === 'drawn' ? { label: 'Drawn', kind: 'sketch' } : { label: 'Simulated', kind: 'simulated' };
   // the picture as it is: an example's own kind; a photo of you; or, opened again from the studio's list, whatever it was
   const own = print?.provenance?.kind && !['photo', 'upload'].includes(print.provenance.kind) ? { label: print.provenance.label || labelOf(print), kind: print.provenance.kind } : { label: 'Your photo', kind: 'photo' };
@@ -210,7 +212,7 @@ export function openMirror(o) {
   const drawBar = h('div.mr-drawbar', { role: 'toolbar', 'aria-label': 'Drawing' },
     ...INKS.map((c, i) => h('button.mr-drawbar__ink', { type: 'button', 'aria-label': ['Red', 'Yellow', 'White'][i] + ' pen', 'aria-pressed': String(i === 0), style: { '--pen': c }, onclick: (/** @type {Event} */ e) => { ink = c; drawBar.querySelectorAll('.mr-drawbar__ink').forEach(b => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } })),
     h('button.mr-drawbar__do', { type: 'button', 'aria-label': 'Undo the last mark', html: icon('undo'), onclick: () => { marks.pop(); paintMarks(); paintPicks(); } }),
-    h('button.mr-drawbar__do', { type: 'button', 'aria-label': 'Clear the marks', html: icon('trash'), onclick: () => { marks = []; paintMarks(); paintPicks(); } }),
+    h('button.mr-drawbar__do', { type: 'button', 'aria-label': 'Clear the marks', html: icon('trash'), onclick: () => { marks.length = 0; paintMarks(); paintPicks(); } }),
     h('button.mr-drawbar__done', { type: 'button', onclick: () => drawing(false) }, 'Done'));
   // the weeks after the salon, for a look that grows (a fringe, a colour's roots, a cut, brows, a beard): asked for on the
   // frame; then the frame says what the weeks have done, and is dated the day it would be, the way a camera once
@@ -471,7 +473,7 @@ export function openMirror(o) {
       want.push(['pick:' + q.part + ':' + q.style.id, () => h('button.mr-token', { type: 'button', 'data-part': q.part, 'aria-label': 'Remove ' + q.style.name, onclick: () => pick(q.part, q.style.id) }, h('span.mr-token__plate', { html: plateSVG(q.part, q.style.id) }), h('span.mr-token__name', null, q.style.name)),
         b => { let em = b.querySelector('.mr-token__shape'); if (!shorts) { em?.remove(); return; } if (!em) b.append(em = h('em.mr-token__shape')); em.textContent = shorts; }]);
     }
-    if (marks.length && !drawingNow) want.push(['marks', () => h('button.mr-token.mr-token--marks', { type: 'button', 'aria-label': 'Remove your marks', onclick: () => { marks = []; paintMarks(); paintPicks(); } }, h('span.mr-token__plate', { html: icon('brush') }), h('span.mr-token__name', null, 'Your marks'))]);
+    if (marks.length && !drawingNow) want.push(['marks', () => h('button.mr-token.mr-token--marks', { type: 'button', 'aria-label': 'Remove your marks', onclick: () => { marks.length = 0; paintMarks(); paintPicks(); } }, h('span.mr-token__plate', { html: icon('brush') }), h('span.mr-token__name', null, 'Your marks'))]);
     if (ref) { const url = ref.url; want.push(['ref:' + url, () => h('button.mr-token.mr-token--ref', { type: 'button', 'aria-label': 'Remove the reference', onclick: () => { ref = null; paintRef(); paintPicks(); hint(); } }, h('img.mr-token__plate', { src: url, alt: '' }), h('span.mr-token__name', null, 'Reference'))]); }
     const had = new Map([...tokens.children].map(b => [/** @type {HTMLElement} */ (b).dataset.key, /** @type {HTMLElement} */ (b)]));
     const els = want.map(([key, make, fill]) => { let b = had.get(key); if (!b) { b = make(); b.dataset.key = key; } fill?.(b); return b; });
@@ -619,7 +621,7 @@ export function openMirror(o) {
    * at any time), the look stays as fitted so far, painted as the frame paints it. @param {boolean} on
    */
   function trialMode(on) {
-    if (on === trialing || (on && (!face || !base || showingNow || making))) return;
+    if (on === trialing || (on && (!face || !base || showingNow || active.length))) return;
     const steps = on ? planOf(picks, shapesFor) : [];
     if (on && !steps.length) return;
     stopGreeting();
@@ -663,8 +665,9 @@ export function openMirror(o) {
       await new Promise(r => requestAnimationFrame(r)); if (trial !== t) return;
       const b = await lensOf(/** @type {Pick[]} */ (picks.map(p => (p.part === s.part ? q.looks[1] : p)))); if (trial !== t) return;
       // two that look the same here (a fringe on hair too short to show it) ask nothing: never a question with no answer to see
-      const d = a && b ? apart(a, b) : { plain: 0, mean: 0 }, z2 = zoomOf(s.part, 1.6).z ** 2;
-      if (d.plain * z2 < PLAIN && d.mean * z2 < SHIFT) continue;
+      const d = a && b ? apart(a, b) : { plain: 0, mean: 0, painted: 0 }, z2 = zoomOf(s.part, 1.6).z ** 2;
+      const shade = s.kind === 'shape' && s.id === 'shade' ? d.painted : 0;
+      if (d.plain * z2 < PLAIN && d.mean * z2 < SHIFT && shade < 2) continue;
       // asked: the frame comes close to the part, and says (the first time) what to look for
       trialWhat.textContent = stepSaid(s) + (toldTrial ? '' : ' · which is more you?');
       focus(s.part, 1.6);
@@ -686,13 +689,16 @@ export function openMirror(o) {
   function apart(a, b) {
     const w = 160, hh = Math.max(1, Math.round(w * a.height / a.width));
     const [da, db] = [a, b].map(c => { const s = P.make(w, hh), x = ctx(s); x.drawImage(c, 0, 0, w, hh); return x.getImageData(0, 0, w, hh).data; });
-    let n = 0, sum = 0;
+    let n = 0, sum = 0, colour = 0, coverage = 0;
     for (let i = 0; i < da.length; i += 4) {
       const d = Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]), al = Math.abs(da[i + 3] - db[i + 3]);
       if (d > 42 || al > 42) n++;
       sum += (d + al) / 4;
+      // A shade can be visible on a small painted area, even when the rest of the portrait stays the same.
+      const weight = Math.min(da[i + 3], db[i + 3]) / 255;
+      colour += d * weight / 3; coverage += weight;
     }
-    return { plain: n / (w * hh), mean: sum / (w * hh) };
+    return { plain: n / (w * hh), mean: sum / (w * hh), painted: coverage ? colour / coverage : 0 };
   }
   /** One of the two on the face and its lens lit, the two taking turns by themselves until a hand turns them. @param {number} k @param {boolean} [byHand] */
   function flipTo(k, byHand = false) {
@@ -784,11 +790,11 @@ export function openMirror(o) {
 
   function tray(on) { trayEl.classList.toggle('is-open', on); addBtn.setAttribute('aria-expanded', String(on)); }
   /**
-   * Drawing on the picture: a finger draws instead of turning it, the pen's bar comes up in the frame, and the marks stay
-   * over the picture until they are cleared, going to the studio with whatever is asked. @param {boolean} on
+   * A finger draws instead of turning the picture. Marks stay with the picture they were drawn on. @param {boolean} on
    */
   function drawing(on) {
     if (on && timing) timeMode(false);
+    if (on) marksByTake.set(takes[shown] || origin, marks);
     drawingNow = on; frame.classList.toggle('is-drawing', on); el.classList.toggle('is-drawing', on);
     if (on && !marks.length) toast('Draw on the picture: circle what to change, sketch the shape', 3400);
     paintMarks(); paintPicks(); hint();
@@ -909,6 +915,11 @@ export function openMirror(o) {
     const t = i < 0 ? origin : takes[i]; if (!t || t.pending) return;
     if (i >= 0 && timing) timeMode(false);
     if (i >= 0 && trialing) trialMode(false);
+    if (i !== shown) {
+      if (drawingNow) drawing(false);
+      marks = marksByTake.get(t) || [];
+      paintMarks();
+    }
     shown = i;
     over.classList.remove('is-in', 'is-sweep'); glint.classList.remove('is-on'); clearTimeout(swap);
     if (instant || reduced) pic.src = t.url;
@@ -1120,12 +1131,12 @@ export function openMirror(o) {
   let steering = 0, steerAt = 0;
   const steer = (/** @type {number} */ now) => {
     const dt = Math.min(64, now - (steerAt || now)); steerAt = now;
-    const k = 1 - Math.exp(-dt / 70);
+    const k = 1 - Math.exp(-dt / 45);
     // until the picture is ready to turn the head waits where it is, then goes after the finger from there
     if (ready) { held.y += (aim.y - held.y) * k; held.p += (aim.p - held.p) * k; lean(held.y, held.p); }
     steering = leaning || (ready && (Math.abs(aim.y - held.y) > 1e-4 || Math.abs(aim.p - held.p) > 1e-4)) ? requestAnimationFrame(steer) : 0;
   };
-  const steerTo = (/** @type {number} */ y, /** @type {number} */ p) => { aim.y = y; aim.p = p; if (!steering) { steerAt = 0; steering = requestAnimationFrame(steer); } };
+  const steerTo = (/** @type {number} */ y, /** @type {number} */ p) => { aim.y = y; aim.p = p; if (!steering) { steerAt = performance.now(); steering = requestAnimationFrame(steer); } };
   drag(frame, {
     start: e => {
       if (/** @type {HTMLElement} */ (e.target).closest('button')) return false;
@@ -1253,40 +1264,55 @@ export function openMirror(o) {
     tray(false); input.blur();
     // a sketch is made here, one at a time; the studio is asked for as many as you like, and works on them side by side
     if (!live) { busy = true; try { await sketchIt(); } catch (e) { toast(e instanceof Error ? e.message : 'That did not work'); } finally { busy = false; } return; }
-    if (making) toast((making === 1 ? 'Making both' : 'Making ' + (making + 1) + ' at once') + ': the studio works on them side by side', 2600);
+    if (active.length) toast((active.length === 1 ? 'Making both' : 'Making ' + (active.length + 1) + ' at once') + ': the studio works on them side by side', 2600);
     try { await render(parts, own); }
     catch (e) { toast(e instanceof Error ? e.message : 'That did not work'); }
   }
-  /** The print a change starts from: the take on show, or the face as it is (an example's portrait is brought in once). */
-  async function subject() {
-    const t = shown >= 0 ? takes[shown] : null;
+  /** The print a change starts from: the selected take or an original that can be reused. @param {Take | null} t */
+  async function subject(t = takes[shown] || null) {
     if (t?.print) return t.print;
-    if (print) return print;
-    if (examplePrint) return examplePrint;
-    const blob = await (await fetch(t?.url || origin.url)).blob(), c = await P.fromBlob(blob, 1600);
-    examplePrint = await addPrint({ blob: await P.toBlob(c, 'image/jpeg', .92), w: c.width, h: c.height, origin: 'upload', provenance: { kind: made.kind, label: made.label === 'GPT Image' ? 'Render' : made.label, detail: person?.kind === 'drawn' ? 'A drawn sitter: someone who does not exist, drawn' : 'An example portrait of someone who does not exist' } });
-    await addItem({ type: 'prints', prints: [examplePrint.id], mine: true });
-    return examplePrint;
+    if (!t && print) return print;
+    const from = t || origin;
+    if (from.print) return from.print;
+    const inFlight = imports.get(from); if (inFlight) return inFlight;
+    const ready = (async () => {
+      const response = await fetch(from.url);
+      if (!response.ok) throw new Error('The example picture could not be opened.');
+      const c = await P.fromBlob(await response.blob(), 1600);
+      const imported = await addPrint({ blob: await P.toBlob(c, 'image/jpeg', .92), w: c.width, h: c.height, origin: 'upload', provenance: { kind: made.kind, label: made.label === 'GPT Image' ? 'Render' : made.label, detail: person?.kind === 'drawn' ? 'A drawn sitter: someone who does not exist, drawn' : 'An example portrait of someone who does not exist' } });
+      await addItem({ type: 'prints', prints: [imported.id], mine: true });
+      from.print = imported;
+      return imported;
+    })();
+    imports.set(from, ready);
+    try { return await ready; } finally { imports.delete(from); }
   }
   /** Four takes from the studio: inside the parts' masks when the face was read, over the whole picture when not. @param {string[]} parts @param {string} own */
   async function render(parts, own) {
+    const now = picks.slice(), drawn = marks.slice(), borrowed = ref, wk = timing ? weeks : 0;
     const s = await subject(), pic2 = s === print && base ? base : await canvasOf(s.blob), f = s === print ? face : await faceOf(pic2);
     const masked = f && parts.length && !parts.includes('cut') ? parts : [];
     let mask = null;
     // asked weeks on, the studio is told what the weeks have done, and may change what has grown since
-    const wk = timing ? weeks : 0;
     if (masked.length && f) {
       mask = P.make(pic2.width, pic2.height); const mx = ctx(mask);
       for (const p of masked) {
         const m = await maskOf(pic2, f, p); if (!m) continue;
         mx.drawImage(m, 0, 0);
+        // A soft margin lets a render follow fine hairs even when their outlines move a little.
+        if (p === 'colour') {
+          mx.save();
+          mx.filter = 'blur(' + Math.max(2, pic2.width / 72).toFixed(1) + 'px)';
+          mx.drawImage(m, 0, 0); mx.drawImage(m, 0, 0);
+          mx.restore();
+        }
         // (a fringe weeks on has grown down past where it was cut: what it may change goes down with it)
         if (wk && p === 'bangs') { const drop = foreheadOf(f) * wk * GROW; for (const s of [.34, .67, 1]) mx.drawImage(m, 0, drop * s); }
       }
     }
     // what was drawn: where it may change (a loop drawn round something takes in what is inside it), and a copy of the
     // picture with the marks on it, for the studio to read them from
-    const drawn = marks.slice(), borrowed = ref, refs = [];
+    const refs = [];
     if (drawn.length) {
       mask ||= P.make(pic2.width, pic2.height);
       const mx = ctx(mask), W = pic2.width, H = pic2.height;
@@ -1303,59 +1329,90 @@ export function openMirror(o) {
     const extra = [];
     if (borrowed) extra.push(masked.length ? 'Take what they ask for from the reference picture: its look, never its face' : 'Give them the look of the reference picture (its hair, colour, make-up and clothes) as far as the words ask, never its face');
     if (drawn.length) extra.push('Follow the marks drawn on the marked copy, and never draw the marks themselves');
-    if (wk) extra.push(grownWords(picks, wk));
+    if (wk) extra.push(grownWords(now, wk));
     // the studio takes a long note, but not an endless one: cut at a word, never mid-way through one
-    const words = clip(wordsFor(picks, own, extra), 1200);
-    const said = (titleOf(picks) || own || (drawn.length ? 'As drawn' : borrowed ? 'Like the reference' : '')) + (wk ? ' · ' + weeksSaid(wk) + ' on' : '');
+    const words = clip(wordsFor(now, own, extra), 1200);
+    const said = (titleOf(now) || own || (drawn.length ? 'As drawn' : borrowed ? 'Like the reference' : '')) + (wk ? ' · ' + weeksSaid(wk) + ' on' : '');
     const intent = mask ? { op: 'region', subject: s.id, refs, look: null, n: 4, pace: null, pins: [{ print: s.id, n: 1, note: words, mask }] } : { op: 'edit', subject: s.id, refs, look: null, n: 4, pace: null, pins: [] };
-    const now = picks.slice(), first = takes.length;
-    for (let k = 0; k < 4; k++) takes.push({ url: '', label: '', kind: '', pending: true, picks: now, weeks: wk });
+    const slots = Array.from({ length: 4 }, () => ({ url: '', label: '', kind: '', pending: true, picks: now, weeks: wk }));
+    takes.push(...slots);
     paintTakes();
-    await follow(onItem => runTurn({ text: mask ? 'Changes to @' + s.handle : '@' + s.handle + ' ' + words, said, intent, pace: settings.get('pace', 'fine'), n: 4, onItem }), first, 4, (k, p) => { Object.assign(takes[first + k], { url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, pending: false }); }, mask);
+    await follow(onItem => runTurn({ text: mask ? 'Changes to @' + s.handle : '@' + s.handle + ' ' + words, said, intent, pace: settings.get('pace', 'fine'), n: 4, mirrorWeeks: wk, onItem }), slots, mask);
   }
   /**
-   * Follows a turn's item as its pictures arrive: each lands in its place (the first is shown as it lands), the
-   * places wait with the studio's estimate burning round them, and the ones that never come are taken away.
-   * @param {(onItem: (it: any) => void) => Promise<any>} start @param {number} first @param {number} n @param {(k: number, p: any) => void} land
-   * @param {HTMLCanvasElement | null} [mask] what the studio may change (the light passes over it; over everything when null)
-   * @returns {Promise<any>} the turn's item, when it is over
+   * Follow a turn even when another finishes first. An angle turn has no slots in the takes row.
+   * @param {(onItem: (it: any) => void) => Promise<any>} start @param {Take[]} slots
+   * @param {HTMLCanvasElement | null} [mask]
    */
-  async function follow(start, first, n, land, mask = /** @type {HTMLCanvasElement | null} */ (null)) {
-    let item = /** @type {any} */ (null), shownOne = false;
-    working(mask, first);
-    const offEv = on('turn:event', (/** @type {any} */ m) => { if (item && m?.id === item.id) heard(m.ev, first); });
+  async function follow(start, slots, mask = null) {
+    const job = /** @type {MirrorJob} */ ({ slots, mask, words: 'Asked', preview: '', item: null });
+    active.push(job);
+    showWait(job);
+    const offEv = on('turn:event', (/** @type {any} */ m) => { if (job.item && m?.id === job.item.id) heard(m.ev, job); });
     const tick = setInterval(() => {
-      if (!item) return;
+      const item = job.item; if (!item) return;
       const p = progressAt(Date.now() - item.startedAt, item.eta);
-      if (first === lead) etaEl.textContent = timeLeft(item.eta - (Date.now() - item.startedAt), Date.now() - item.startedAt);
-      for (let k = 0; k < n; k++) takesRow.querySelector('.mr-take.is-pending[data-i="' + (first + k) + '"]')?.setAttribute('style', '--i:' + (first + k + 1) + ';--n:' + (takes.length + 1) + ';--p:' + p.toFixed(3));
+      if (active.at(-1) === job) etaEl.textContent = timeLeft(item.eta - (Date.now() - item.startedAt), Date.now() - item.startedAt);
+      for (const slot of slots) if (slot.pending) {
+        const button = /** @type {HTMLElement | null} */ (takesRow.querySelector('.mr-take[data-i="' + takes.indexOf(slot) + '"]'));
+        button?.style.setProperty('--p', p.toFixed(3));
+      }
     }, 200);
-    const landed = new Set();
     const check = (/** @type {any} */ it) => {
-      if (!item || it.id !== item.id) return;
+      if (it.id !== job.item?.id || current !== self) return;
+      const first = slots.every(t => t.pending);
+      let arrived = -1;
       (it.prints || []).forEach((/** @type {string} */ id, /** @type {number} */ k) => {
-        const p = id && printById(id); if (!p || landed.has(k) || k >= n) return;
-        landed.add(k); land(k, p); paintTakes();
-        // the first back is swept into the frame, and the frame's wait (its light, its words) is over with it
-        if (!shownOne) { shownOne = true; show(first + k, false, true); el.classList.remove('has-preview'); if (first === lead) el.classList.remove('is-working'); }
+        const p = id && printById(id), slot = slots[k]; if (!p || !slot?.pending) return;
+        Object.assign(slot, { url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, pending: false });
+        if (arrived < 0) arrived = takes.indexOf(slot);
       });
+      if (arrived < 0) return;
+      paintTakes();
+      if (first && active.at(-1) === job && !drawingNow) {
+        show(arrived, false, true);
+        el.classList.remove('has-preview', 'is-working');
+      }
     };
     const off = on('item:patch', check);
-    try { const it = await start(it => { item = it; }); item ||= it; check(it); if (it.state === 'failed') toast(it.error || 'That did not work', 3200); return it; }
+    const cleanup = () => { off(); offEv(); clearInterval(tick); };
+    stops.push(cleanup);
+    try {
+      const it = await start(it => { job.item = it; check(it); });
+      job.item ||= it; check(it);
+      if (it.state === 'failed' && current === self) toast(it.error || 'That did not work', 3200);
+      return it;
+    }
     finally {
-      off(); offEv(); clearInterval(tick);
-      for (let k = n - 1; k >= 0; k--) if (takes[first + k]?.pending) takes.splice(first + k, 1);
-      paintTakes(); if (shown >= takes.length) show(-1);
-      rested(first);
+      cleanup();
+      const index = stops.indexOf(cleanup); if (index >= 0) stops.splice(index, 1);
+      const previews = new Set([job.preview, ...slots.map(slot => slot.preview)]);
+      for (const url of previews) if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+      const wasLead = active.at(-1) === job;
+      active.splice(active.indexOf(job), 1);
+      if (current === self) {
+        const selected = takes[shown];
+        for (const slot of slots) if (slot.pending) takes.splice(takes.indexOf(slot), 1);
+        shown = selected ? takes.indexOf(selected) : -1;
+        paintTakes();
+        if (wasLead) showWait(active.at(-1));
+      }
     }
   }
   /**
    * While the studio works: a light passes over what it is changing (all of the picture when no part is), its own words
    * come up in the frame, with how long is left, and its previews develop in place.
-   * @param {HTMLCanvasElement | null} mask
+   * @param {MirrorJob} [job]
    */
-  function working(mask, first = -1) {
-    making++; lead = first; el.classList.add('is-making');
+  function showWait(job) {
+    el.classList.toggle('is-making', active.length > 0);
+    el.classList.remove('is-working', 'has-preview'); preview.removeAttribute('src');
+    if (stampEl.dataset.kind === 'preview') show(shown, true);
+    if (!job || job.slots.some(t => !t.pending)) {
+      for (const e of [workEl, preview]) { e.style.removeProperty('mask-image'); e.style.removeProperty('-webkit-mask-image'); }
+      return;
+    }
+    const mask = job.mask;
     const url = mask ? 'url(' + mask.toDataURL('image/png') + ')' : 'none';
     // the light glows a little beyond the part, so a thin one (a brow, a lash line) still reads as lit
     let lit = url;
@@ -1363,30 +1420,26 @@ export function openMirror(o) {
     workEl.style.setProperty('mask-image', lit); workEl.style.setProperty('-webkit-mask-image', lit); workEl.classList.toggle('is-whole', !mask);
     // the preview develops only where the change is: the rest of the face stays as it is meanwhile
     preview.style.setProperty('mask-image', url); preview.style.setProperty('-webkit-mask-image', url);
-    sayNow.textContent = 'Asked'; etaEl.textContent = '';
+    sayNow.textContent = job.words; etaEl.textContent = '';
     el.classList.add('is-working');
+    if (job.preview) { preview.src = job.preview; el.classList.add('has-preview'); stampEl.textContent = 'Preview'; stampEl.dataset.kind = 'preview'; }
   }
-  /** The work over: the light and the words go, and a preview never followed by its picture is not left saying so. */
-  function rested(first = -1) {
-    making = Math.max(0, making - 1);
-    // another is still being made: the frame goes on showing the latest one's wait
-    if (making) { if (first === lead) { el.classList.remove('has-preview'); preview.removeAttribute('src'); } return; }
-    el.classList.remove('is-making');
-    el.classList.remove('is-working', 'has-preview'); preview.removeAttribute('src');
-    for (const e of [workEl, preview]) { e.style.removeProperty('mask-image'); e.style.removeProperty('-webkit-mask-image'); }
-    if (stampEl.dataset.kind === 'preview') show(Math.min(shown, takes.length - 1), true);
-  }
-  /** One of the studio's events, while it works on this. @param {any} ev @param {number} first */
-  function heard(ev, first) {
+  /** One of the studio's events, while it works on this. @param {any} ev @param {MirrorJob} job */
+  function heard(ev, job) {
+    const leading = active.at(-1) === job;
     const words = ev?.type === 'stage' ? STAGE_SAYS[ev.stage] : ev?.type === 'note' ? ev.text : ev?.type === 'plan' ? ev.plan?.summary : '';
-    if (words && first === lead) sayIt(words);
+    if (words) { job.words = words; if (leading) sayIt(words); }
     if (ev?.type !== 'partial' || !(ev.blob || ev.canvas)) return;
-    // a preview: in its place among the takes, and the first in the frame, where it develops (and says it is one)
-    const url = ev.blob ? URL.createObjectURL(ev.blob) : ev.canvas.toDataURL('image/jpeg', .8), t = takes[first + ev.index];
-    if (t?.pending) { t.preview = url; paintTakes(); }
-    // (only while its picture is still to come: a preview arriving after it is not let over it; every angle has no
-    // place among the takes, and its previews always show)
-    if (ev.index === 0 && first === lead && (!t || t.pending)) { preview.src = url; el.classList.add('has-preview'); stampEl.textContent = 'Preview'; stampEl.dataset.kind = 'preview'; }
+    const slot = job.slots[ev.index], inFrame = ev.index === 0 && job.slots.every(t => t.pending);
+    if (!slot?.pending && !inFrame) return;
+    const url = ev.blob ? URL.createObjectURL(ev.blob) : ev.canvas.toDataURL('image/jpeg', .8);
+    const previous = slot?.preview || (inFrame ? job.preview : '');
+    if (slot?.pending) { slot.preview = url; paintTakes(); }
+    if (inFrame) {
+      job.preview = url;
+      if (leading) { preview.src = url; el.classList.add('has-preview'); stampEl.textContent = 'Preview'; stampEl.dataset.kind = 'preview'; }
+    }
+    if (previous?.startsWith('blob:') && previous !== job.preview) URL.revokeObjectURL(previous);
   }
   /** The studio's words, one line at a time, each coming in as the last goes. @param {string} text */
   function sayIt(text) {
@@ -1436,7 +1489,8 @@ export function openMirror(o) {
       busy = true; el.classList.add('is-orbiting'); turnBtn.classList.add('is-busy');
       try {
         const s = await subject();
-        const item = await follow(onItem => runTurn({ text: '@' + s.handle + ' from every angle', said: 'Every angle', intent: { op: 'angles', subject: s.id, refs: [], look: null, n: 3, pace: null, pins: [] }, pace: settings.get('pace', 'fine'), n: 3, onItem }), takes.length, 0, () => {});
+        const item = await follow(onItem => runTurn({ text: '@' + s.handle + ' from every angle', said: 'Every angle', intent: { op: 'angles', subject: s.id, refs: [], look: null, n: 3, pace: null, pins: [] }, pace: settings.get('pace', 'fine'), n: 3, onItem }), []);
+        if (current !== self) return;
         const got = (item?.prints || []).map((/** @type {string} */ id) => printById(id)).filter(Boolean).map(urlOf);
         if (got.length === 3) three = got;
       } finally { busy = false; el.classList.remove('is-orbiting'); turnBtn.classList.remove('is-busy'); }
@@ -1537,12 +1591,18 @@ export function openMirror(o) {
       const gap = (yawOf(B.face) - yawOf(A.face)) * TURN_PER_YAW, ca = m.cs[i % 2], cb = m.cs[(i + 1) % 2];
       // a turner's yaw takes the nose the other way across the picture from its own yaw: hence the minus
       m.ts[i % 2].turn(-gap * u); m.ts[(i + 1) % 2].turn(gap * (1 - u));
-      const e = Math.max(0, Math.min(1, (u - .2) / .6));
+      const noseA = A.face.pts[1], noseB = B.face.pts[1];
+      const pa = m.ts[i % 2].project(noseA.x, noseA.y, m.ts[i % 2].depth(1));
+      const pb = m.ts[(i + 1) % 2].project(noseB.x, noseB.y, m.ts[(i + 1) % 2].depth(1));
+      const drift = Math.hypot(pa.x / A.face.w - pb.x / B.face.w, pa.y / A.face.h - pb.y / B.face.h);
+      // Keep the blend short if the two pictures were framed differently and both faces would show.
+      const span = drift > .035 ? .12 : .6;
+      const e = clamp(.5 + (u - .5) / span);
       ca.style.zIndex = '1'; cb.style.zIndex = '2'; ca.style.opacity = '1'; cb.style.opacity = (e * e * (3 - 2 * e)).toFixed(3);
       s.a.style.opacity = s.b.style.opacity = '0'; frame.style.transform = '';
     } else {
       if (m) for (const c of m.cs) c.style.opacity = '0';
-      const d = Math.max(0, Math.min(1, (u - .3) / .4));
+      const d = clamp(.5 + (u - .5) / .2);
       s.a.style.opacity = '1'; s.b.style.opacity = (d * d * (3 - 2 * d)).toFixed(3);
       const lean = Math.sin(u * Math.PI) * (v < s.at ? 7 : -7);
       frame.style.transform = 'perspective(160cqw) rotateY(' + lean.toFixed(2) + 'deg)';
@@ -1610,9 +1670,8 @@ export function openMirror(o) {
   }
   // all set: the takes: the face as it is first, then each one that comes back (or, for an example, each look they were given)
   if (person) for (const look of person.looks) takes.push({ url: look.image, ...made, look, picks: pickOf(look) });
-  // a turn from before (from the studio's list): its takes; one still being made is waited for, below
+  // A turn from the studio's list may finish while the portrait is being read.
   const after = o.after || null;
-  if (after && after.state !== 'running') for (const id of after.prints || []) { const p = printById(id); if (p) takes.push({ url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, picks: [] }); }
   show(-1, true); paintTakes(); paintPicks();
   new ResizeObserver(() => fit()).observe(stageEl);
   new ResizeObserver(() => fit(true)).observe(takesRow);
@@ -1646,16 +1705,26 @@ export function openMirror(o) {
     // then, unless they came asking for something already, the face looks this way and that as its notes come in
     // every side of you, caught by the live mirror: shown first, the frame turning through them; else the face says hello
     if (after?.state === 'running') {
-      const first = takes.length, n = after.n || 4;
-      for (let k = 0; k < n; k++) takes.push({ url: '', label: '', kind: '', pending: true, picks: [] });
+      const slots = Array.from({ length: after.n || 4 }, () => ({ url: '', label: '', kind: '', pending: true, picks: [], weeks: after.mirrorWeeks || 0 }));
+      takes.push(...slots);
       paintTakes();
       follow(onItem => new Promise(done => {
-        onItem(after); queueMicrotask(() => emit('item:patch', after));
+        onItem(after);
         const off = on('item:patch', (/** @type {any} */ x) => { if (x.id === after.id && x.state !== 'running') { off(); done(x); } });
-      }), first, n, (k, p) => { Object.assign(takes[first + k], { url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, pending: false }); });
+        if (after.state !== 'running') { off(); done(after); }
+        else stops.push(() => { off(); done(after); });
+      }), slots);
       return;
     }
-    if (after && takes.length) { show(0); return; }
+    if (after) {
+      for (const id of after.prints || []) {
+        const p = printById(id);
+        if (p) takes.push({ url: urlOf(p), label: labelOf(p), kind: p.provenance?.kind || '', print: p, picks: [], weeks: after.mirrorWeeks || 0 });
+      }
+      paintTakes();
+      if (takes.length) show(0);
+      return;
+    }
     if (o.go) tryOn(); else if (o.turns?.length === 3 && shown < 0 && !reduced) setTimeout(() => { if (el.isConnected && !turning) startTurning(/** @type {import('./live.js').Side[]} */ (o.turns), 1, true); }, 500); else if (face && shown < 0) hello();
   })();
 

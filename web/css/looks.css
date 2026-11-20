@@ -44,6 +44,7 @@ html:not([data-dark]) :is(.book, .mr, .lv) { --lk-deep: color-mix(in srgb, var(-
 
 .lb-orbit { position: relative; perspective: 150cqw; perspective-origin: 50% 44%; touch-action: pan-y; cursor: grab; outline: none; user-select: none; }
 .lb-orbit:active { cursor: grabbing; }
+.lb-orbit:focus-visible .lb-card.is-front { outline: .5cqw solid var(--lk-accent); }
 .lb-orbit::after { content: ''; position: absolute; left: 16%; right: 16%; bottom: 3%; height: 9cqw; pointer-events: none; background: radial-gradient(closest-side, var(--lk-shadow), transparent); }
 .lb-ring { position: absolute; left: 50%; top: 48%; width: 0; height: 0; transform-style: preserve-3d; }
 .lb-card { position: absolute; left: 0; top: 0; width: var(--cw, 60cqw); aspect-ratio: 3 / 4; padding: 0; border: 0; border-radius: 4.4cqw; overflow: hidden; background: var(--lk-deep);
@@ -591,6 +592,9 @@ img.mr-token__plate { object-fit: cover; }
   -webkit-mask: radial-gradient(closest-side, transparent 56%, #000 60%); mask: radial-gradient(closest-side, transparent 56%, #000 60%); animation: lk-spin 6s linear infinite; }
 .act.is-ready { background: var(--lk-accent); border-color: transparent; color: var(--lk-on-accent) !important; }
 .act.is-ready .act__ring { animation: none; background: currentColor; -webkit-mask: none; mask: none; clip-path: polygon(14% 52%, 26% 40%, 42% 56%, 76% 20%, 88% 32%, 42% 80%); }
+.act__history, .act.is-history .act__ring { display: none; }
+.act.is-history .act__history { display: grid; place-items: center; width: 4.4cqw; height: 4.4cqw; }
+.act__history .ic { width: 4.4cqw; height: 4.4cqw; }
 
 /* —— the welcome: a sitting. A face, the looks it was made in, the light under a finger; then on you, or around —— */
 .wl { position: absolute; inset: 0; z-index: 97; opacity: 0; transition: opacity .45s cubic-bezier(.2, .8, .2, 1); color: var(--ink); -webkit-tap-highlight-color: transparent; }

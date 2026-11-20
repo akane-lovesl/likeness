@@ -3,7 +3,7 @@
  * of light; under them are the looks they were made in, by GPT Image on the studio's own computer. Touch one and it
  * sweeps in; drag across the picture and the light follows the finger, before on one side and after on the other; ask
  * for someone else. Then the same look on you (the camera, or a photo), or the Lookbook with that face in front.
- * Where the studio's people are not here (the drawn sitters stand in), it says the same in a line and three steps.
+ * Without the studio's people, it says the same in a line and three steps.
  * Skipped or finished, it is remembered; the name at the top of the Lookbook brings it back.
  */
 import { h, stage } from '../core/dom.js';
@@ -72,7 +72,8 @@ function card(el, end) {
  * @param {HTMLElement} el @param {import('../looks/book.js').Person[]} people @param {(then?: Sat | null) => void} end @param {(() => void)[]} stops
  */
 function sitting(el, people, end, stops) {
-  let who = 0, look = 0, x = 0, held = false, tour = 0, anim = 0;
+  let who = 0, look = 0, x = 0, held = false, tour = 0, motion = 0, anim = 0;
+  let settled = () => {};
   const before = /** @type {HTMLImageElement} */ (h('img.wl-hero__before', { alt: '', draggable: false }));
   const after = /** @type {HTMLImageElement} */ (h('img.wl-hero__after', { alt: '', draggable: false }));
   const say = h('p.wl-hero__say');
@@ -101,12 +102,18 @@ function sitting(el, people, end, stops) {
   };
   /** The light carried to v. @param {number} to @param {number} ms */
   const glide = (to, ms) => new Promise(done => {
-    cancelAnimationFrame(anim);
+    stopGlide();
     if (reduced || ms <= 0) { set(to); done(null); return; }
     const from = x, t0 = performance.now(); hero.classList.add('is-moving');
-    const f = (/** @type {number} */ t) => { const u = Math.min(1, (t - t0) / ms); set(from + (to - from) * ease(u)); if (u < 1) anim = requestAnimationFrame(f); else { hero.classList.remove('is-moving'); done(null); } };
+    settled = () => done(null);
+    const f = (/** @type {number} */ t) => { const u = Math.min(1, (t - t0) / ms); set(from + (to - from) * ease(u)); if (u < 1) anim = requestAnimationFrame(f); else stopGlide(); };
     anim = requestAnimationFrame(f);
   });
+  function stopGlide() {
+    cancelAnimationFrame(anim);
+    hero.classList.remove('is-moving');
+    settled(); settled = () => {};
+  }
   /** The looks this face was made in, to choose from. */
   function paintLooks() {
     const p = P();
@@ -117,28 +124,31 @@ function sitting(el, people, end, stops) {
   }
   /** Someone (else): their portrait, then their first look sweeping in. @param {number} i */
   async function person(i) {
-    who = ((i % people.length) + people.length) % people.length; look = 0;
-    const p = P(), l = L();
+    const step = ++motion, next = ((i % people.length) + people.length) % people.length;
+    const p = people[next], l = p.looks[0];
+    stopGlide();
     hero.classList.remove('is-in');
     await Promise.all([load(p.portrait), load(l.image), wait(reduced ? 0 : 380)]);
-    if (!el.isConnected) return;
+    if (!el.isConnected || step !== motion) return;
+    who = next; look = 0;
     before.src = p.portrait; after.src = l.image; set(0); paintLooks();
     hero.classList.add('is-in');
     p.looks.slice(1).forEach(k => load(k.image));
     if (reduced) { set(ON); return; }
-    await wait(900); if (!el.isConnected) return;
+    await wait(900); if (!el.isConnected || step !== motion) return;
     await glide(ON, 1500);
   }
   /** One of this face's looks: from the one on now, it sweeps in; then the face as it was is under it again. @param {number} j */
   async function choose(j) {
-    const p = P(), l = p.looks[j]; if (!l) return;
-    if (j === look && x >= 1) { await glide(0, 520); await wait(160); await glide(ON, 900); return; }
-    await load(l.image); if (!el.isConnected) return;
+    const step = ++motion, p = P(), l = p.looks[j]; if (!l) return;
+    hero.classList.add('is-in');
+    if (j === look && x >= 1) { await glide(0, 520); await wait(160); if (step === motion) await glide(ON, 900); return; }
+    await load(l.image); if (!el.isConnected || step !== motion) return;
     if (x >= 1) before.src = after.src;
     look = j; paintLooks();
     after.src = l.image; set(0);
     await glide(ON, 1300);
-    if (look === j && x >= 1) before.src = p.portrait;
+    if (step === motion && x >= 1) before.src = p.portrait;
   }
   /** The face it shows stops changing by itself. */
   function stop() { held = true; tour++; hero.classList.add('is-held'); }
@@ -157,17 +167,17 @@ function sitting(el, people, end, stops) {
   const at = (/** @type {PointerEvent} */ e) => { const r = hero.getBoundingClientRect(); return Math.max(0, Math.min(ON, (e.clientX - r.left) / r.width)); };
   hero.addEventListener('pointerdown', e => {
     if (e.button) return;
-    stop(); dragging = e.pointerId; hero.setPointerCapture(e.pointerId); cancelAnimationFrame(anim); hero.classList.add('is-moving', 'is-dragged', 'was-dragged');
+    stop(); motion++; dragging = e.pointerId; hero.setPointerCapture(e.pointerId); before.src = P().portrait; hero.classList.add('is-in', 'is-dragged', 'was-dragged');
     glide(at(e), 140);
   });
-  hero.addEventListener('pointermove', e => { if (dragging !== e.pointerId) return; cancelAnimationFrame(anim); hero.classList.add('is-moving'); set(at(e)); });
+  hero.addEventListener('pointermove', e => { if (dragging !== e.pointerId) return; stopGlide(); hero.classList.add('is-moving'); set(at(e)); });
   const lift = (/** @type {PointerEvent} */ e) => { if (dragging !== e.pointerId) return; dragging = null; hero.classList.remove('is-dragged'); glide(ON, 700); };
   hero.addEventListener('pointerup', lift); hero.addEventListener('pointercancel', lift);
   hero.addEventListener('keydown', e => {
     const k = { ArrowLeft: -.1, ArrowRight: .1, Home: -9, End: 9 }[e.key]; if (k === undefined) return;
-    e.preventDefault(); stop(); glide(Math.max(0, Math.min(ON, x + k)), 160);
+    e.preventDefault(); stop(); motion++; before.src = P().portrait; hero.classList.add('is-in'); glide(Math.max(0, Math.min(ON, x + k)), 160);
   });
-  stops.push(() => { tour++; cancelAnimationFrame(anim); });
+  stops.push(() => { tour++; motion++; stopGlide(); });
   round();
   requestAnimationFrame(() => /** @type {HTMLElement | null} */ (looks.querySelector('.wl-look'))?.focus({ preventScroll: true }));
 }

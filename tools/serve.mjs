@@ -15,7 +15,7 @@ const types = {
 
 createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  if (!serveExamples && path === '/examples/manifest.json') { res.writeHead(404).end(); return; }
+  if (!serveExamples && path === '/examples/manifest.json') { res.writeHead(404, { 'X-Likeness-Examples': 'drawn' }).end(); return; }
   let file = normalize(join(root, path));
   if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
   try {

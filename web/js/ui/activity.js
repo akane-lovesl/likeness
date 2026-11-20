@@ -22,7 +22,7 @@ const ago = (t) => { const s = (Date.now() - t) / 1000; return s < 50 ? 'just no
 const left = (it) => { const gone = Date.now() - it.startedAt, l = it.eta - gone; return l > 4500 ? 'about ' + Math.ceil(l / 5000) * 5 + ' s left' : l > -6000 ? 'any moment' : Math.round(gone / 1000) + ' s so far'; };
 /** Where a turn stands, in words. @param {any} it */
 function standing(it) {
-  const n = it.prints?.length || 0;
+  const n = it.prints?.filter(Boolean).length || 0;
   if (it.state === 'running') return (n ? n + ' of ' + (it.n || 4) + ' in · ' : '') + left(it);
   if (it.state === 'done') return n + (n === 1 ? ' picture' : ' pictures') + ' · ' + ago(it.startedAt + (it.ms || 0));
   if (it.state === 'stopped') return 'Stopped' + (n ? ' · ' + n + ' kept' : '');
@@ -32,20 +32,20 @@ function standing(it) {
 const asked = (it) => it.said || (it.op === 'angles' ? 'Every angle' : it.summary || it.text || 'A change');
 
 /**
- * The pill: hidden while nothing is being made; "Making" with a ring burning round to the estimate while something is
- * (how many, if more than one); "Ready" for a while after something lands. Touched, the list.
+ * The pill: progress while work is running, a brief ready state, then an entry to recent turns.
  */
 export function activityPill() {
-  const ring = h('span.act__ring', { 'aria-hidden': 'true' }), label = h('span.act__label');
-  const el = h('button.act', { type: 'button', hidden: true, onclick: () => openActivity() }, ring, label);
+  const ring = h('span.act__ring', { 'aria-hidden': 'true' }), history = h('span.act__history', { html: icon('album'), 'aria-hidden': 'true' }), label = h('span.act__label');
+  const el = h('button.act', { type: 'button', hidden: true, onclick: () => openActivity() }, ring, history, label);
   let readyAt = 0, seen = false, tick = 0, was = 0, telling = 0;
   /** Its word, said for a moment, then just the ring. @param {number} ms */
   const tell = (ms) => { el.classList.add('is-telling'); clearTimeout(telling); telling = setTimeout(() => el.classList.remove('is-telling'), ms); };
   const paint = () => {
     if (seen && !el.isConnected) { stop(); return; }
     if (el.isConnected) seen = true;
-    const run = turns().filter((/** @type {any} */ t) => t.state === 'running'), ready = Date.now() - readyAt < 9000;
-    el.hidden = !run.length && !ready;
+    const all = turns(), run = all.filter((/** @type {any} */ t) => t.state === 'running'), ready = Date.now() - readyAt < 9000;
+    el.hidden = !all.length;
+    el.classList.toggle('is-history', !run.length && !ready);
     el.classList.toggle('is-ready', !run.length && ready);
     if (run.length > was) tell(3200);
     was = run.length; el.dataset.n = run.length > 1 ? String(run.length) : '';
@@ -55,6 +55,7 @@ export function activityPill() {
       label.textContent = run.length > 1 ? 'Making ' + run.length : 'Making';
       el.setAttribute('aria-label', (run.length > 1 ? run.length + ' being made' : 'One being made, ' + left(t)) + ': see them');
     } else if (ready) { label.textContent = 'Ready'; el.setAttribute('aria-label', 'Ready: see it'); }
+    else { label.textContent = 'In the studio'; el.setAttribute('aria-label', 'In the studio'); }
     if (!tick && run.length) tick = setInterval(paint, 1000);
     if (tick && !run.length && !ready) { clearInterval(tick); tick = 0; }
   };

@@ -1,10 +1,8 @@
 /**
  * The Lookbook: the first thing you see. A ring of faces, each changing one thing in a sweep of light (the bangs, the
  * brows, the colour), that turns under a finger and on its own; the parts a look can change, drawn; one line to ask in.
- * Pick a face or bring your own, and the mirror opens on it. Until the studio's portraits are in, the ring holds drawn
- * sitters (invented people, drawn), each wearing a look sketched on the device: the front one leans in on the part it
- * changes and tries that part's styles on, one after another. Once the studio's people are in, their faces are read on
- * the device as the ring comes in, and they lean in and wear words the same way, as sketches that say so.
+ * Pick a face or bring your own, and the mirror opens on it. The studio's portraits are read on the device and can
+ * wear any combination of looks. Without a catalog, the ring shows style plates.
  */
 import { h, icon, stage, fitting } from '../core/dom.js';
 import { spring, drag, reduced } from '../core/motion.js';
@@ -34,12 +32,13 @@ import { atmosphere } from '../room/theme.js';
 /** @typedef {{ face: import('../studio/face.js').Face, hair: string | null }} Seen a render's face (and hair, where a colour is among its looks), read on the device */
 
 const BASE = new URL('../../examples/', import.meta.url);
-/** @type {Promise<{ by: string | null, kind: string, people: Person[] }> | null} */
+/** @type {Promise<{ by: string | null, kind: string, people: Person[], draw: boolean }> | null} */
 let manifest = null;
 /** The studio's example portraits, and the looks rendered on each. */
 export function examples() {
-  manifest ||= fetch(new URL('manifest.json', BASE), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(m => ({
+  manifest ||= fetch(new URL('manifest.json', BASE), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : { draw: r.headers.get('X-Likeness-Examples') === 'drawn' })).catch(() => null).then(m => ({
     by: m?.by || null, kind: m?.kind === 'render' ? 'render' : 'simulated',
+    draw: m?.draw === true,
     // every address made whole, against the folder the manifest is in
     people: (m?.people || []).filter((/** @type {any} */ p) => p?.portrait && Array.isArray(p.looks)).map((/** @type {any} */ p) => ({ ...p, kind: m?.kind === 'render' ? 'render' : 'simulated', portrait: at(p.portrait), looks: p.looks.filter((/** @type {any} */ l) => l?.image && styleOf(l.part, l.style)).map((/** @type {any} */ l) => ({ ...l, image: at(l.image), takes: (l.takes || []).map(at), angles: (l.angles || []).map(at) })) })),
   }));
@@ -82,7 +81,7 @@ const open = openMirror;
 
 /** Builds the Lookbook, over the desk. */
 function lookbook() {
-  const ring = h('div.lb-ring'), orbit = h('div.lb-orbit', { role: 'listbox', 'aria-label': 'Looks to try' }, ring);
+  const ring = h('div.lb-ring'), orbit = h('div.lb-orbit', { role: 'listbox', tabindex: '0', 'aria-label': 'Looks to try' }, ring);
   const title = h('p.lb-caption__title'), sub = h('p.lb-caption__part');
   const caption = h('div.lb-caption', { 'aria-live': 'polite' }, title, sub);
   const desk = h('button.lb-bar__desk', { type: 'button', 'aria-label': 'Your pictures', title: 'Your pictures', html: icon('album'), onclick: () => away() });
@@ -226,7 +225,14 @@ function lookbook() {
       }
       const v = d.vx * step / (orbit.clientWidth * .5), to = Math.round(-(spin + v * .28) / step); turnTo(((to % cards.length) + cards.length) % cards.length, v); setTimeout(() => { moved = false; }, 60); },
   });
-  orbit.addEventListener('keydown', e => { if (e.key === 'ArrowRight') turnTo((front + 1) % cards.length); else if (e.key === 'ArrowLeft') turnTo((front - 1 + cards.length) % cards.length); });
+  orbit.addEventListener('keydown', e => {
+    if (!cards.length) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      touched = Date.now();
+      turnTo((front + (e.key === 'ArrowRight' ? 1 : -1) + cards.length) % cards.length);
+    } else if (e.target === orbit && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tap(front); }
+  });
   // left alone, it turns by itself, one face at a time
   const turning = setInterval(() => { if (reduced || acting() || document.hidden || el.classList.contains('is-away') || el.classList.contains('is-under') || Date.now() - touched < 7000 || Date.now() - since < (cards[front]?.kind === 'sitter' ? 5600 : held(cards[front]) ? 6200 : 4600)) return; turnTo((front + 1) % cards.length); }, 400);
   // the face in front tries its part's styles on, one after another (a plate redraws its own)
@@ -248,7 +254,11 @@ function lookbook() {
   /** The front card, chosen: its face in the mirror, or its style picked and a face asked for. */
   function choose(/** @type {number} */ i) {
     const c = cards[i]; if (!c) return;
-    if (c.kind === 'photo') { open({ person: c.person, look: c.look, picks: c.heard && input.value.trim() ? said() : [cardPick(c)], words: c.heard ? input.value : '', from: els[i] }); return; }
+    if (c.kind === 'photo') {
+      const sameLook = mixing() || (c.heard && input.value.trim());
+      open({ person: c.person, look: mixing() ? undefined : c.look, picks: sameLook ? said() : [cardPick(c)], words: sameLook ? input.value : '', from: els[i] });
+      return;
+    }
     // a sitter opens in the mirror wearing the look, its face known already: shape it, turn it, then try it on yourself
     if (c.kind === 'sitter' && mixing()) {
       const look = said(), words = input.value;
@@ -258,7 +268,11 @@ function lookbook() {
       return;
     }
     if (c.kind === 'sitter' && c.sitter.id === 'you') { open({ print: youOf, picks: c.heard && input.value.trim() ? said() : [cardPick(c)], words: c.heard ? input.value : '', face: c.sitter.face, turns: turnsFor.get(youOf), from: els[i] }); return; }
-    if (c.kind === 'sitter') { open({ person: { id: 'sitter-' + c.sitter.id, name: c.sitter.name, kind: 'drawn', portrait: c.sitter.portrait, looks: [] }, picks: c.heard && input.value.trim() ? said() : [cardPick(c)], words: c.heard ? input.value : '', face: c.sitter.face, hair: c.sitter.hair, from: els[i] }); return; }
+    if (c.kind === 'sitter') {
+      const person = c.sitter.person || { id: 'sitter-' + c.sitter.id, name: c.sitter.name, kind: 'drawn', portrait: c.sitter.portrait, looks: [] };
+      open({ person, picks: c.heard && input.value.trim() ? said() : [cardPick(c)], words: c.heard ? input.value : '', face: c.sitter.face, hair: c.sitter.hair, from: els[i] });
+      return;
+    }
     pick(c.part, c.style);
     if (photo) open({ print: photo, picks, words: input.value, from: els[i] }); else pickPhoto(els[i]);
   }
@@ -453,19 +467,25 @@ function lookbook() {
     } else if (typed > s.length + 48) { typed = 0; say++; }
   }, 70);
 
-  redeal();
-
   // —— you, in the ring: once there is a photo of you, every look in it can be on you ——
   /** @type {Sitter | null} */ let you = null;
   /** @type {any} */ let youOf = null, pending = null;
   let onYou = false, wantYou = false;
   /** The sides of you caught with a photo, for the mirror to turn through. @type {WeakMap<object, any[]>} */
   const turnsFor = new WeakMap();
+  let dealing = 0;
   /** The ring's cards dealt again, the same looks on whoever the ring is on now. */
-  function redeal() { Promise.all([examples(), sitters()]).then(([m, ss]) => deal(mixing() ? lookCards(m, ss, said(), onYou ? you : null, redealSoon) : cardsFor(m, ss, part, onYou ? you : null))); }
+  async function redeal() {
+    const step = ++dealing, m = await examples(), ss = m.draw ? await sitters() : [];
+    if (step !== dealing) return;
+    const whoseFace = onYou ? you : null;
+    const mixed = mixing() ? lookCards(m, ss, said(), whoseFace, redealSoon) : [];
+    if (mixed.length) deal(mixed);
+    else if (!mixing() || !cards.length || !m.people.length) deal(cardsFor(m, ss, part, whoseFace, redealSoon));
+  }
   let soon = 0;
   /** Dealt again a moment from now (the studio's people, read since): once, however many are read. */
-  const redealSoon = () => { clearTimeout(soon); soon = setTimeout(() => { if (mixing()) redeal(); }, 400); };
+  const redealSoon = () => { clearTimeout(soon); soon = setTimeout(() => { if (mixing() || part) redeal(); }, 400); };
   /** Your look, worn again by every card where it is: what was picked, and what the words say. */
   function relook() {
     const look = said();
@@ -529,19 +549,29 @@ function lookbook() {
   // from an earlier visit, the last photo of you: offered, not shown
   const last = [...app.prints.values()].filter(p => p?.provenance?.kind === 'photo').sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
   if (last) setTimeout(() => prepareYou(last), 1800);
+  redeal();
   return { el };
 }
 
 /**
- * The ring's cards: every look on every face, the faces taking turns; until there are some, the drawn sitters wearing
- * looks (a part's styles all on one face, when only that part is asked for); failing those, the drawn plates.
- * @param {{ people: Person[] }} m @param {Sitter[]} ss @param {string} part
+ * The ring's cards: use the catalog's portraits for a part, filling in scarce looks with sketches on the same face.
+ * @param {{ people: Person[] }} m @param {Sitter[]} ss @param {string} part @param {Sitter | null} who @param {() => void} onRead
  */
-function cardsFor(m, ss, part, who = /** @type {Sitter | null} */ (null)) {
+function cardsFor(m, ss, part, who, onRead) {
   if (who) return (part ? (partById(part)?.styles || []).map(s => [part, s.id]) : PLATES).map(([p, s]) => /** @type {Card} */ ({ kind: 'sitter', sitter: who, part: p, style: s }));
   const looks = (m.people || []).map(p => (p.looks || []).filter(l => !part || l.part === part).map(look => /** @type {Card} */ ({ kind: 'photo', person: p, look })));
   const out = []; for (let k = 0; looks.some(l => l[k]); k++) for (const l of looks) if (l[k]) out.push(l[k]);
-  if (out.length >= 3) return out.slice(0, 12);
+  if (out.length >= 3 || (!part && out.length)) return out.slice(0, 12);
+  if (part && m.people.length) {
+    const person = out[0]?.person || m.people[0], read = seen.get(person.portrait);
+    if (read) {
+      const sitter = sitterOf(person, read);
+      const painted = (partById(part)?.styles || []).filter(s => !out.some(c => c.look.style === s.id));
+      return [...out, ...painted.map(s => /** @type {Card} */ ({ kind: 'sitter', sitter, part, style: s.id }))];
+    }
+    readPerson(person).then(got => { if (got) onRead(); });
+    if (out.length) return out;
+  }
   const by = new Map(ss.map(s => [s.id, s]));
   const plates = part ? (partById(part)?.styles || []).map(s => [part, s.id, SITS[part]]) : PLATES;
   return plates.map(([p, s, who]) => { const sitter = by.get(who); return /** @type {Card} */ (sitter ? { kind: 'sitter', sitter, part: p, style: s } : { kind: 'plate', part: p, style: s }); });
@@ -586,8 +616,7 @@ function aim(card, c) {
 /** What a whole look is called: "Curtain bangs · Red lips · Copper hair". @param {{ part: string, style: { id: string } }[]} look */
 const lookTitle = (look) => look.map(q => lookName(q.part, q.style.id)).filter(Boolean).join(' · ');
 /**
- * The ring wearing your look: each of its faces wearing all of it, sketched on the device. The studio's people once their
- * faces are read (they are read now, and the ring dealt again as they are), until then the drawn sitters; you first,
+ * The ring wearing your look: each face wears all of it as soon as it has been read. Your picture comes first
  * when the ring is on you.
  * @param {{ people: Person[] }} m @param {Sitter[]} ss @param {{ part: string, style: { id: string }, shape?: Record<string, number> }[]} look
  * @param {Sitter | null} who @param {() => void} onRead
@@ -596,8 +625,8 @@ const lookTitle = (look) => look.map(q => lookName(q.part, q.style.id)).filter(B
 function lookCards(m, ss, look, who, onRead) {
   if (!look.length) return [];
   /** @type {Sitter[]} */ const read = [];
-  for (const p of m.people || []) { const s = seen.get(p.portrait); if (s) read.push({ id: p.id, name: p.name || '', portrait: p.portrait, w: s.face.w, h: s.face.h, face: s.face, hair: s.hair, person: p }); else readPerson(p).then(got => { if (got) onRead(); }); }
-  const faces = [...(who ? [who] : []), ...(read.length >= 3 ? read : ss)].slice(0, 8), [first, ...rest] = look;
+  for (const p of m.people) { const s = seen.get(p.portrait); if (s) read.push(sitterOf(p, s)); else readPerson(p).then(got => { if (got) onRead(); }); }
+  const faces = [...(who ? [who] : []), ...(m.people.length ? read : ss)].slice(0, 8), [first, ...rest] = look;
   return faces.map(sitter => /** @type {Card} */ ({ kind: 'sitter', sitter, part: first.part, style: first.style.id, shape: first.shape, more: rest.map(q => ({ part: q.part, style: q.style.id, shape: q.shape })) }));
 }
 /** What a card's corner says it is. @param {Card} c */
@@ -637,6 +666,8 @@ function worn(c) {
 const reading = new Map();
 /** @type {Map<string, Seen>} what has been read, by portrait */
 const seen = new Map();
+/** @param {Person} person @param {Seen} read @returns {Sitter} */
+const sitterOf = (person, read) => ({ id: person.id, name: person.name || '', portrait: person.portrait, w: read.face.w, h: read.face.h, face: read.face, hair: read.hair, person });
 /**
  * A render's face read on the device, and its hair (for a colour washed in, and for the tones a fringe or a beard is
  * painted in): what a drawn sitter brings with it already read. @param {Person} p @returns {Promise<Seen | null>}

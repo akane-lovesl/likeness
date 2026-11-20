@@ -376,7 +376,7 @@ class Codex:
         folder.mkdir()
         return folder
 
-    def lay_out(self, folder: Path, inputs: Inputs) -> tuple[dict[str, str], list[Path]]:
+    def lay_out(self, folder: Path, inputs: Inputs) -> tuple[dict[str, str], list[Path], Image.Image | None]:
         """The turn's pictures and masks in in/, named so the brief can point at them."""
         (folder / "in").mkdir()
         (folder / "out").mkdir()
@@ -408,12 +408,12 @@ class Codex:
             with Image.open(inputs.subject_mask) as m:
                 m.convert("L").resize(sizes[subject]).save(folder / "in" / f"{subject}.subject.png")
             files["subject"] = f"in/{subject}.subject.png"
-        return files, attach
+        return files, attach, union
 
     # ---- a turn ---------------------------------------------------------------------------------------------------
     def turn(self, turn: Turn, inputs: Inputs, work: Work) -> None:
         folder = self._folder("jobs")
-        files, attach = self.lay_out(folder, inputs)
+        files, attach, mask = self.lay_out(folder, inputs)
         pace = self.pace(turn.pace)
         text = brief.turn_brief(turn, inputs, files, size=str(self.config.get("size") or "1024x1536"), quality=str(pace.get("quality") or "medium"),
                                 image_hint=str((self.config.get("images") or {}).get("hint") or IMAGE_HINT))
@@ -423,9 +423,10 @@ class Codex:
         follow.spill = folder / "tool"
         argv = self.argv(folder, pace, attach if self.config.get("attach", True) else [])
         region = None
-        if turn.intent.op == "region" and files.get("edit"):
+        if turn.intent.op == "region" and mask is not None:
+            # The tool needs the hard edit mask. The final composite keeps the selection's soft edges.
             with Image.open(folder / files["edit"]) as guide:
-                region = guide.convert("RGB"), ImageOps.invert(guide.getchannel("A"))
+                region = guide.convert("RGB"), mask
         code = self._run(argv, text, folder, follow, work, turn.n, float(pace.get("timeout") or 600), region)
         if follow.failed:
             raise EngineError(*follow.failed)

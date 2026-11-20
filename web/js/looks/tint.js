@@ -48,14 +48,22 @@ export function dyeHair(x, tint, mask = null, given = NaN) {
   const hue = (Math.max(...t) - Math.min(...t)) / Math.max(1, Math.max(...t)), far = Math.max(0, Math.min(1, (tl - mean - 50) / 110));
   const lift = .82 - (hue > .25 ? .3 * far : 0), held = (.82 - lift) / .3;
   const target = mean + (tl - mean) * lift, keep = tl > mean ? 1.2 * Math.max(1, Math.min(2, Math.sqrt(target / Math.max(12, mean)))) : .95;
+  const headroom = Math.max(1, 255 - tl), floor = Math.max(1, tl);
+  const strength = .66 + .14 * held, desaturate = .22 - .14 * held;
+  // The partially covered pixels between fine hairs already contain some background colour.
   for (let i = 0; i < d.length; i += 4) {
-    // (far lighter than the hair is not hair: a wall or skin at its edge, which would otherwise come out white)
-    const l = Math.max(0, Math.min(255, target + Math.min(56, L(i) - mean) * keep));
-    // the colour at that lightness: darker by scaling it, lighter toward a warm white
-    const c = l <= tl ? t.map(q => q * l / Math.max(1, tl)) : t.map(q => q + (255 - q) * (l - tl) / Math.max(1, 255 - tl) * .85);
-    // hair is never as loud as its swatch: some of the colour's strength given back to grey at that lightness, a little of its own kept
-    // (a colour over dark hair it could not lift far keeps more of its warmth: less of it given back to grey)
-    const g = l * (.22 - .14 * held), s = .66 + .14 * held; d[i] = c[0] * s + g + d[i] * .12; d[i + 1] = c[1] * s + g + d[i + 1] * .12; d[i + 2] = c[2] * s + g + d[i + 2] * .12;
+    const coverage = (m ? m[i] * m[i + 3] / 255 : d[i + 3]) / 255;
+    if (!coverage) continue;
+    const source = L(i), edge = (1 - coverage) * Math.max(0, Math.min(1, (source - mean - 35) / 85));
+    const l = Math.max(0, Math.min(255, target + Math.min(56, source - mean) * keep));
+    const grey = l * desaturate;
+    const factor = l <= tl ? l / floor : 1 - (l - tl) / headroom * .85;
+    // The caller applies the silhouette mask when it places the dyed hair over the picture.
+    const white = l <= tl ? 0 : 255 * (1 - factor), amount = 1 - edge;
+    for (let c = 0; c < 3; c++) {
+      const dyed = (t[c] * factor + white) * strength + grey + d[i + c] * .12;
+      d[i + c] += amount * (dyed - d[i + c]);
+    }
   }
   x.putImageData(img, 0, 0);
 }

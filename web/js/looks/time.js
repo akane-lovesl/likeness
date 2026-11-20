@@ -110,11 +110,12 @@ export function rootsOf(f, mask, weeks, style) {
   const k = n / Math.max(1, R - L), rows = Math.max(8, Math.round((brow - top) * k));
   const c = make(n, rows), x = ctx(c); x.drawImage(mask, L * sx, top * sy, (R - L) * sx, (brow - top) * sy, 0, 0, n, rows);
   const d = x.getImageData(0, 0, n, rows).data, at = (/** @type {number} */ i, /** @type {number} */ j) => d[(j * n + i) * 4 + 3];
-  // the top of the face, temple to temple: under a fringe the hairline is about there, whatever hangs over it
-  const brim = [54, 103, 67, 109, 10, 338, 297, 332, 284].map(i => ({ x: P(i).x, y: P(i).y - bh * .02 })).sort((a, b) => a.x - b.x);
-  const brimAt = (/** @type {number} */ px) => { let j = 1; while (j < brim.length - 1 && brim[j].x < px) j++; const a = brim[j - 1], b = brim[j], t = Math.max(0, Math.min(1, (px - a.x) / Math.max(1e-6, b.x - a.x))); return a.y + (b.y - a.y) * t; };
   const line = new Float64Array(n);
-  for (let i = 0; i < n; i++) { let j = rows - 1; while (j > 0 && at(i, j) < 140) j--; line[i] = j > 0 ? Math.min(top + j / k, brimAt(L + i / k) + F * .12) : NaN; }
+  for (let i = 0; i < n; i++) {
+    let j = rows - 1;
+    while (j > 0 && at(i, j) < 140) j--;
+    line[i] = j > 0 ? top + j / k : NaN;
+  }
   // smoothed, and where a column found none, its neighbours'
   const ys = Array.from(line, (_, i) => { let s = 0, w = 0; for (let q = Math.max(0, i - 4); q <= Math.min(n - 1, i + 4); q++) if (!Number.isNaN(line[q])) { s += line[q]; w++; } return w ? s / w : hair; });
   // the parting: across the middle of the head, where there is least hair just above the hairline (the middle if none)
@@ -125,11 +126,11 @@ export function rootsOf(f, mask, weeks, style) {
   const parted = part >= 0 && least < mean * .4, px = parted ? L + part / k : P(10).x;
   const out = make(mask.width, mask.height), o = ctx(out);
   o.setTransform(sx, 0, 0, sy, 0, 0); o.fillStyle = '#fff';
-  // the band along the hairline: as wide as the hair has grown, thinning toward the temples
+  // Follow the visible hairline and let the mask trim the band where it meets the forehead.
   o.beginPath();
   const wide = parted ? 1 : 1.3;
   for (let i = 0; i < n; i++) { const e = Math.sin(Math.PI * (i + .5) / n) ** .35; o.lineTo(L + i / k, ys[i] - r * e * wide); }
-  for (let i = n - 1; i >= 0; i--) o.lineTo(L + i / k, ys[i] + r * .25);
+  for (let i = n - 1; i >= 0; i--) o.lineTo(L + i / k, ys[i] + Math.max(r * .55, F * .14));
   o.closePath(); o.fill();
   // and up the parting, over the crown, where there is one
   if (parted) {
@@ -138,7 +139,9 @@ export function rootsOf(f, mask, weeks, style) {
   }
   // soft at its edge (a balayage most of all), and only where there is hair
   const soft = make(mask.width, mask.height), so = ctx(soft);
-  so.filter = 'blur(' + Math.max(1, r * (style === 'honey' ? 1.1 : .32) * sx).toFixed(1) + 'px)'; so.drawImage(out, 0, 0); so.filter = 'none';
+  so.globalAlpha = parted ? .95 : .82;
+  so.filter = 'blur(' + Math.max(1, r * (style === 'honey' ? 1.1 : .6) * sx).toFixed(1) + 'px)'; so.drawImage(out, 0, 0); so.filter = 'none';
+  so.globalAlpha = 1;
   so.globalCompositeOperation = 'destination-in'; so.drawImage(mask, 0, 0);
   return soft;
 }

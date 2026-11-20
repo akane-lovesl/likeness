@@ -215,7 +215,12 @@ export function openLive(o) {
       // the camera, mirrored as you see yourself, once a frame: the view, or each of its tiles, is drawn from it
       if (base.width !== w || base.height !== hh) { base.width = w; base.height = hh; }
       const b = ctx(base); b.save(); b.translate(w, 0); b.scale(-1, 1); b.drawImage(video, c.sx, c.sy, c.sw, c.sh, 0, 0, w, hh); b.restore();
-      if (hair && (grid === 'colour' || grid === 'bangs' || picks.some(q => q.part === 'colour' || q.part === 'bangs'))) hairMask();
+      if (hair && (grid === 'colour' || grid === 'bangs' || picks.some(q => q.part === 'colour' || q.part === 'bangs'))) {
+        // Move the mask with small motions, and reread it when the visible side of the head has changed.
+        const turned = fresh && there && maskE && now - maskRead > 80 && Math.abs(yawOf(face) - maskYaw) > .18;
+        hairMask(!!turned);
+        if (turned) { paints.clear(); tone = null; }
+      }
       ticks++;
       for (const [key, p] of paints) if (now - p.used > 2500) paints.delete(key);
       // how far the tiles have come apart
@@ -403,10 +408,11 @@ export function openLive(o) {
       mask = hair?.(small, now) || mask;
       // a new reading is of this frame: the face in it is where the hair was
       const read = mask && /** @type {any} */ (mask).readAt;
-      if (read && read !== maskRead && face) { maskRead = read; maskE = corners(face); }
-      if (now) tints.clear();
+      if (read && read !== maskRead && face) {
+        maskRead = read; maskE = corners(face); maskYaw = yawOf(face); tints.clear();
+      } else if (now) tints.clear();
     }
-    let maskRead = 0, maskE = /** @type {{ x: number, y: number }[] | null} */ (null), aligned = /** @type {HTMLCanvasElement | null} */ (null);
+    let maskRead = 0, maskYaw = 0, maskE = /** @type {{ x: number, y: number }[] | null} */ (null), aligned = /** @type {HTMLCanvasElement | null} */ (null);
     /** The hair where it is now: the last reading of it, moved with the face since (by the corners of the eyes). */
     function maskNow() {
       if (!mask || !maskE || !face) return mask;

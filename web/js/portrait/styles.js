@@ -293,6 +293,7 @@ export const FORMATS = [
 ];
 
 export const styleById = (/** @type {string} */ id) => STYLES.find(s => s.id === id) || null;
+export const formatOf = (/** @type {string} */ id) => FORMATS.find(f => f.id === id) || FORMATS[0];
 /** @param {Style} style @returns {Picks} */
 export const defaultsOf = style => ({ ...style.defaults, details: [...style.defaults.details] });
 const choice = (/** @type {Choice[]} */ list, /** @type {string} */ id) => list.find(c => c.id === id) || null;
@@ -320,16 +321,16 @@ export function promptFor(style, picks) {
   if (backdrop) out.push('Behind them: ' + backdrop.words + '.');
   const words = String(picks.words || '').trim();
   if (words) out.push('Also: ' + words.replace(/[.\s]+$/, '') + '.');
-  out.push((FORMATS.find(f => f.id === picks.format) || FORMATS[0]).words, CLEAN);
+  out.push(formatOf(picks.format).words, CLEAN);
   return out.join(' ');
 }
-/** A style of one's own: words, a reference picture, or both. @param {string} words @param {boolean} hasRef */
-export function ownPrompt(words, hasRef) {
+/** A style of one's own: words, a reference picture, or both. @param {string} words @param {boolean} hasRef @param {Picks} picks */
+export function ownPrompt(words, hasRef, picks) {
   const said = String(words || '').trim().replace(/[.\s]+$/, '');
   return [
     'Repaint this person as a portrait' + (said ? ' in this style: ' + said + '.' : '.'),
     hasRef ? 'Borrow the painting style, palette, texture and mood of the reference picture, not its subject.' : '',
-    KEEP, FORMATS[0].words, CLEAN,
+    likenessWords(picks.likeness), formatOf(picks.format).words, CLEAN,
   ].filter(Boolean).join(' ');
 }
 const list = (/** @type {string[]} */ xs) => (xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]);

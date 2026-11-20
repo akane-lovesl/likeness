@@ -113,6 +113,7 @@
 /* on a short screen the frame gives way, so every action stays in sight */
 @container (min-aspect-ratio: 9 / 17) {
   .cr { --fh: 38cqh; }
+  .cr[data-step='photo'] { --fh: 34cqh; }
   .cr[data-step='tune'] { --fh: 24cqh; }
   .cr[data-step='paint'] { --fh: 44cqh; }
   .cr[data-step='result'] { --fh: 36cqh; }

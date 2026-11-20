@@ -431,7 +431,9 @@ class Codex:
             # The tool needs the hard edit mask. The final composite keeps the selection's soft edges.
             with Image.open(folder / files["edit"]) as guide:
                 region = guide.convert("RGB"), mask
-        code = self._run(argv, text, folder, follow, work, turn.n, float(pace.get("timeout") or 600), region)
+        single_portrait = turn.intent.op == "restyle" and turn.aspect is not None and turn.n == 1
+        code = self._run(argv, text, folder, follow, work, turn.n, float(pace.get("timeout") or 600), region,
+                         single_portrait=single_portrait)
         if follow.failed:
             raise EngineError(*(LOCAL_FILE.sub("a local file", part) for part in follow.failed))
         if not work.results:
@@ -447,7 +449,7 @@ class Codex:
         work.reply(str(reply.get("reply") or ""), [str(s) for s in reply.get("suggestions") or []])
 
     def _run(self, argv: list[str], text: str, folder: Path, follow: Follow, work: Work, n: int, timeout: float,
-             region: tuple[Image.Image, Image.Image] | None = None) -> int:
+             region: tuple[Image.Image, Image.Image] | None = None, *, single_portrait: bool = False) -> int:
         events = (folder / "events.jsonl").open("w", encoding="utf-8")
         errors = (folder / "stderr.log").open("w", encoding="utf-8")
         try:
@@ -476,6 +478,7 @@ class Codex:
             thread.start()
         watcher, deadline = Watcher(folder / "out", n), time.monotonic() + timeout
         generated_root = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "generated_images"
+        reply_deadline = None
 
         def deliver(*, final: bool = False) -> None:
             thread_id = follow.thread_id
@@ -491,10 +494,19 @@ class Codex:
                 if work.job.stop.is_set():
                     kill(proc)
                     raise Cancelled()
-                if time.monotonic() > deadline:
-                    kill(proc)
-                    raise EngineError("The studio took too long and was stopped.", "Try the Quick pace, or fewer pictures at once.")
                 deliver()
+                now = time.monotonic()
+                # A finished portrait is usable even if Codex stalls writing its closing message.
+                if single_portrait and work.results and reply_deadline is None:
+                    reply_deadline = min(deadline, now + 10)
+                if reply_deadline is not None and now >= reply_deadline and not follow.failed:
+                    kill(proc)
+                    threads[1].join(10)
+                    return 0
+                if now >= deadline:
+                    kill(proc)
+                    hint = "Try again, or ask for fewer pictures." if n > 1 else "Try again in a moment."
+                    raise EngineError("The studio took too long and was stopped.", hint)
                 time.sleep(0.3)
             threads[1].join(10)
             deliver(final=True)

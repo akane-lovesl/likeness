@@ -24,6 +24,7 @@ export function mineScreen() {
   const list = h('div.mine-list');
   const seg = (/** @type {string} */ id, /** @type {string} */ label) => h('button.mine-seg__opt', { type: 'button', role: 'tab', data: { tab: id }, 'aria-selected': String(id === tab), onclick: () => { tab = id; paint(); } }, label);
   let tab = 'portraits';
+  let revision = 0;
   const segs = h('div.mine-seg', { role: 'tablist' }, seg('portraits', 'Portraits'), seg('talks', 'Conversations'));
   const who = h('button.mine-who', { type: 'button', onclick: () => openSpace() }, h('span', { html: icon('heart') }), h('b'));
   const el = h('section.screen.mine', { 'aria-label': 'Mine' },
@@ -31,21 +32,23 @@ export function mineScreen() {
   const sayWho = () => { who.querySelector('b').textContent = space().name || 'Your space'; };
 
   async function paint() {
+    const view = ++revision;
     sayWho();
     segs.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', String(/** @type {HTMLElement} */ (b).dataset.tab === tab)));
-    if (tab === 'portraits') await paintPortraits(); else await paintTalks();
+    if (tab === 'portraits') await paintPortraits(view); else await paintTalks(view);
   }
-  async function paintPortraits() {
+  async function paintPortraits(view) {
     const mine = await portraits();
-    if (!mine.length) {
-      list.replaceChildren(h('div.mine-empty', null, h('span.mine-empty__orn', { html: icon('sparkle') }), h('h2', null, 'Nothing painted yet'), h('p', null, 'Choose a style, add a photo, and your first portrait will wait for you here, with every one after it.'),
-        h('button.btn.btn--accent', { type: 'button', onclick: () => go('home') }, 'Choose a style')));
-      return;
+    if (view !== revision) return;
+    const empty = mine.length ? null : h('div.mine-empty', null, h('span.mine-empty__orn', { html: icon('sparkle') }), h('h2', null, 'Nothing painted yet'), h('p', null, 'Choose a style and a photo. Your finished portraits will be here.'), h('button.btn.btn--accent', { type: 'button', onclick: () => go('home') }, 'Choose a style'));
+    if (empty) {
+      list.replaceChildren(empty);
+    } else {
+      /** @type {Map<string, any[]>} */ const days = new Map();
+      for (const p of mine) { const k = day(p.createdAt); if (!days.has(k)) days.set(k, []); days.get(k).push(p); }
+      list.replaceChildren(...[...days].map(([k, ps]) => h('section.mine-day', null, h('h2.mine-day__title', null, k), h('div.mine-grid', null, ...ps.map(tile)))));
     }
-    /** @type {Map<string, any[]>} */ const days = new Map();
-    for (const p of mine) { const k = day(p.createdAt); if (!days.has(k)) days.set(k, []); days.get(k).push(p); }
-    list.replaceChildren(...[...days].map(([k, ps]) => h('section.mine-day', null, h('h2.mine-day__title', null, k), h('div.mine-grid', null, ...ps.map(tile)))));
-    if (studio.live) more(mine);
+    if (studio.live) await more(mine, view, empty);
   }
   /** @param {import('./keep.js').Portrait} p */
   function tile(p) {
@@ -61,15 +64,17 @@ export function mineScreen() {
     toast('Deleted', 4000);
   }
   /** What the studio keeps that this phone does not (after the phone was cleared, say). */
-  async function more(mine) {
+  async function more(mine, view, empty) {
     const have = new Set(mine.map(p => p.asset).filter(Boolean));
     const theirs = (await studioHistory()).filter(x => !have.has(x.url));
-    if (!theirs.length || tab !== 'portraits') return;
+    if (!theirs.length || view !== revision) return;
+    empty?.remove();
     list.append(h('section.mine-day', null, h('h2.mine-day__title', null, 'Also on your studio'), h('div.mine-grid', null,
       ...theirs.slice(0, 60).map(x => h('a.mine-tile', { href: x.url, target: '_blank', rel: 'noopener', 'aria-label': 'A picture your studio kept' }, h('img', { alt: '', src: x.url, loading: 'lazy' }), h('span.mine-tile__name', null, day(x.created * 1000)))))));
   }
-  async function paintTalks() {
+  async function paintTalks(view) {
     const threads = (await all('threads')).filter(t => t.items?.length).sort((a, b) => b.updatedAt - a.updatedAt);
+    if (view !== revision) return;
     if (!threads.length) { list.replaceChildren(h('div.mine-empty', null, h('span.mine-empty__orn', { html: icon('feather') }), h('h2', null, 'No conversations yet'), h('p', null, 'Talk to the studio about any picture: “make the bow red”, “use @B as the backdrop”. Every word is kept here.'), h('button.btn.btn--accent', { type: 'button', onclick: () => go('desk') }, 'Talk to the studio'))); return; }
     list.replaceChildren(h('div.mine-talks', null, ...threads.map(t => {
       const said = t.items.find(i => i.type === 'you')?.text || 'Pictures';
@@ -80,6 +85,5 @@ export function mineScreen() {
     })));
   }
   const offs = [on('portrait', () => { if (el.isConnected && !el.hidden) paint(); }), on('space', sayWho)];
-  paint();
   return { el, shown: () => paint(), left: () => offs.forEach(f => typeof f === 'function' && f()) };
 }

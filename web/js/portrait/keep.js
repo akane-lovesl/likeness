@@ -14,7 +14,7 @@ import { emit } from '../core/bus.js';
 /** @typedef {{ id: string, blob: Blob, sample?: string, createdAt: number }} Sitting */
 /**
  * @typedef {{ id: string, style: string, styleName: string, room: string, picks: any, prompt: string, sitting: string,
- *   blob?: Blob, kind: 'render' | 'simulated' | 'sketch', state: 'painting' | 'done' | 'failed' | 'stopped', error?: string,
+ *   blob?: Blob, reference?: Blob, kind: 'render' | 'simulated' | 'sketch', state: 'painting' | 'done' | 'failed' | 'stopped', error?: string,
  *   job?: string, asset?: string, w?: number, h?: number, ms?: number, createdAt: number, kept?: boolean, url?: string }} Portrait
  */
 
@@ -59,13 +59,14 @@ export const persisted = async () => !!(await navigator.storage?.persisted?.().c
 
 const toB64 = (/** @type {Blob} */ b) => new Promise(r => { const f = new FileReader(); f.onload = () => r(String(f.result)); f.readAsDataURL(b); });
 const fromB64 = (/** @type {string} */ s) => fetch(s).then(r => r.blob());
+const pictureFields = ['blob', 'maskBlob', 'reference'];
 
 /** Everything kept, as one file to carry elsewhere: the stores, with each picture written out. */
 export async function backup() {
   const out = { likeness: 1, space: space(), at: new Date().toISOString(), stores: /** @type {Record<string, any[]>} */ ({}) };
   for (const name of STORES) {
     const rows = await all(name);
-    out.stores[name] = await Promise.all(rows.map(async r => { const o = { ...r }; for (const k of ['blob', 'maskBlob']) if (o[k] instanceof Blob) o[k] = { b64: await toB64(o[k]) }; return o; }));
+    out.stores[name] = await Promise.all(rows.map(async r => { const o = { ...r }; for (const k of pictureFields) if (o[k] instanceof Blob) o[k] = { b64: await toB64(o[k]) }; return o; }));
   }
   return new Blob([JSON.stringify(out)], { type: 'application/json' });
 }
@@ -75,7 +76,7 @@ export async function restore(file) {
   if (data?.likeness !== 1) throw new Error('That file is not a Likeness backup.');
   let n = 0;
   for (const name of STORES) for (const row of data.stores?.[name] || []) {
-    for (const k of ['blob', 'maskBlob']) if (row[k]?.b64) row[k] = await fromB64(row[k].b64);
+    for (const k of pictureFields) if (row[k]?.b64) row[k] = await fromB64(row[k].b64);
     const have = await get(name, row.id);
     if (!have || (have.updatedAt || have.createdAt || 0) <= (row.updatedAt || row.createdAt || 0)) { await put(name, row); n++; }
   }

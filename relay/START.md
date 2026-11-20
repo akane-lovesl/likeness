@@ -30,7 +30,7 @@ What to do, before or alongside the parts below (they still hold):
    - The selfie button opens the front camera.
    - Share hands the picture to the phone's share sheet.
    - `npm run build`, so the phone gets the bundle.
-6. **The tour** (`npm run tour`, Part 5) does not yet film the portrait studio. Add its scenes first: the styles, the photo, Style it, the painting, the result, Mine.
+6. **The tour** (`npm run tour`, Part 5) opens with the Portrait Studio: Styles, Photo, Style it, Painting, the result, and Mine. Use `npm run tour -- --only portrait` to record just this flow.
 
 ## What Likeness is
 

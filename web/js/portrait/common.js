@@ -37,7 +37,7 @@ export const SAMPLES = ['ama', 'sofia', 'kenji', 'noor', 'maeve', 'mateus', 'ing
 /** How long a portrait takes here, said plainly. */
 export function etaLine() {
   if (!studio.live) return 'Sketched on this phone · your studio paints it for real';
-  const ms = studio.info?.eta?.[settings.get('pace', 'fine')];
+  const ms = (studio.info?.portraitEta || studio.info?.eta)?.[settings.get('pace', 'fine')];
   const said = ms ? eta(ms) : '';
   return (said ? 'Usually ' + said + ' · ' : '') + (studio.mode === 'simulator' ? 'a simulated stand-in' : 'painted by your studio');
 }
@@ -60,7 +60,7 @@ export async function openSpace() {
       h('li', null, h('b', null, String(days)), ' day' + (days === 1 ? '' : 's') + ' here'),
       h('li', null, h('b', null, safe ? 'Kept safe' : 'Kept'), safe ? ' (the browser will not clear it)' : ' on this phone')),
     h('p.space__note.t-soft', null, studio.live
-      ? 'Your photos and portraits stay on this phone and on your own studio, apart from anyone else’s. Nothing goes anywhere else.'
+      ? 'Your work is kept in this browser. Photos you choose to paint are sent to your studio for rendering.'
       : 'Your photos and portraits stay on this phone. Nothing leaves it.'),
     h('div.space__acts', null,
       h('button.btn.btn--quiet', { type: 'button', onclick: async () => {

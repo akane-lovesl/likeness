@@ -14,12 +14,13 @@ import { roomById, changeRoom } from '../room/atmosphere.js';
 import { atmosphere } from '../room/theme.js';
 import { studio } from '../studio/studio.js';
 import { addPrint, addItem } from '../state.js';
-import { STYLES, FORMATS, styleById, defaultsOf, promptFor, ownPrompt, captionOf } from './styles.js';
+import { STYLES, FORMATS, styleById, formatOf, defaultsOf, promptFor, ownPrompt, captionOf } from './styles.js';
 import { study, bitmap, blobOf } from './sketch.js';
 import { sit, sitting as sittingById, sittings, keep, portrait as portraitById, urlOf } from './keep.js';
 import { catalogue, artOf, photoOf, etaLine, SAMPLES } from './common.js';
 
 /** @typedef {import('./styles.js').Style} Style @typedef {import('./styles.js').Picks} Picks @typedef {import('./keep.js').Portrait} Portrait */
+/** @typedef {{ picks: Picks, reference: Blob | null }} Choices */
 
 const STEPS = [['photo', 'Photo'], ['tune', 'Style it'], ['paint', 'Painting']];
 const KIND_SAID = { render: 'Painted by your studio', simulated: 'Simulated stand-in · not a real painting', sketch: 'Sketch drawn on this phone · your studio paints the real one' };
@@ -38,11 +39,11 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
   /** @type {Style | null} */ let style = styleById(params.id) || (params.id === 'own' ? null : STYLES[0]);
   /** @type {Picks} */ let picks = loadPicks();
   /** @type {{ blob: Blob, bmp: any, id: string, sample?: string } | null} */ let photo = null;
-  /** @type {{ blob: Blob } | null} */ let ref = null;
-  let ownWords = settings.get('own.words', '');
+  /** @type {Blob | null} */ let reference = null;
   /** @type {Portrait | null} */ let shown = null;
-  /** @type {string[]} */ const past = [], future = [];
+  /** @type {Choices[]} */ const past = [], future = [];
   let stepNow = 'photo';
+  let submitting = false;
 
   // ---- the frame: the photo, the sketch, the painting, one over the other ----
   const photoImg = h('img.cr-photo', { alt: 'Your photo' });
@@ -71,14 +72,16 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
     bar, h('div.cr-stage', null, frame, stamp, chips), panel, cta);
 
   function roomOf() { return roomById(style?.room || 'atelier'); }
-  function loadPicks() { return style ? { ...defaultsOf(style), ...settings.get('picks.' + style.id, {}) } : { ...defaultsOf(STYLES[0]), format: 'portrait', words: '' }; }
-  const savePicks = () => { if (style) settings.set('picks.' + style.id, picks); };
+  function loadPicks() { return style ? { ...defaultsOf(style), ...settings.get('picks.' + style.id, {}) } : { ...defaultsOf(STYLES[0]), format: 'portrait', words: settings.get('own.words', '') }; }
+  const savePicks = () => { if (style) settings.set('picks.' + style.id, picks); else settings.set('own.words', picks.words); };
+  const snapshot = () => ({ picks: { ...picks }, reference });
 
   // ---- steps ----
   function render(stepName) {
     stepNow = stepName;
     el.dataset.step = stepName; el.dataset.style = style?.id || 'own';
     frame.dataset.frame = roomOf().frame;
+    frame.classList.toggle('is-painting', stepName === 'paint' && shown?.state === 'painting');
     stepsEl.querySelectorAll('li').forEach((li, i) => { const k = STEPS.findIndex(s => s[0] === (stepName === 'result' ? 'paint' : stepName)); li.classList.toggle('is-done', i < k || stepName === 'result'); li.classList.toggle('is-on', i === k && stepName !== 'result'); });
     bar.querySelector('.cr-tools').hidden = stepName !== 'tune';
     if (stepName === 'photo') photoStep();
@@ -113,7 +116,7 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
   }
   const faceBtn = (src, label, run, who = '') => h('button.cr-face', { type: 'button', role: 'listitem', 'aria-label': label, data: { who }, 'aria-pressed': String(!!who && photo?.sample === who), onclick: run }, h('img', { alt: '', src, loading: 'lazy' }));
   async function choose(selfie) {
-    const [f] = await chooseFiles({ multiple: false, capture: selfie });
+    const [f] = await chooseFiles({ multiple: false, capture: selfie ? 'user' : false });
     if (f) usePhoto(f);
   }
   /** @param {Blob} blob @param {string} [known] a sitting already kept @param {string} [sample] */
@@ -151,9 +154,16 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
     return [one('palette', t.palette, 'Palette', '.cr-tiles--swatch'), one('mood', t.mood, 'Mood'), details, one('backdrop', t.backdrop, 'Backdrop'), formatSection(), likenessSection(), wordsSection()];
   }
   function ownSections() {
-    const refBtn = h('button.cr-big.cr-big--wide', { type: 'button', onclick: async () => { const [f] = await chooseFiles({ multiple: false }); if (!f) return; ref = { blob: (await prepared(f)).blob }; tuneStep(); toast('That picture’s style it is'); } },
-      ref ? h('img.cr-refimg', { alt: '', src: URL.createObjectURL(ref.blob) }) : h('span', { html: icon('image') }), h('b', null, ref ? 'Style from this picture · change' : 'Show a picture of the style'));
-    return [section('Your style in words', noteButton(ownWords, 'Watercolour on brown paper, gold leaf, autumn light…', w => { ownWords = w; settings.set('own.words', w); })),
+    const refBtn = h('button.cr-big.cr-big--wide', { type: 'button', onclick: async () => {
+      const [file] = await chooseFiles({ multiple: false });
+      if (!file) return;
+      try {
+        const { blob } = await prepared(file);
+        change(() => { reference = blob; }, 'Reference added');
+        tuneStep();
+      } catch { toast('That picture could not be opened. Try another.'); }
+    } }, reference ? h('img.cr-refimg', { alt: '', src: URL.createObjectURL(reference) }) : h('span', { html: icon('image') }), h('b', null, reference ? 'Change the style reference' : 'Show a picture of the style'));
+    return [section('Your style in words', noteButton(picks.words, 'Watercolour on brown paper, gold leaf, autumn light…', w => change(() => { picks.words = w; }, w ? 'Note added' : 'Note removed'))),
       section('Or show it', refBtn, 'A painting, a poster, a screenshot: its look, not its subject'), formatSection(), likenessSection()];
   }
   function formatSection() {
@@ -161,10 +171,15 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
   }
   function likenessSection() {
     const range = /** @type {HTMLInputElement} */ (h('input.cr-range', { type: 'range', min: '0', max: '100', step: '5', value: String(Math.round(picks.likeness * 100)), 'aria-label': 'How closely it keeps your face' }));
-    let before = '';
-    range.addEventListener('pointerdown', () => { before = JSON.stringify(picks); });
-    range.addEventListener('input', () => { picks.likeness = Number(range.value) / 100; });
-    range.addEventListener('change', () => { if (before) { past.push(before); future.length = 0; before = ''; } else { past.push(JSON.stringify({ ...picks })); future.length = 0; } savePicks(); syncUndo(); });
+    /** @type {Choices | null} */ let before = null;
+    range.addEventListener('input', () => {
+      before ||= snapshot();
+      picks.likeness = Number(range.value) / 100;
+    });
+    range.addEventListener('change', () => {
+      if (before && before.picks.likeness !== picks.likeness) { past.push(before); future.length = 0; }
+      before = null; savePicks(); syncUndo();
+    });
     return section('Likeness', h('div.cr-rangebox', null, h('span', null, 'Free'), range, h('span', null, 'Faithful')), 'How closely the painting keeps your face');
   }
   function wordsSection() { return section('Anything else?', noteButton(picks.words, 'Holding a teacup, golden earrings…', w => change(() => { picks.words = w; }, w ? 'Note added' : 'Note removed'))); }
@@ -180,18 +195,19 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
     const card = h('div.cr-note', { role: 'dialog', 'aria-label': 'Your words' }, field, h('div.cr-note__acts', null, h('button.cr-link', { type: 'button', onclick: () => shut(false) }, 'Cancel'), h('button.btn.btn--accent', { type: 'button', onclick: () => shut(true) }, 'Done')));
     field.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); shut(true); } if (e.key === 'Escape') shut(false); });
     el.append(scrim, card);
-    requestAnimationFrame(() => { scrim.classList.add('is-in'); card.classList.add('is-in'); field.focus(); });
+    field.focus({ preventScroll: true });
+    requestAnimationFrame(() => { scrim.classList.add('is-in'); card.classList.add('is-in'); });
   }
   const section = (/** @type {string} */ title, /** @type {any} */ body, sub = '') => h('section.cr-sec', null, h('h3.cr-sec__title', null, title, sub ? h('span', null, sub) : null), body);
 
   /** A choice, kept so it can be undone; the tiles and the sketch follow at once. @param {() => void} fn @param {string} said */
   function change(fn, said) {
-    past.push(JSON.stringify(picks)); future.length = 0;
+    past.push(snapshot()); future.length = 0;
     fn(); savePicks(); syncTiles(); syncChips(); syncUndo(); drawStudy();
     toast(said, 1800, { label: 'Undo', run: () => undo() });
   }
-  function undo() { if (!past.length) return; future.push(JSON.stringify(picks)); picks = JSON.parse(/** @type {string} */ (past.pop())); afterHistory('Undone'); }
-  function redo() { if (!future.length) return; past.push(JSON.stringify(picks)); picks = JSON.parse(/** @type {string} */ (future.pop())); afterHistory('Redone'); }
+  function undo() { if (!past.length) return; future.push(snapshot()); ({ picks, reference } = /** @type {Choices} */ (past.pop())); afterHistory('Undone'); }
+  function redo() { if (!future.length) return; past.push(snapshot()); ({ picks, reference } = /** @type {Choices} */ (future.pop())); afterHistory('Redone'); }
   function afterHistory(/** @type {string} */ said) { savePicks(); if (stepNow === 'tune') tuneStep(); syncChips(); drawStudy(); syncUndo(); toast(said, 1200); }
   function syncUndo() { undoBtn.disabled = !past.length; redoBtn.disabled = !future.length; }
   function syncTiles() {
@@ -201,19 +217,19 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
       b.setAttribute(b.hasAttribute('aria-pressed') ? 'aria-pressed' : 'aria-checked', String(on));
     });
   }
-  function syncChips() { chips.textContent = style ? captionOf(style, picks) : (ownWords || (ref ? 'In the style of your picture' : '')); }
+  function syncChips() { chips.textContent = style ? captionOf(style, picks) : (picks.words || (reference ? 'In the style of your picture' : '')); }
 
   let studyRaf = 0;
   function drawStudy() {
     if (!photo) return;
     cancelAnimationFrame(studyRaf);
     studyRaf = requestAnimationFrame(() => {
-      const c = study(photo.bmp, style, picks, { width: 360, square: picks.format === 'avatar' });
+      const c = study(photo.bmp, style, picks, { width: 360, aspect: formatOf(picks.format).aspect });
       studyBox.replaceChildren(c);
     });
   }
   /** Which layer of the frame is in front. @param {'guide' | 'photo' | 'study' | 'paint' | 'art'} what */
-  function showFrame(what) { frame.dataset.show = what; frame.dataset.shape = (FORMATS.find(f => f.id === picks.format) || FORMATS[0]).aspect; }
+  function showFrame(what) { frame.dataset.show = what; frame.dataset.shape = formatOf(picks.format).aspect; }
   function holdToCompare(/** @type {HTMLElement} */ f) {
     let t = 0;
     f.addEventListener('pointerdown', () => { if (!photo || frame.dataset.show === 'photo' || frame.dataset.show === 'guide') return; t = setTimeout(() => f.classList.add('is-compare'), 160); });
@@ -233,72 +249,87 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
     cta.replaceChildren(stopBtn);
   }
   async function paint() {
+    if (submitting || stepNow === 'paint') return;
     if (!photo) { to('photo'); return; }
-    if (!style && !ownWords && !ref) { to('tune'); toast('Describe your style, or show a picture of it'); return; }
-    const room = roomOf();
-    const prompt = style ? promptFor(style, picks) : ownPrompt(ownWords, !!ref);
+    if (!style && !picks.words && !reference) { to('tune'); toast('Describe your style, or show a picture of it'); return; }
+    submitting = true;
+    const room = roomOf(), source = photo, styleReference = reference;
+    const prompt = style ? promptFor(style, picks) : ownPrompt(picks.words, !!styleReference, picks);
     /** @type {Portrait} */
-    const p = { id: uid('pt-'), style: style?.id || 'own', styleName: style?.name || 'Your own style', room: room.id, picks: JSON.parse(JSON.stringify(picks)), prompt, sitting: photo.id, kind: studio.live ? (studio.mode === 'simulator' ? 'simulated' : 'render') : 'sketch', state: 'painting', createdAt: Date.now() };
+    const p = { id: uid('pt-'), style: style?.id || 'own', styleName: style?.name || 'Your own style', room: room.id, picks: { ...picks }, prompt, sitting: photo.id, reference: styleReference || undefined, kind: studio.live ? (studio.mode === 'simulator' ? 'simulated' : 'render') : 'sketch', state: 'painting', createdAt: Date.now() };
     await keep(p);
     shown = p; artImg.removeAttribute('src'); partial.removeAttribute('src'); partial.classList.remove('is-in'); artImg.classList.remove('is-in');
-    notes.replaceChildren(); stageWords.textContent = room.voice?.stages?.read || 'Looking closely'; timeWords.textContent = '';
+    notes.replaceChildren(); stageWords.textContent = room.voice?.stages?.read || 'Looking closely'; timeWords.textContent = studio.live ? 'Sending your photo' : '';
     drawStudy();
-    if (stepNow !== 'paint') to('paint'); else render('paint');
-    showFrame('paint');
-    frame.classList.add('is-painting');
-    const run = { p, stopped: false, job: '', started: performance.now(), eta: 0, value: 0 };
+    if (el.isConnected && !el.inert) to('paint');
+    submitting = false;
+    const run = { p, stopped: false, job: '', started: performance.now(), workingSince: 0, eta: 0, value: 0 };
     painting.set(p.id, run);
     const tick = setInterval(() => progress(run), 250);
     try {
-      if (studio.live) await live(run, room);
-      else await sketchOnly(run, room);
+      if (studio.live) await live(run, room, source.blob, styleReference);
+      else await sketchOnly(run, room, source.bmp);
       p.state = 'done';
     } catch (e) {
       p.state = run.stopped || e?.cancelled ? 'stopped' : 'failed';
       p.error = p.state === 'stopped' ? 'Stopped.' : (e?.message || 'The studio could not finish this.') + (e?.hint ? ' ' + e.hint : '');
-    } finally { clearInterval(tick); painting.delete(p.id); frame.classList.remove('is-painting'); }
+    } finally {
+      clearInterval(tick);
+      painting.delete(p.id);
+      if (shown === p) frame.classList.remove('is-painting');
+    }
     p.ms = Math.round(performance.now() - run.started);
     await keep(p);
-    const stillHere = el.isConnected && shown === p && here() === 'create';
+    const stillHere = el.isConnected && !el.inert && shown === p && here() === 'create' && stepNow === 'paint';
     if (stillHere) { restep('result'); render('result'); }
     else if (p.state === 'done') toast('Your ' + p.styleName + ' portrait is ready', 6000, { label: 'See it', run: () => go('create', { id: p.style, p: p.id }) });
   }
   /** The showcase: the stages said, and a sketch made here (labelled as one). */
-  async function sketchOnly(run, room) {
+  async function sketchOnly(run, room, source) {
     const st = room.voice?.stages || {};
-    for (const [k, ms] of /** @type {[string, number][]} */ ([['read', 380], ['plan', 420], ['draw', 640], ['finish', 380]])) { if (run.stopped) throw { cancelled: true }; stageWords.textContent = st[k] || k; run.value += .25; await new Promise(r => setTimeout(r, reduced ? 40 : ms)); }
-    const c = study(/** @type {any} */ (photo).bmp, style, picks, { width: 768, square: picks.format === 'avatar' });
+    for (const [k, ms] of /** @type {[string, number][]} */ ([['read', 380], ['plan', 420], ['draw', 640], ['finish', 380]])) { if (run.stopped) throw { cancelled: true }; if (shown === run.p) stageWords.textContent = st[k] || k; run.value += .25; await new Promise(r => setTimeout(r, reduced ? 40 : ms)); }
+    if (run.stopped) throw { cancelled: true };
+    const c = study(source, styleById(run.p.style), run.p.picks, { width: 768, aspect: formatOf(run.p.picks.format).aspect });
     run.p.blob = await blobOf(c, 'image/jpeg', .9); run.p.w = c.width; run.p.h = c.height; run.p.kind = 'sketch';
   }
   /** A live studio: the turn protocol, followed event by event. */
-  async function live(run, room) {
+  async function live(run, room, source, reference) {
     const p = run.p, st = room.voice?.stages || {};
     const spec = {
-      id: p.id, text: p.prompt, pace: settings.get('pace', 'fine'), n: 1, aspect: (FORMATS.find(f => f.id === picks.format) || FORMATS[0]).aspect,
-      intent: { op: 'restyle', subject: 'photo', refs: ref ? [{ id: 'ref', role: 'style' }] : [], pins: [], look: null },
+      id: p.id, text: p.prompt, pace: settings.get('pace', 'fine'), n: 1, aspect: formatOf(p.picks.format).aspect,
+      intent: { op: 'restyle', subject: 'photo', refs: reference ? [{ id: 'ref', role: 'style' }] : [], pins: [], look: null },
       room: { id: room.id, name: room.name, line: room.line, colors: room.colors, voice: room.voice }, taste: settings.get('taste', ''),
     };
-    const inputs = { photo: { handle: 'A', blob: /** @type {any} */ (photo).blob }, ...(ref ? { ref: { handle: 'B', blob: ref.blob } } : {}) };
+    const inputs = { photo: { handle: 'A', blob: source }, ...(reference ? { ref: { handle: 'B', blob: reference } } : {}) };
     for await (const ev of studio.engine.turn(spec, inputs)) {
       if (run.stopped) { studio.engine.cancel(p.id, run.job); throw { cancelled: true }; }
       if (ev.type === 'accepted') { run.eta = ev.eta || 0; run.job = ev.job; p.job = ev.job; keep(p); }
-      else if (ev.type === 'stage') stageWords.textContent = st[ev.stage] || ev.stage;
+      else if (ev.type === 'result') { p.blob = ev.blob; p.w = ev.w; p.h = ev.h; p.asset = ev.url || ''; p.kind = ev.provenance?.kind === 'simulated' ? 'simulated' : studio.mode === 'simulator' ? 'simulated' : 'render'; }
+      else if (ev.type === 'stage') {
+        run.workingSince ||= performance.now();
+        if (shown === p) stageWords.textContent = st[ev.stage] || ev.stage;
+      }
+      else if (shown !== p) continue;
       else if (ev.type === 'note') notes.prepend(h('li', null, ev.text));
       else if (ev.type === 'plan') notes.prepend(h('li', null, ev.plan?.summary || ''));
       else if (ev.type === 'progress') run.value = ev.value;
       else if (ev.type === 'partial') { partial.src = URL.createObjectURL(ev.blob); partial.classList.add('is-in'); stamp.textContent = 'Still painting · this is how far it has got'; }
-      else if (ev.type === 'result') { p.blob = ev.blob; p.w = ev.w; p.h = ev.h; p.asset = ev.url || ''; p.kind = ev.provenance?.kind === 'simulated' ? 'simulated' : studio.mode === 'simulator' ? 'simulated' : 'render'; }
       else if (ev.type === 'reply' && ev.text) notes.prepend(h('li.cr-reply', null, ev.text));
     }
     if (!p.blob) throw new Error('The studio finished without a picture.');
   }
   /** The meter and the time left, from the studio's own estimate (or its progress, where it gives one). */
   function progress(run) {
-    const t = performance.now() - run.started, expect = run.eta || (studio.live ? 25000 : 1800);
+    if (shown !== run.p || stepNow !== 'paint') return;
+    if (studio.live && !run.workingSince) {
+      timeWords.textContent = run.job ? 'Waiting for the studio' : 'Sending your photo';
+      return;
+    }
+    const t = performance.now() - (run.workingSince || run.started), expect = run.eta || 1800;
     const guess = 1 - Math.exp(-t / expect * 1.6), v = Math.max(run.value, Math.min(.97, guess));
     meter.style.setProperty('--v', v.toFixed(3)); meter.setAttribute('aria-valuenow', String(Math.round(v * 100)));
     const left = expect - t;
-    timeWords.textContent = !studio.live ? '' : left > 1500 ? etaSaid(left) + ' left' : t < expect * 1.6 ? 'Any moment now' : 'Taking longer than usual · still painting';
+    timeWords.textContent = !studio.live ? '' : run.eta && left > 1500 ? etaSaid(left) + ' left' : 'Still painting';
   }
   function stop() { const run = shown && painting.get(shown.id); if (!run) return; run.stopped = true; studio.engine.cancel?.(run.p.id, run.job); stageWords.textContent = 'Stopping…'; }
 
@@ -343,7 +374,7 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
   }
   /** @param {Style} s */
   function switchTo(s) {
-    style = s; picks = loadPicks(); past.length = 0; future.length = 0;
+    style = s; picks = loadPicks(); reference = null; past.length = 0; future.length = 0;
     el.dataset.style = s.id; frame.dataset.frame = roomOf().frame;
     changeRoom(roomOf());
     paint();
@@ -352,8 +383,9 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
   function saveIt(/** @type {Portrait} */ p) { const a = h('a', { href: urlOf(p), download: fileName(p) }); document.body.append(a); a.click(); a.remove(); toast('Saved to your downloads'); }
   async function shareIt(/** @type {Portrait} */ p) {
     const file = new File([/** @type {Blob} */ (p.blob)], fileName(p), { type: p.blob?.type || 'image/jpeg' });
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: p.styleName + ' portrait' }); } catch { /* closed */ } }
-    else saveIt(p);
+    if (!navigator.canShare?.({ files: [file] })) { saveIt(p); return; }
+    try { await navigator.share({ files: [file], title: p.styleName + ' portrait' }); }
+    catch (e) { if (e?.name !== 'AbortError') saveIt(p); }
   }
   /** Into the studio's conversation, as a picture to talk about ("make the bow red"). */
   async function talk(/** @type {Portrait} */ p) {
@@ -369,6 +401,7 @@ export function createScreen(/** @type {Record<string, any>} */ params = {}) {
       const p = await portraitById(params.p);
       if (p) {
         shown = p; style = styleById(p.style); picks = { ...(style ? defaultsOf(style) : picks), ...p.picks };
+        reference = p.reference || null;
         const s = await sittingById(p.sitting);
         if (s) { const { blob, bmp } = await prepared(s.blob); photo = { blob, bmp, id: s.id, sample: s.sample }; photoImg.src = URL.createObjectURL(blob); }
         if (style && style.room !== atmosphere.room?.id) changeRoom(roomOf());
@@ -394,9 +427,12 @@ export async function resumePortraits(/** @type {import('./keep.js').Portrait[]}
     if (!studio.live || !p.job || !studio.engine.resume) { p.state = 'stopped'; p.error = 'Interrupted when the page was closed.'; await keep(p); continue; }
     (async () => {
       try {
-        for await (const ev of studio.engine.resume(p.job)) if (ev.type === 'result') { p.blob = ev.blob; p.w = ev.w; p.h = ev.h; p.kind = ev.provenance?.kind === 'simulated' ? 'simulated' : 'render'; }
+        for await (const ev of studio.engine.resume(p.job)) {
+          if (ev.type === 'result') { p.blob = ev.blob; p.w = ev.w; p.h = ev.h; p.asset = ev.url || ''; p.kind = ev.provenance?.kind === 'simulated' ? 'simulated' : 'render'; }
+          if (ev.type === 'done') p.ms = ev.ms;
+        }
         p.state = p.blob ? 'done' : 'failed';
-      } catch (e) { p.state = 'failed'; p.error = e?.message || 'The studio lost this one.'; }
+      } catch (e) { p.state = e?.cancelled ? 'stopped' : 'failed'; p.error = e?.message || 'The studio lost this one.'; }
       await keep(p);
     })();
   }

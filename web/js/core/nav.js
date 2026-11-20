@@ -41,10 +41,11 @@ export function go(name, params = {}, { replace = false } = {}) {
   /** @type {Entry} */ const e = { i: ++seq, name, params, step: '', screen: null };
   if (replace && top) { stack.pop(); close(top, 'replace'); }
   // a tab (home, mine, the desk) is a fresh start: what was stacked under it is put away
-  if (name === 'home' || name === 'mine' || name === 'desk') while (stack.length) close(/** @type {Entry} */ (stack.pop()), 'replace');
+  const tab = name === 'home' || name === 'mine' || name === 'desk';
+  if (tab) while (stack.length) close(/** @type {Entry} */ (stack.pop()), 'replace');
   stack.push(e);
   (replace ? history.replaceState : history.pushState).call(history, state(e), '', address(name, params));
-  show(e, 'forward');
+  show(e, 'forward', !tab && !replace);
 }
 
 /** A step inside the screen on top (the create flow's photo, tune, paint): its own entry in the history. @param {string} step */
@@ -67,8 +68,8 @@ export function back() {
   else go('home', {}, { replace: true });
 }
 
-/** Mounts an entry's screen, or brings it back. @param {Entry} e @param {'forward' | 'back'} way */
-function show(e, way) {
+/** Mounts an entry's screen, or brings it back. @param {Entry} e @param {'forward' | 'back'} way @param {boolean} [animate] */
+function show(e, way, animate = true) {
   const make = routes[e.name] || routes.home;
   if (!e.screen) {
     e.screen = make(e.params);
@@ -76,7 +77,7 @@ function show(e, way) {
     if (el) {
       el.classList.add('nav-screen');
       screens().append(el);
-      if (!reduced) el.animate(way === 'forward'
+      if (animate && !reduced) el.animate(way === 'forward'
         ? [{ opacity: 0, transform: 'translateX(6cqw)' }, { opacity: 1, transform: 'none' }]
         : [{ opacity: 0, transform: 'translateX(-4cqw)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
     }
@@ -117,8 +118,9 @@ addEventListener('popstate', ev => {
   // an entry this page no longer holds (after a reload, or forward again): opened fresh
   /** @type {Entry} */ const e = { i: s.i, name: s.name, params: s.params || {}, step: s.step || '', screen: null };
   seq = Math.max(seq, s.i);
-  if (s.name === 'home' || s.name === 'mine' || s.name === 'desk') while (stack.length) close(/** @type {Entry} */ (stack.pop()), 'replace');
-  stack.push(e); show(e, 'forward');
+  const tab = e.name === 'home' || e.name === 'mine' || e.name === 'desk';
+  if (tab) while (stack.length) close(/** @type {Entry} */ (stack.pop()), 'replace');
+  stack.push(e); show(e, 'forward', !tab);
 });
 
 /** The screen the address asks for when the page opens (#/mine, #/create/princess), or home. */
@@ -128,6 +130,6 @@ export function start(fallback = 'home') {
   /** @type {Entry} */ const e = { i: ++seq, name: known, params: id ? { id } : {}, step: '', screen: null };
   stack.push(e);
   history.replaceState(state(e), '', address(e.name, e.params));
-  show(e, 'forward');
+  show(e, 'forward', false);
 }
 export const isBare = (/** @type {string} */ name) => BARE.has(name);

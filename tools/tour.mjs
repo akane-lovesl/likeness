@@ -7,7 +7,7 @@
  *   npm run tour -- [--url http://127.0.0.1:8787] [--out relay/0004-lookbook/out/tour] [--only ring,words,...]
  *
  * The app must already be running at --url (uv run likeness serve, or npm run serve for the showcase). Scenes, in
- * order: welcome, ring, words, mix, mirror, fit, weeks, tryon, show, marks, you, rooms, live, sides, desk.
+ * order: portrait, welcome, ring, words, mix, mirror, fit, weeks, tryon, show, marks, you, rooms, live, sides, desk.
  * The sample portrait and Chrome's simulated camera use the catalog's fictional people.
  */
 import { chromium } from '@playwright/test';
@@ -16,7 +16,6 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SCENES = ['welcome', 'ring', 'words', 'mix', 'mirror', 'fit', 'weeks', 'tryon', 'show', 'marks', 'you', 'rooms', 'live', 'sides', 'desk'];
 const arg = (name, fallback) => { const i = process.argv.indexOf('--' + name); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback; };
 const URL_ = arg('url', 'http://127.0.0.1:8787').replace(/\/$/, '');
 const OUT = resolve(ROOT, arg('out', 'relay/0004-lookbook/out/tour'));
@@ -69,7 +68,7 @@ async function scene(id, title, page, run) {
     // what the picture in front says it is: the mirror's or the live mirror's stamp, else the ring's front card
     const said = await page.evaluate(() => {
       const seen = (/** @type {Element} */ el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-      for (const sel of ['section.mr .mr-stamp', 'section.lv .mr-stamp', 'section.book:not(.is-away) .lb-card.is-front .lb-card__tag']) {
+      for (const sel of ['section.cr .cr-stamp', 'section.mr .mr-stamp', 'section.lv .mr-stamp', 'section.book:not(.is-away) .lb-card.is-front .lb-card__tag']) {
         const el = [...document.querySelectorAll(sel)].reverse().find(seen);
         if (el?.textContent?.trim()) return el.textContent.trim();
       }
@@ -106,11 +105,65 @@ async function waitTurn(page, shot, landed, limit = 240000) {
 await cameraReel();
 const browser = await chromium.launch({ channel, args: camera('camera.mjpeg') });
 const version = browser.version();
+
+let edition = '';
+if (!ONLY.length || ONLY.includes('portrait')) {
+  const portraitContext = await browser.newContext(PHONE);
+  const portrait = await portraitContext.newPage();
+  await scene('portrait', 'Portrait Studio: from choosing a style to keeping a painting', portrait, async ({ shot, note }) => {
+    const settle = locator => locator.evaluate(async el => {
+      await document.fonts.ready;
+      await new Promise(requestAnimationFrame);
+      await Promise.all(el.getAnimations({ subtree: true })
+        .filter(anim => Number.isFinite(anim.effect?.getTiming().iterations))
+        .map(anim => anim.finished.catch(() => {})));
+    });
+    await portrait.goto(URL_ + '/');
+    edition = (await portrait.locator('.ph-bar .edition').textContent({ timeout: 30000 })) || '';
+    await portrait.locator('.ph-plate.is-front .ph-art').evaluate(img => img.decode());
+    await shot('Styles: Little Princess and the photo it came from');
+    const track = portrait.getByRole('listbox', { name: 'Styles' });
+    await track.press('ArrowRight');
+    await portrait.locator('html[data-room="storybook"]:not([data-wipe]) .ph[data-style="storybook"]').waitFor();
+    await track.press('ArrowRight');
+    await portrait.locator('html[data-room="anime"]:not([data-wipe]) .ph[data-style="anime"]').waitFor();
+    await portrait.locator('.ph-plate.is-front .ph-art').evaluate(img => img.decode());
+    await shot('Styles: the room changes as the carousel moves to Anime');
+    await portrait.getByRole('button', { name: 'Paint me in this style' }).click();
+    await portrait.locator('.cr-face[data-who="ama"]').click();
+    await portrait.locator('.cr-photo[src]').evaluate(img => img.decode());
+    await settle(portrait.locator('section.cr'));
+    await shot('Photo: choose Ama from the sample faces');
+    await portrait.getByRole('button', { name: 'Style it first', exact: false }).click();
+    await portrait.locator('.cr[data-step="tune"] .cr-study canvas').waitFor();
+    await settle(portrait.locator('.cr-stage'));
+    await shot('Style it: the editable palette and preview sketch');
+    const started = Date.now();
+    await portrait.getByRole('button', { name: 'Paint my portrait' }).click();
+    await portrait.locator('.cr[data-step="paint"] .cr-wait').waitFor();
+    await settle(portrait.locator('.cr-stage'));
+    await shot('Painting: the sketch, status, and Stop');
+    await portrait.locator('.cr[data-step="result"]').waitFor({ timeout: 660000 });
+    if (await portrait.locator('.cr-fail').isVisible()) throw new Error(await portrait.locator('.cr-fail').innerText());
+    await portrait.locator('.cr-art').evaluate(img => img.decode());
+    await settle(portrait.locator('.cr-stage'));
+    note('portrait ready after ' + secs(Date.now() - started));
+    await shot('Result: compare with the source photo, then save or share');
+    await portrait.getByRole('button', { name: 'See all of mine' }).click();
+    await portrait.locator('.mine-tile[data-state="done"] img').evaluate(img => img.decode());
+    await settle(portrait.locator('section.mine'));
+    await shot('Mine: the finished portrait is kept with the rest of the work');
+  });
+  await portraitContext.close();
+}
+
 const ctx = await browser.newContext(PHONE);
 const page = await ctx.newPage();
 // the first time, as someone new: the welcome is asked for (a browser driven by a script is otherwise spared it)
-await page.goto(URL_ + (!ONLY.length || ONLY.includes('welcome') ? '/?welcome' : '/?looks'));
-const edition = (await page.locator('.lb-bar__edition').textContent({ timeout: 30000 }).catch(() => '')) || '?';
+if (ONLY.length !== 1 || ONLY[0] !== 'portrait') {
+  await page.goto(URL_ + (!ONLY.length || ONLY.includes('welcome') ? '/?welcome' : '/?looks'));
+  edition ||= (await page.locator('.lb-bar__edition').textContent({ timeout: 30000 }).catch(() => '')) || '';
+}
 
 await scene('welcome', 'The first time: a sitting on a fictional portrait, the light under a finger, then the Lookbook', page, async ({ shot }) => {
   const sit = page.locator('.wl-sit');
@@ -375,11 +428,13 @@ const fig = (f) => '<figure><img src="data:image/jpeg;base64,' + f.jpg.toString(
 const rows = [];
 for (const [i, s] of done.entries()) {
   const name = String(i + 1).padStart(2, '0') + '-' + s.scene + '.jpg';
+  await sheet.setViewportSize({ width: s.scene === 'portrait' ? 1550 : 2300, height: 900 });
   await sheet.setContent(css + '<h1>' + s.title + '</h1><p class="s">' + [edition, ...s.notes, s.failed ? 'STOPPED: ' + s.failed : ''].filter(Boolean).join(' · ') + '</p><div class="g">' + s.frames.map(fig).join('') + '</div>');
   await sheet.screenshot({ path: join(OUT, name), fullPage: true, type: 'jpeg', quality: 84 });
   rows.push('| ' + s.title + ' | ' + name + ' | ' + s.frames.length + ' | ' + ([...s.notes, s.failed ? '**stopped:** ' + s.failed : ''].filter(Boolean).join('; ') || ' ') + ' |');
 }
-const pick = done.flatMap(s => (s.frames.length > 2 ? [s.frames[1], s.frames[s.frames.length - 1]] : s.frames).map(f => ({ ...f, caption: s.scene + ' · ' + f.caption })));
+const pick = done.flatMap(s => (s.scene === 'portrait' || s.frames.length <= 2 ? s.frames : [s.frames[1], s.frames[s.frames.length - 1]]).map(f => ({ ...f, caption: s.scene + ' · ' + f.caption })));
+if (done.length !== 1) await sheet.setViewportSize({ width: 2300, height: 900 });
 await sheet.setContent(css + '<h1>Likeness, end to end</h1><p class="s">' + edition + ' · ' + URL_ + ' · Chrome ' + version + '</p><div class="g">' + pick.map(fig).join('') + '</div>');
 await sheet.screenshot({ path: join(OUT, '00-tour.jpg'), fullPage: true, type: 'jpeg', quality: 84 });
 await b4.close();

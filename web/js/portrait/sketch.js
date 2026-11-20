@@ -57,11 +57,11 @@ function softened(/** @type {HTMLCanvasElement} */ c, /** @type {number} */ k) {
  * @param {CanvasImageSource & { width: number, height: number }} src the photograph
  * @param {Style | null} style null for a style of one's own
  * @param {Picks | null} picks
- * @param {{ width?: number, square?: boolean }} [o]
+ * @param {{ width?: number, aspect?: string }} [o]
  * @returns {HTMLCanvasElement}
  */
-export function study(src, style, picks, { width = 360, square = false } = {}) {
-  const w = width, h = square ? width : Math.round(width * 1.5);
+export function study(src, style, picks, { width = 360, aspect = 'portrait' } = {}) {
+  const w = width, h = Math.round(width * (aspect === 'square' ? 1 : aspect === 'tall' ? 16 / 9 : 3 / 2));
   const m = MANNER[style?.id || 'own'] || MANNER.own;
   const palette = style?.tune.palette.find(p => p.id === picks?.palette) || style?.tune.palette[0];
   const ramp = rampOf(palette?.swatch || ['#8a8a8a'], m.ends);

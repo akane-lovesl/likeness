@@ -47,14 +47,18 @@ OWNER_OPEN = """<!doctype html><meta charset="utf-8">
 <title>Likeness Studio</title>
 <p id="status" role="status">Opening Likeness Studio...</p>
 <script>
+const statusLine = document.getElementById("status");
 const key = location.hash.slice(1);
 history.replaceState(null, "", location.pathname);
 if (/^[0-9a-f]{64}$/.test(key)) {
   fetch(location.pathname, { method: "POST", headers: { "Content-Type": "text/plain" }, body: key })
     .then(response => { if (!response.ok) throw Error(); location.replace("/"); })
-    .catch(() => { document.getElementById("status").textContent = "Could not open the studio. Reopen your access link."; });
+    .catch(() => { statusLine.textContent = "Could not open the studio. Reopen your access link."; });
 } else {
-  document.getElementById("status").textContent = "Open Likeness Studio using your access link.";
+  fetch("/api/health", { cache: "no-store" }).then(response => {
+    if (response.ok) location.replace("/");
+    else statusLine.textContent = "Open your private Likeness link to pair this browser.";
+  }).catch(() => { statusLine.textContent = "Could not reach the studio. Try again."; });
 }
 </script>"""
 OWNER_HEADERS = {"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer",
@@ -89,6 +93,9 @@ class StudioFiles(StaticFiles):
         if not path.replace(os.sep, "/").startswith(STATIC_GROUPS) and path not in {"icon.svg", "manifest.webmanifest"}:
             raise HTTPException(404)
         response = await super().get_response(path, scope)
+        # Windows does not always register a media type for WebP.
+        if path.endswith(".webp") and response.status_code in (200, 206):
+            response.headers["Content-Type"] = "image/webp"
         supplied = scope["path"].lstrip("/").partition("/")[0]
         if supplied == self.builds.get(path.partition(os.sep)[0]) and response.status_code in (200, 304):
             visibility = "public" if scope.get("state", {}).get("public_asset") else "private"
@@ -286,7 +293,8 @@ def create_app(engine: engines.Engine | None = None, home: Path | None = None, o
         return {"ok": True, "edition": "live", "version": __version__, "engine": engine.describe(),
                 **({"storage": device} if device else {}),
                 "events": "poll" if owner_secret else "stream",
-                "eta": {pace: estimates.expect("edit", pace) for pace in ("quick", "fine", "deep")}}
+                "eta": {pace: estimates.expect("edit", pace) for pace in ("quick", "fine", "deep")},
+                "portraitEta": {pace: estimates.expect("restyle", pace) for pace in ("quick", "fine", "deep")}}
 
     app.get("/studio.json")(describe)
     app.get("/api/health")(describe)

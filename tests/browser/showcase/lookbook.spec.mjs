@@ -248,10 +248,15 @@ test('in the mirror the parts stay put, and a change can be drawn on the picture
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr'), frame = mirror.locator('.mr-frame');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
-  // one part, then another: the styles change under the parts, and nothing moves; the part touched again puts it down
+  // one way to pick a part at a time: on the face as it is, its notes (the dock is only the line); a part chosen, the
+  // mirror leans in and the parts come up in the dock as pills, the notes out of reach
+  await expect(mirror.locator('.mr-parts')).toBeHidden();
   const settled = async () => { await page.waitForTimeout(700); const [p, f] = [await mirror.locator('.mr-parts').boundingBox(), await frame.boundingBox()]; return [p.y, f.y, f.height].map(Math.round); };
-  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-note[data-part="bangs"]').click();
   await expect(mirror.locator('.mr-styles')).toBeVisible();
+  await expect(mirror.locator('.mr-part[data-part="bangs"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(mirror.locator('.mr-note[data-part="lips"]')).toHaveCSS('pointer-events', 'none');
+  // one part, then another: the styles change under the parts, and nothing moves; the part touched again puts it down
   const at = await settled();
   for (const part of ['lips', 'beard', 'lips']) {
     await mirror.locator('.mr-part[data-part="' + part + '"]').click();
@@ -260,6 +265,8 @@ test('in the mirror the parts stay put, and a change can be drawn on the picture
   }
   await mirror.locator('.mr-part[data-part="lips"]').click();
   await expect(mirror.locator('.mr-styles')).toBeHidden();
+  await expect(mirror.locator('.mr-parts')).toBeHidden();
+  await expect(mirror.locator('.mr-note[data-part="lips"]')).toHaveCSS('pointer-events', 'auto');
   // drawn on: a ring round the jaw, and the finger draws rather than turns the face
   await mirror.locator('.mr-ask__add').click();
   await mirror.locator('.mr-tray__do[data-do="draw"]').click();
@@ -296,7 +303,7 @@ test('in the mirror a fringe is painted on the photo at once, its pencil kept fo
   await mirrorOn(page, 'tests/fixtures/sitters/ines.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
-  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-note[data-part="bangs"]').click();
   await mirror.locator('.mr-style[data-style="blunt"]').click();
   const paint = mirror.locator('.mr-paint');
   await expect.poll(() => paint.evaluate(c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 64) if (d[i] > 40) n++; return n; }), { timeout: 20_000 }).toBeGreaterThan(50);
@@ -313,7 +320,7 @@ test('in the mirror a fringe is painted on the photo at once, its pencil kept fo
   await page.goto('/');
   await mirrorOn(page, 'tests/fixtures/sitters/mei.jpg');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
-  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-note[data-part="bangs"]').click();
   await mirror.locator('.mr-style[data-style="blunt"]').click();
   const pencil = mirror.locator('.mr-sketch g[data-part="bangs"]');
   await expect(pencil).not.toHaveClass(/is-painted/, { timeout: 20_000 });
@@ -326,7 +333,7 @@ test('a look weeks on: Grow out walks the weeks to its first trim, the fringe fa
   const mirror = page.locator('section.mr'), when = mirror.locator('.mr-when');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
   // make-up is put on each morning: nothing to grow out
-  await mirror.locator('.mr-part[data-part="lips"]').click();
+  await mirror.locator('.mr-note[data-part="lips"]').click();
   await mirror.locator('.mr-style[data-style="red"]').click();
   await expect(when).toBeHidden();
   // a fringe and a colour grow
@@ -366,7 +373,7 @@ test('a look weeks on: Grow out walks the weeks to its first trim, the fringe fa
   // Done: today again, as it was
   await mirror.locator('.mr-time__done').click();
   await expect(mirror).not.toHaveClass(/is-when/);
-  await expect(mirror.locator('.mr-parts')).toBeVisible();
+  await expect(mirror.locator('.mr-note[data-part="bangs"]')).toHaveCSS('pointer-events', 'auto');
   await expect(mirror.locator('.mr-token--when')).toHaveCount(0);
   await expect.poll(foot, { timeout: 20_000 }).toBeLessThan(foot0 + .004);
   // asked for weeks on, it is sketched weeks on, and says so
@@ -392,7 +399,7 @@ test('a look fitted one or two at a time: two versions in turn, the chosen kept,
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
   // nothing to fit until there is a look
   await expect(fit).toBeHidden();
-  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-note[data-part="bangs"]').click();
   await mirror.locator('.mr-style[data-style="blunt"]').click();
   await mirror.locator('.mr-part[data-part="colour"]').click();
   await mirror.locator('.mr-style[data-style="platinum"]').click();
@@ -414,7 +421,9 @@ test('a look fitted one or two at a time: two versions in turn, the chosen kept,
   await expect(cap).toHaveText('…or two?');
   // the two are different looks on the face
   const differ = () => mirror.evaluate(el => { const [a, b] = [...el.querySelectorAll('.mr-opt')].map(c => /** @type {HTMLCanvasElement} */ (c).getContext('2d').getImageData(0, 0, c.width, c.height).data); let n = 0; for (let i = 0; i < a.length; i += 16) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 3] - b[i + 3]) > 24) n++; return n / (a.length / 16); });
-  expect(await differ()).toBeGreaterThan(.005);
+  // (the mirror asks only where its own zoomed measure sees them apart; here, at the canvas's full size, a fringe's
+  // locks change a few tenths of a percent of the frame plainly, never nothing)
+  expect(await differ()).toBeGreaterThan(.003);
   // a touch on the face turns them by hand, and then they stay
   const lit = async () => ((await one.getAttribute('class')) || '').includes('is-lit') ? 0 : 1;
   const was = await lit();
@@ -452,7 +461,7 @@ test('a look fitted one or two at a time: two versions in turn, the chosen kept,
   // all asked: fitted, and the mirror is back with the look as fitted
   await expect(cap).toHaveText('Fitted to you.', { timeout: 10_000 });
   await expect(mirror).not.toHaveClass(/is-trial/, { timeout: 10_000 });
-  await expect(mirror.locator('.mr-parts')).toBeVisible();
+  await expect(mirror.locator('.mr-note[data-part="bangs"]')).toHaveCSS('pointer-events', 'auto');
   await expect(fit).toBeVisible();
   await expect(mirror.locator('.mr-token')).toHaveText([/^Wispy/, /^Honey.*much deeper/]);
   // again, and away part way: what was chosen stays

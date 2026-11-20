@@ -182,7 +182,7 @@ export function openMirror(o) {
   // words it came with were heard already: their shapes are the words' to change, and a look only they asked for goes when they stop asking
   const byWords = /** @type {Set<string>} */ (new Set());
   for (const x of o.words ? hear(o.words) : []) picks = picks.map(q => (q.part === x.part ? (byWords.add(q.part), { ...q, heard: x.shape }) : q));
-  let part = '', shown = -1, busy = false, spotsUp = false, washing = 0, swap = 0;
+  let part = '', shown = -1, busy = false, spotsUp = false, washing = 0, swap = 0, faceKnown = false, opening = false;
   let preparing = false;
   // the weeks after the salon: how many the frame shows the look at, and whether the mirror is looking ahead
   let weeks = 0, timing = false, moved = false, timeWalk = 0, sketchRaf = 0, fadeNext = false, timePainting = false, timeAgain = false;
@@ -263,7 +263,9 @@ export function openMirror(o) {
   const takesRow = h('div.mr-takes', { role: 'listbox', 'aria-label': 'Takes' });
   const chips = PARTS.map(p => h('button.mr-part', { type: 'button', 'data-part': p.id, 'aria-pressed': 'false', onclick: () => choose(p.id) },
     h('span.mr-part__glyph', { html: plateSVG(p.id, p.styles[0].id) }), h('span.mr-part__name', null, p.name)));
-  const partsRow = h('div.mr-parts', { role: 'toolbar', 'aria-label': 'What to change' }, ...chips);
+  // the parts as pills: for when the face's own notes cannot be touched (no face found in it, a part chosen and the
+  // mirror leaning in close, a take on show), so there is only ever one way to pick a part on screen
+  const partsRow = h('div.mr-parts', { role: 'toolbar', 'aria-label': 'What to change', hidden: true }, ...chips);
   const stylesRow = h('div.mr-styles', { role: 'listbox', hidden: true });
   // the weeks, a ruler from today to three months on: a tick each week, taller each month, and a mark where the look
   // will want seeing to (a trim, its roots), lit once the weeks have reached it
@@ -439,13 +441,16 @@ export function openMirror(o) {
     mark(id); focus(id); paintHandles();
   }
   /**
-   * What the dock offers: the parts always; a part's styles under them once one is chosen. Room is made for the styles
-   * by gliding, not jumping: the frame and the parts are moved where they land, then eased there from where they were.
+   * What the dock offers: on the face as it is, nothing but the line (its notes, in the margins, are the parts); once a
+   * part is chosen, or a take is on show, or there is no face to touch, the parts as pills, and a part's styles under
+   * them. Room is made by gliding, not jumping: the frame and the parts are moved where they land, then eased there
+   * from where they were.
    */
   function menu() {
     const glide = [frame, partsRow, timeBar, trialBar];
     const was = reduced ? [] : glide.map(e => e.getBoundingClientRect());
-    partsRow.hidden = timing || trialing; stylesRow.hidden = timing || trialing || !part; timeBar.hidden = !timing; trialBar.hidden = !trialing; ask.hidden = trialing; el.classList.toggle('has-menu', !!part && !timing && !trialing); hint();
+    const onFace = (!faceKnown || !!face) && !part && shown < 0 && !opening;
+    partsRow.hidden = timing || trialing || onFace; stylesRow.hidden = timing || trialing || !part; timeBar.hidden = !timing; trialBar.hidden = !trialing; ask.hidden = trialing; el.classList.toggle('has-menu', !!part && !timing && !trialing); hint();
     if (reduced || !el.isConnected) return;
     glide.forEach((e, i) => {
       const a = was[i], b = e.getBoundingClientRect(); if (!a.height || !b.height) return;
@@ -965,12 +970,13 @@ export function openMirror(o) {
     const t = i < 0 ? origin : takes[i]; if (!t || t.pending) return;
     if (i >= 0 && timing) timeMode(false);
     if (i >= 0 && trialing) trialMode(false);
+    const wasTake = shown >= 0 || opening;
     if (i !== shown) {
       if (drawingNow) drawing(false);
       marks = marksByTake.get(t) || [];
       paintMarks();
     }
-    shown = i;
+    shown = i; opening = false;
     over.classList.remove('is-in', 'is-sweep'); glint.classList.remove('is-on'); clearTimeout(swap);
     if (instant || reduced) pic.src = t.url;
     else if (arrived) { over.src = t.url; void over.offsetWidth; over.classList.add('is-sweep'); glint.classList.add('is-on'); swap = setTimeout(() => { pic.src = t.url; over.classList.remove('is-sweep'); glint.classList.remove('is-on'); }, 1300); }
@@ -982,6 +988,7 @@ export function openMirror(o) {
     el.classList.toggle('is-take', i >= 0);
     if (t.look && t.picks) picks = t.picks.slice();
     paintPicks();
+    if (wasTake !== i >= 0) menu();
   }
   function paintTakes() {
     const all = [origin, ...takes];
@@ -1751,6 +1758,8 @@ export function openMirror(o) {
   }
   // all set: the takes: the face as it is first, then each one that comes back (or, for an example, each look they were given)
   if (person) for (const look of person.looks) takes.push({ url: look.image, ...made, look, picks: pickOf(look) });
+  // opened on a take (a look of theirs): the parts are in the dock from the first, so nothing moves when it is shown
+  opening = !!o.look && takes.some(t => t.look === o.look); partsRow.hidden = !opening;
   // A turn from the studio's list may finish while the portrait is being read.
   const after = o.after || null;
   show(-1, true); paintTakes(); paintPicks();
@@ -1761,7 +1770,6 @@ export function openMirror(o) {
   document.addEventListener('keydown', onKey); stops.push(() => document.removeEventListener('keydown', onKey));
 
   (async () => {
-    // the parts stay in the dock as well as on the face: any of them, any time, as many as you like
     frame.classList.add('is-reading');
     try { base = await canvasOf(person ? person.portrait : print.blob); } catch { base = null; }
     // a drawn sitter's hair comes with it, read when it was made ready
@@ -1769,7 +1777,7 @@ export function openMirror(o) {
     fit();
     // a face read as the picture was taken (the live mirror's) is this picture's already: no second reading, no wait
     const known = o.face && base && Math.abs(o.face.w / o.face.h - base.width / base.height) < .01 ? reframed(o.face, base.width, base.height) : null;
-    face = base ? known || await faceOf(base) : null;
+    face = base ? known || await faceOf(base) : null; faceKnown = true;
     frame.classList.remove('is-reading');
     if (!el.isConnected) return;
     if (!face) { el.classList.add('no-face'); toast(base ? 'No face found: a change goes over the whole picture' : 'That picture could not be read', 2800); }

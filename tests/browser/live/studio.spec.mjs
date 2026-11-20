@@ -104,7 +104,7 @@ test('looks asked for one after another are made side by side; the studio list s
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
-  await mirror.locator('.mr-part[data-part="brows"]').click();
+  await mirror.locator('.mr-note[data-part="brows"]').click();
   await mirror.locator('.mr-style[data-style="bold"]').click();
   await mirror.locator('.mr-ask__go').click();
   await expect(mirror.locator('.mr-take.is-pending')).toHaveCount(4);
@@ -145,8 +145,9 @@ test('a look mixed from four parts, drawn on and with a reference, goes to the s
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
+  // the first from the face's notes; the rest from the pills, in the dock once a part is chosen
   for (const [part, style] of [['bangs', 'curtain'], ['brows', 'bold'], ['lips', 'red'], ['colour', 'copper']]) {
-    await mirror.locator('.mr-part[data-part="' + part + '"]').click();
+    await mirror.locator((part === 'bangs' ? '.mr-note' : '.mr-part') + '[data-part="' + part + '"]').click();
     await mirror.locator('.mr-style[data-style="' + style + '"]').click();
   }
   await expect(mirror.locator('.mr-token:not(.mr-token--marks):not(.mr-token--ref)')).toHaveCount(4);
@@ -187,7 +188,7 @@ test('a look asked for weeks on: the studio is told what the weeks have done, an
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
-  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-note[data-part="bangs"]').click();
   await mirror.locator('.mr-style[data-style="blunt"]').click();
   await mirror.locator('.mr-when').click();
   await expect(mirror.locator('.mr-time__head b')).toHaveText('3 weeks', { timeout: 10_000 });
@@ -209,7 +210,7 @@ test('a look fitted by eye, one or two at a time, is asked for as it was fitted'
   await mirrorOn(page, 'tests/fixtures/sitters/kofi.jpg');
   const mirror = page.locator('section.mr'), one = mirror.locator('.mr-trial__lens[data-k="0"]');
   await expect(mirror.locator('.mr-note')).toHaveCount(7, { timeout: 30_000 });
-  await mirror.locator('.mr-part[data-part="bangs"]').click();
+  await mirror.locator('.mr-note[data-part="bangs"]').click();
   await mirror.locator('.mr-style[data-style="curtain"]').click();
   await mirror.locator('.mr-fit').click();
   await expect(one).toHaveAttribute('aria-label', '1: Curtain, as it is', { timeout: 20_000 });

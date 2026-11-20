@@ -1,8 +1,8 @@
 /**
  * Paint, where the picture is a photograph: a look laid on a real face from the face itself, so it reads as hair and
- * make-up rather than as a line drawn over someone. A fringe is the person's own hair brought forward (combed: mirrored
- * down through the hairline the way it falls, so its curl, grey and grain are theirs) and casts its shadow on the
- * forehead, no longer than their hair is; where the hair in the picture is not known there is nothing to comb it from,
+ * make-up rather than as a line drawn over someone. A fringe is the person's own hair brought forward, lock by lock (in
+ * its own colours, its shadows and the light on it; curly hair filled with its own curls), and casts its shadow on the
+ * forehead, no longer than their hair is; where the hair in the picture is not known there is nothing to make it from,
  * and it is left to the pencil (`paints`, `painted`). Brows are
  * filled hair by hair in their own colour (the old shape blended away where the new one is finer); liner is ink and a
  * smoky eye shadow; a beard darkens the skin's own light toward the hair's colour. A cut stays a line: only a render can
@@ -15,7 +15,7 @@ import { dyeHair } from './tint.js';
 /** The parts painted on a photograph; the others are a pencil line (a cut) or a colour washed in (hair colour, lips). */
 export const PAINTED = new Set(['bangs', 'brows', 'lashes', 'beard']);
 /**
- * Whether a part is painted on a picture: a fringe only where the picture's hair was found, since it is combed from
+ * Whether a part is painted on a picture: a fringe only where the picture's hair was found, since it is made from
  * that hair (elsewhere it is left to the pencil, which says honestly that it is only drawn).
  * @param {string} part @param {unknown} hair the hair found in the picture, if any
  */
@@ -176,158 +176,240 @@ function noise1(r, n, every) {
 }
 
 /**
- * The person's own hair, brought forward: each point of a fringe takes the hair that lies past the hairline the way
- * the fringe falls, mirrored through the hairline (and back again where the hair runs out), so its curl, its grey, its
- * light and its grain are the person's own, and it meets the hair already there without a seam. Where the picture
- * shows no hair on the way (a parting, the wall past short hair) the hair round it stands in, blurred. One line runs up
- * from the fringe's lowest row through each pixel across, leaning the way the hair falls (a curtain's and a side
- * fringe's curving out as they fall); each line's end is its own (some strands shorter, by how far apart they part, a
- * few straying past the rest), ragged by the hair's own light, never further below the hairline than the hair is long;
- * and the hair is a little lighter where it bends forward and catches the light along its fall.
+ * A fringe made of hair: locks of it, each rooted a little way back in the person's own hair, falling the way the
+ * fringe falls (a curtain's sweeping out from its parting, a side fringe's across the forehead) and waving as their
+ * hair waves. Its colours are the hair's own (its shadows, its body and the light on it, read from the hair above the
+ * hairline, lock by lock where that hair is lighter or greyer); each lock darker where it leaves the hair and lighter
+ * where it bends forward into the light, casting a little shadow on those behind it, its grain drawn over it in strands.
+ * Curly hair is too curly to draw strand by strand: its locks are filled with the person's own curls. Toward its end a
+ * lock's strands gather (a blunt cut's barely, a wispy one's to a point, the forehead showing between), each lock
+ * ending a little apart from the next, a few strays past them, never longer than the hair it comes from.
  * @param {CanvasImageSource} pic @param {import('../studio/face.js').Face} f @param {CanvasImageSource} hairMask
  * @param {(x: CanvasRenderingContext2D) => void} at @param {HTMLCanvasElement} shape the fringe's shape over the layer
- * @param {{ lean: number, from: number, to: number, curve?: number }[]} ways how far a line moves across for each row up, and the columns of the layer it fills (a curtain's two sides lean each its own way); a curved way falls nearly straight down from the hairline and sweeps out further down, as a curtain does
- * @param {number} deep how far into the hair a line may go, in the layer's pixels @param {number} F the forehead's height, in them
- * @param {{ ends: number, apart: number, see: number, back: number, straight: number, taper: number, wisp: number, sheen: number, h0: number, reach: number }} how how ragged the ends are, how far strands part, how much shows through, how far back from the hairline it is combed from (of the forehead's height), how straight the hair is, how long its ends thin out over and how far single strands stray past them (of the forehead's height), how much light it catches along its fall, the hairline's row in the layer, and how far below it the hair can reach at all (of the forehead's height: short hair makes a short fringe)
- * @param {() => number} r @param {Tones} skin the face's own skin, which is never taken for hair @returns {HTMLCanvasElement | null}
+ * @param {{ lean: number, from: number, to: number, curve?: number }[]} ways how far a strand moves across for each row down, and the columns of the layer it may cross (a curtain's two sides each their own)
+ * @param {number} F the forehead's height, in the layer's pixels
+ * @param {{ ends: number, apart: number, see: number, taper: number, wisp: number, sheen: number, straight: number, h0: number, reach: number, cx: number, half: number }} how
+ * @param {() => number} r @param {Tones} tones the hair's own, for where too little hair can be read
+ * @param {number[]} bb where the shape is on the layer: left, top, right, bottom
+ * @returns {HTMLCanvasElement | null}
  */
-function combed(pic, f, hairMask, at, shape, ways, deep, F, how, r, skin) {
-  const W = shape.width, H = shape.height, sd = ctx(shape).getImageData(0, 0, W, H).data;
+function locks(pic, f, hairMask, at, shape, ways, F, how, r, tones, bb) {
+  // the shape, read only where it can be
+  const W = shape.width, H = shape.height, bx0 = Math.max(0, Math.floor(bb[0]) - 2), by0 = Math.max(0, Math.floor(bb[1]) - 2), bw = Math.min(W, Math.ceil(bb[2]) + 2) - bx0, bh = Math.min(H, Math.ceil(bb[3]) + 2) - by0;
+  if (bw < 2 || bh < 2) return null;
+  const sd = ctx(shape).getImageData(bx0, by0, bw, bh).data;
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (sd[(y * W + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (sd[(y * bw + x) * 4 + 3] > 100) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < x0) return null;
-  const tall = y1 - y0 + deep, lm = Math.max(...ways.map(w => Math.abs(w.lean)));
-  // where each way's lines run: across by G(y) from the foot of the fringe, every line of a way the same curve moved
-  // across, so they never cross
-  const yTop = Math.floor(y0 - deep - F), Gn = y1 - yTop + 2;
-  const curveOf = (/** @type {{ lean: number, curve?: number }} */ way) => {
-    const G = new Float64Array(Gn), c = way.curve || 0;
-    for (let k = Gn - 2; k >= 0; k--) { const y = yTop + k + .5, d = Math.max(0, Math.min(1, (y - how.h0) / (1.25 * F))), w = 1 - c + c * (.18 + .82 * d * d * (3 - 2 * d)); G[k] = G[k + 1] + way.lean * w; }
-    G[Gn - 1] = 0;
-    return (/** @type {number} */ y) => { const t = Math.max(0, Math.min(Gn - 1.001, y - yTop)), i = Math.floor(t); return G[i] + (G[i + 1] - G[i]) * (t - i); };
-  };
-  const rx0 = Math.max(0, Math.floor(x0 - tall * lm - 2)), rx1 = Math.min(W, Math.ceil(x1 + tall * lm + 3)), ry0 = Math.max(0, Math.floor(y0 - deep)), ry1 = Math.min(H, y1 + 1);
+  x0 += bx0; x1 += bx0; y0 += by0; y1 += by0;
+  const inside = (/** @type {number} */ x, /** @type {number} */ y) => { const xi = Math.round(x) - bx0, yi = Math.round(y) - by0; return xi >= 0 && yi >= 0 && xi < bw && yi < bh && sd[(yi * bw + xi) * 4 + 3] > 100; };
+  // the picture and its hair over the layer
+  const lm = Math.max(.15, ...ways.map(w => Math.abs(w.lean))), tall = y1 - y0;
+  const rx0 = Math.max(0, Math.floor(x0 - tall * lm - F * .3)), rx1 = Math.min(W, Math.ceil(x1 + tall * lm + F * .3)), ry0 = Math.max(0, Math.floor(how.h0 - F * 1.6)), ry1 = Math.min(H, Math.ceil(y1 + F * .3));
   const rw = rx1 - rx0, rh = ry1 - ry0; if (rw < 4 || rh < 4) return null;
   const grab = (/** @type {CanvasImageSource} */ src) => { const c = make(rw, rh), x = ctx(c); at(x); const t = x.getTransform(); x.setTransform(t.a, 0, 0, t.d, t.e - rx0, t.f - ry0); x.drawImage(src, 0, 0, f.w, f.h); return c; };
-  const pc = grab(pic), mc = grab(hairMask);
-  const S = ctx(pc).getImageData(0, 0, rw, rh).data, M = ctx(mc).getImageData(0, 0, rw, rh).data;
-  // the hair alone, spread into what is not hair round it: blurred, its colour is the hair's nearby
-  const ho = make(rw, rh), hx = ctx(ho); hx.drawImage(pc, 0, 0); hx.globalCompositeOperation = 'destination-in'; hx.drawImage(mc, 0, 0);
-  const B = ctx(soft(ho, Math.max(2, F * .18))).getImageData(0, 0, rw, rh).data;
-  // the hair's lightest, so what is much lighter (a parting's skin, a wall between strands) can be told from it
-  const hist = new Uint32Array(256); let hn = 0;
-  for (let j = 0; j < M.length; j += 4) if (M[j + 3] > 200) { hist[Math.round(.2126 * S[j] + .7152 * S[j + 1] + .0722 * S[j + 2])]++; hn++; }
-  let hi = 255; for (let v = 0, c = 0; v < 256; v++) { c += hist[v]; if (c >= hn * .9) { hi = v; break; } }
-  const over = hi + 14, skinAt = [skin.mid, skin.light, mix(skin.mid, skin.dark, .5)];
-  // how far skin can be told from this hair by its colour: not at all where they are alike (a warm blonde on fair skin)
-  const hairMid = [0, 0, 0]; { let c = 0; for (let j = 0; j < M.length; j += 16) if (M[j + 3] > 200) { hairMid[0] += S[j]; hairMid[1] += S[j + 1]; hairMid[2] += S[j + 2]; c++; } if (c) for (let q = 0; q < 3; q++) hairMid[q] /= c; }
-  const skinny = Math.max(0, Math.min(1, (Math.hypot(hairMid[0] - skin.mid[0], hairMid[1] - skin.mid[1], hairMid[2] - skin.mid[2]) - 30) / 30));
-  // what a line takes from: the picture where it is hair, the hair round it where it is not
-  const src = new Float32Array(rw * rh * 3);
-  let sum = 0, n = 0;
-  for (let i = 0, j = 0; i < rw * rh; i++, j += 4) {
-    const lj = .2126 * S[j] + .7152 * S[j + 1] + .0722 * S[j + 2];
-    let near = 1e9; for (const s of skinAt) { const dr = S[j] - s[0], dg = S[j + 1] - s[1], db = S[j + 2] - s[2]; near = Math.min(near, Math.sqrt(dr * dr + dg * dg + db * db)); }
-    const bright = Math.max(Math.max(0, Math.min(1, (lj - over) / 36)), skinny * Math.max(0, Math.min(1, (34 - near) / 16)));
-    const a = Math.max(0, Math.min(1, (M[j + 3] - 80) / 110)) * (1 - bright), b = B[j + 3] > 4 ? 1 - a : 0, s = a + b || 1;
-    src[i * 3] = (S[j] * a + B[j] * b) / s; src[i * 3 + 1] = (S[j + 1] * a + B[j + 1] * b) / s; src[i * 3 + 2] = (S[j + 2] * a + B[j + 2] * b) / s;
-    if (a > .5) { sum += .2126 * S[j] + .7152 * S[j + 1] + .0722 * S[j + 2]; n++; }
+  const picC = grab(pic), S = ctx(picC).getImageData(0, 0, rw, rh).data, M = ctx(grab(hairMask)).getImageData(0, 0, rw, rh).data;
+  const hairAt = (/** @type {number} */ x, /** @type {number} */ y) => { const xi = Math.round(x) - rx0, yi = Math.round(y) - ry0; return xi >= 0 && yi >= 0 && xi < rw && yi < rh ? M[(yi * rw + xi) * 4 + 3] : 0; };
+  // the hairline, column by column: the foot of the hair above the forehead, near where the face says it is
+  const feet = new Float32Array(rw);
+  for (let i = 0; i < rw; i++) {
+    let foot = -1;
+    for (let y = Math.max(ry0, how.h0 - F * 1.2); y < Math.min(ry1, how.h0 + F * .7); y++) { if (hairAt(rx0 + i, y) > 140) foot = y; else if (foot >= 0 && y - foot > F * .06) break; }
+    feet[i] = foot >= 0 ? foot : how.h0;
   }
-  if (n < 16) return null;
-  const mean = sum / n;
-  const straight = how.straight;
-
-  // straight hair brought forward falls in strands: what it takes is drawn out along its fall, and each strand its own light
-  const fall = F * (.04 + .34 * straight), taps = straight > .15 ? 5 : 1, strand = noise1(r, W * 2, 1.3);
-  const hairAt = (/** @type {number} */ x, /** @type {number} */ y) => { const xi = Math.round(x), yi = Math.round(y); return xi >= 0 && yi >= 0 && xi < rw && yi < rh ? M[(yi * rw + xi) * 4 + 3] : 0; };
-  // bilinear, from what a line takes from
-  const take = (/** @type {number} */ x, /** @type {number} */ y, /** @type {number[]} */ o) => {
-    x = Math.max(0, Math.min(rw - 1.001, x)); y = Math.max(0, Math.min(rh - 1.001, y));
-    const xi = Math.floor(x), yi = Math.floor(y), u = x - xi, v = y - yi, a = (yi * rw + xi) * 3, b = a + 3, c = a + rw * 3, d = c + 3;
-    for (let ch = 0; ch < 3; ch++) o[ch] = (src[a + ch] * (1 - u) + src[b + ch] * u) * (1 - v) + (src[c + ch] * (1 - u) + src[d + ch] * u) * v;
-    return o;
+  // where the light falls across it: the hairline smoothed into the curve of the head; and the hairline itself kept near
+  // that curve and eased, so a fringe never starts in steps where the hair beside the face runs on down
+  const smooth1 = (/** @type {Float32Array} */ a, /** @type {number} */ span) => { const o = new Float32Array(a.length); for (let i = 0; i < a.length; i++) { let s = 0, n = 0; for (let j = Math.max(0, i - span); j <= Math.min(a.length - 1, i + span); j++) { s += a[j]; n++; } o[i] = s / n; } return o; };
+  // (the top of the forehead's hairline carried across: where the hair comes down beside the face it is still the top of
+  // the head that a fringe is combed forward from)
+  const env = feet.map((_, i) => { let lo = Infinity; const s = Math.round(F * .35); for (let j = Math.max(0, i - s); j <= Math.min(rw - 1, i + s); j++) lo = Math.min(lo, feet[j]); return lo; });
+  const crown = smooth1(env, Math.max(2, Math.round(F * .4))).map(v => Math.max(how.h0 - F * 1.2, Math.min(how.h0 + F * .35, v)));
+  feet.set(smooth1(feet.map((v, i) => Math.max(crown[i] - F * .2, Math.min(crown[i] + F * .16, v))), Math.max(1, Math.round(F * .08))));
+  const hairlineAt = (/** @type {number} */ x) => feet[Math.max(0, Math.min(rw - 1, Math.round(x) - rx0))];
+  const crownAt = (/** @type {number} */ x) => crown[Math.max(0, Math.min(rw - 1, Math.round(x) - rx0))];
+  // the hair's own colours, from all of it round the face (above the hairline it is mostly in shadow): its shadows, its
+  // body, the light on it
+  const seen = /** @type {number[][]} */ ([]);
+  {
+    const b = f.box, sc = Math.min(1, 140 / b[2]), gw = Math.max(8, Math.round(b[2] * 1.8 * sc)), gh = Math.max(8, Math.round(b[3] * 1.5 * sc)), gx = b[0] - b[2] * .4, gy = b[1] - b[3] * .45;
+    const c = make(gw, gh), x = ctx(c), sx = gw / (b[2] * 1.8), sy = gh / (b[3] * 1.5); x.setTransform(sx, 0, 0, sy, -gx * sx, -gy * sy);
+    x.drawImage(pic, 0, 0, f.w, f.h); const P0 = x.getImageData(0, 0, gw, gh).data;
+    x.globalCompositeOperation = 'copy'; x.drawImage(hairMask, 0, 0, f.w, f.h); const M0 = x.getImageData(0, 0, gw, gh).data;
+    for (let j = 0; j < P0.length; j += 8) if (M0[j + 3] > 220) seen.push([P0[j], P0[j + 1], P0[j + 2]]);
+  }
+  seen.sort((a, b) => lum(a) - lum(b));
+  const part = (/** @type {number} */ t) => {
+    if (seen.length < 40) return [...(t < .35 ? tones.dark : t > .75 ? tones.light : tones.mid)];
+    const a = Math.floor(seen.length * Math.max(0, t - .05)), b = Math.max(a + 1, Math.ceil(seen.length * Math.min(1, t + .05))), s = [0, 0, 0];
+    for (let i = a; i < b; i++) for (let c = 0; c < 3; c++) s[c] += seen[i][c];
+    return s.map(v => v / (b - a));
   };
-  const out = make(W, H), ox = ctx(out), img = ox.createImageData(rw, rh), D = img.data;
-  const fine = noise1(r, W, Math.max(2, F * .07)), see = noise1(r, W, Math.max(3, F * .12)), hairs = noise1(r, W * 2, Math.max(1, F * .014)), strays = noise1(r, W * 2, Math.max(1.5, F * .035));
-  // the fringe in pieces: clumps of strands across it, each its own length, each coming to a point
-  const pieces = /** @type {{ a: number, b: number, len: number }[]} */ ([]);
-  for (let px = x0 - tall - F; px < x1 + tall + F;) { const w = F * (.14 + r() * .2); pieces.push({ a: px, b: px + w, len: .55 + r() * .6 }); px += w; }
-  const pieceAt = (/** @type {number} */ x) => { let lo = 0, hi = pieces.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (pieces[mid].a <= x) lo = mid; else hi = mid - 1; } return pieces[lo]; };
-  // the hair is combed forward from a little way back from the hairline, so the front of a parting goes under it
-  const fade = Math.max(2, F * how.taper), seam = F * .3, back = F * how.back, o = [0, 0, 0];
-  const combedPx = new Uint8Array(rw * rh), curves = new Map();
-  const hs = new Uint8Array(rh), from = new Int32Array(rh), run = new Int32Array(rh);
-  let sumC = 0, nC = 0;
-  for (const way of ways) for (let xb = Math.floor(x0 - tall * Math.abs(way.lean)); xb <= Math.ceil(x1 + tall * Math.abs(way.lean)); xb++) {
-    const Gw = curves.get(way) || curves.set(way, curveOf(way)).get(way), xAt = (/** @type {number} */ y) => xb + /** @type {(y: number) => number} */ (Gw)(y) - rx0;
-    // down the line from the top: hair or not (firmly either way), and for each row off the hair, the hair just above
-    // it (its last row, and how deep it went); and the lowest row the fringe covers
-    let inHair = false, last = -1, runTop = -1, end = -1;
-    for (let y = ry0; y <= y1; y++) {
-      const i = y - ry0, xr = Math.round(xAt(y)), h = xr >= 0 && xr < rw ? M[(i * rw + xr) * 4 + 3] : 0;
-      if (!inHair && h > 140) { inHair = true; runTop = y; } else if (inHair && h < 60) inHair = false;
-      hs[i] = inHair ? 1 : 0;
-      if (inHair) { last = y; run[i] = y - runTop + 1; } else { from[i] = last; run[i] = last >= 0 ? last - runTop + 1 : 0; }
-      const xs = xr + rx0; if (xs >= 0 && xs < W && sd[(y * W + xs) * 4 + 3] > 128) end = y;
+  // dark hair's light is a sheen well above its body (too little of it is lit to be read as often as it is seen)
+  const dark = part(.15), body = part(.58), light0 = part(.94), mean = lum(part(.45)), want = Math.min(lum(body) * 1.5 + 16, lum(body) + 55, 235);
+  const light = lum(light0) >= want ? light0 : light0.map(v => Math.min(255, v * want / Math.max(4, lum(light0))));
+  // where a lock's hair is lighter or darker than the rest (a grey streak, the light on one side)
+  const localAt = (/** @type {number} */ x, /** @type {number} */ y) => {
+    let s = 0, n = 0; const d = Math.max(1, Math.round(F * .03));
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -2; dx <= 2; dx++) { const xi = Math.round(x + dx * d) - rx0, yi = Math.round(y + dy * d) - ry0; if (xi < 0 || yi < 0 || xi >= rw || yi >= rh) continue; const j = (yi * rw + xi) * 4; if (M[j + 3] < 200) continue; s += lum([S[j], S[j + 1], S[j + 2]]); n++; }
+    return n >= 8 ? Math.max(.9, Math.min(1.1, s / n / Math.max(8, mean))) : 1;
+  };
+  // how each way falls, row by row down from the top: straight down from the hairline and, for a curve, sweeping out further down
+  const Gn = ry1 - ry0 + 2;
+  const curves = ways.map(way => {
+    const G = new Float64Array(Gn), c = way.curve || 0;
+    for (let i = 1; i < Gn; i++) { const y = ry0 + i - .5, d = Math.max(0, Math.min(1, (y - how.h0) / (1.25 * F))); G[i] = G[i - 1] + way.lean * (1 - c + c * (.18 + .82 * d * d * (3 - 2 * d))); }
+    return (/** @type {number} */ y) => { const t = Math.max(0, Math.min(Gn - 1.001, y - ry0)), i = Math.floor(t); return G[i] + (G[i + 1] - G[i]) * (t - i); };
+  });
+  const sm = (/** @type {number} */ v) => { const e = Math.max(0, Math.min(1, v)); return e * e * (3 - 2 * e); };
+  // curly hair: the person's own curls, quilted from patches of the hair above the hairline into one piece to fill locks with
+  let curls = /** @type {HTMLCanvasElement | null} */ (null);
+  if (how.straight < .3) {
+    const P = Math.max(6, Math.round(F * .34)), found = /** @type {number[][]} */ ([]);
+    for (let k = 0; k < 260 && found.length < 36; k++) {
+      const x = x0 + r() * (x1 - x0), hl = hairlineAt(x), y = hl - F * (.25 + r() * 1.05);
+      let ok = 0; for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) if (hairAt(x + (a / 4 - .5) * P, y + (b / 4 - .5) * P) > 200) ok++;
+      if (ok >= 23) found.push([x - rx0 - P / 2, y - ry0 - P / 2]);
     }
-    if (end < 0) continue;
-    // this strand's own end: some a little shorter than the shape, by how far apart they part
-    const pc0 = pieceAt(xb), u = Math.min(1, Math.abs(xb - (pc0.a + pc0.b) / 2) / ((pc0.b - pc0.a) / 2));
-    // its own length: its clump's (rounded, the middle longest, each clump its own length) and its own as a strand
-    const cut = how.apart * F * (.16 * (1 - Math.cos(Math.PI * u)) / 2 * pc0.len + .1 * (1 - pc0.len) + .04 * (fine(xb) * .5 + .5))
-      + (hairs(xb + W) * .5 + .5) * F * (.035 + .07 * how.apart) + (strays(xb) * .5 + .5) ** 2 * F * how.wisp;
-    const thin = 1 - how.see * (.5 + .5 * see(xb));
-    // and up it again, writing: off the hair (and a little way back into it), the hair above mirrored down; above that,
-    // itself, fading out, so the two meet without a seam
-    let below = -1e9, hairline = -1;
-    for (let y = Math.min(y1, end + Math.ceil(fade)); y >= ry0; y--) {
-      const i = y - ry0, xf = xAt(y), xr = Math.round(xf) + rx0;
-      if (hs[i] && hairline < 0 && below > -1e9) hairline = y;
-      if (!hs[i]) hairline = -1;
-      if (xr < 0 || xr >= W || xr < way.from || xr >= way.to) continue;
-      const A = sd[(y * W + xr) * 4 + 3] / 255; if (A <= 0) continue;
-      let alpha = 0, lift = 1;
-      const hy = hs[i] ? hairline : from[i], axis = hy - Math.min(back, Math.max(0, run[i] - 4) * .5);
-      // a fringe is no longer than the hair it is combed from: short hair makes a short one
-      const stop = hs[i] ? end : Math.min(end, hy + how.reach * F);
-      if (hy >= 0 && y > axis) {
-        const d = (y - axis) / 1.12, avail = Math.max(2, Math.min(run[i] - (hy - axis), deep)), p = d % (2 * avail), t = p <= avail ? p : 2 * avail - p, ty = axis - t;
-        if (taps > 1) {
-          let s0 = 0, s1 = 0, s2 = 0;
-          for (let q = 0; q < taps; q++) { const yy = ty + (q / (taps - 1) - .5) * fall; take(xAt(yy), yy - ry0, o); s0 += o[0]; s1 += o[1]; s2 += o[2]; }
-          const sh2 = 1 + .16 * straight * strand(xb + 3 * W);
-          o[0] = s0 / taps * sh2; o[1] = s1 / taps * sh2; o[2] = s2 / taps * sh2;
-        } else take(xAt(ty), ty - ry0, o);
-        const l = .2126 * o[0] + .7152 * o[1] + .0722 * o[2], tex = Math.max(-1, Math.min(1, (l - mean) / 40));
-        // the ends: this strand's, made ragged by its own light; where strands part, the forehead shows between them
-        // more toward their ends
-        const along = Math.max(0, y - hy) / Math.max(1, stop - hy);
-        const fromEnd = stop - y - cut + tex * how.ends * F * .1, tip = Math.max(0, Math.min(1, fromEnd / fade));
-        alpha = A * tip * tip * (3 - 2 * tip) * thin;
-        if (hs[i]) { const up = Math.max(0, Math.min(1, (hy - y) / Math.max(1, hy - axis))); alpha *= 1 - up * up * (3 - 2 * up); }
-        // lighter where it bends forward
-        const dd = y - axis, bend = dd < F * .5 ? Math.sin(Math.PI * dd / (F * .5)) : 0;
-        lift = 1 + .09 * bend - .05 * along + how.sheen * Math.sin(Math.PI * Math.min(1, along * 1.4)) * (.6 + .4 * strand(xb + 5 * W));
-        if (!hs[i]) { sumC += l * lift; nC++; }
-        combedPx[i * rw + (xr - rx0)] = 1;
-        below = y;
-      } else {
-        const dn = below - y; if (dn > seam || below < -1e8) continue;
-        take(xf, i, o); alpha = A * (1 - dn / seam);
+    if (found.length >= 6) {
+      const tw = Math.round(F * 1.4), th = Math.round(F * 2.2), T = make(tw, th), tx = ctx(T), patch = make(P, P), px = ctx(patch);
+      for (let gy = -P * .4; gy < th; gy += P * .5) for (let gx = -P * .4 + (r() - .5) * P * .3; gx < tw; gx += P * .5) {
+        const [sx, sy] = found[Math.floor(r() * found.length)];
+        px.globalCompositeOperation = 'copy'; px.drawImage(picC, sx, sy, P, P, 0, 0, P, P);
+        const g = px.createRadialGradient(P / 2, P / 2, P * .18, P / 2, P / 2, P / 2); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgb(0 0 0 / 0)');
+        px.globalCompositeOperation = 'destination-in'; px.fillStyle = g; px.fillRect(0, 0, P, P);
+        tx.drawImage(patch, gx, gy);
       }
-      if (alpha <= .004) continue;
-      const k4 = (i * rw + (xr - rx0)) * 4;
-      D[k4] = o[0] * lift; D[k4 + 1] = o[1] * lift; D[k4 + 2] = o[2] * lift; D[k4 + 3] = Math.max(D[k4 + 3], alpha * 255);
+      // what the patches leave between them, in the hair's body colour beneath
+      tx.globalCompositeOperation = 'destination-over'; tx.fillStyle = css(body); tx.fillRect(0, 0, tw, th);
+      curls = T;
     }
   }
-  // as light as the hair is: what is brought forward came from nearer the roots, a little darker than the hair seen
-  let mid = mean; for (let v = 0, c = 0; v < 256; v++) { c += hist[v]; if (c >= hn * .55) { mid = v; break; } }
-  if (nC > 32) {
-    const gain = Math.max(1, Math.min(1.45, Math.max(mean, mid) / Math.max(1, sumC / nC)));
-    if (gain > 1.01) for (let j = 0, i = 0; j < D.length; j += 4, i++) if (D[j + 3] && combedPx[i]) { D[j] *= gain; D[j + 1] *= gain; D[j + 2] *= gain; }
+  // a cut's ends: how much a lock's strands gather toward its end, over how long, and how far its edges end short of its middle
+  const sweeps = ways.some(w => w.lean), clump = curls ? -.25 : .12 + .7 * how.apart * how.apart, gather = F * (.07 + .3 * how.apart), point = F * (curls ? .06 : (.012 + .22 * how.apart * how.apart) * (sweeps ? .5 : 1)), round = curls ? 2.4 : 2.6 - how.apart * 1.5;
+  // waves run across neighbouring locks together, as hair's do
+  const curl = curls ? 0 : Math.pow(1 - how.straight, 1.4), lam = F * (.2 + .3 * how.straight), amp = lam * (.01 + .1 * curl), drift = noise1(r, W + 2, F * .7), step = Math.max(1, F * .02);
+  /** @type {{ c: number[], y0: number, hw: number, hl: number, band: number, shine: number, stop: number, end: number, k: number, way: number, stray: number }[]} */
+  const all = [];
+  ways.forEach((way, wi) => {
+    const G = curves[wi], xa = Math.max(rx0, Math.min(rx1, way.from - tall * Math.abs(way.lean))), xb = Math.min(rx1, Math.max(rx0, way.to + tall * Math.abs(way.lean)));
+    for (let x = xa; x < xb;) {
+      const wl = F * (curls ? .1 + .07 * r() : (.06 + .06 * r() + (r() - .5) * .08 * how.apart * how.apart) * (1 + .4 * curl) * (way.lean ? .7 : 1)), xr = x + wl / 2; x += wl * (curls ? .8 : 1);
+      // rooted along the curve of the head (a fringe is combed forward from the top of it, over the hairline beneath)
+      const hl = crownAt(xr), yr = hl - F * (.12 + .14 * r()), ph = drift(xr) * 3 + (r() - .5) * 6.283 * curl, A = amp * (.7 + .6 * r());
+      const lean = (way.lean ? 0 : (xr - how.cx) / Math.max(1, how.half) * .07) + (r() - .5) * .02;
+      // down the way it falls, until it leaves the fringe's shape or has come as far as the hair is long
+      /** @type {number[]} */ const c = []; let end = -1, len = 0, px0 = xr, inn = false;
+      for (let y = yr; y < ry1; y += step) {
+        const px = xr + G(y) - G(yr) + lean * (y - yr) + A * sm((y - hl) / (F * .3)) * Math.sin((y - yr) / lam * 6.283 + ph);
+        if (y > hl) len += Math.hypot(step, px - px0); px0 = px;
+        const here = inside(px, y); if (here && y > hl - F * .1) inn = true;
+        if (end < 0 && inn && y > hl + F * .04 && (!here || (way.lean ? len > how.reach * F * 1.2 : y > crownAt(xr) + how.reach * F))) end = y;
+        c.push(px);
+        if (end >= 0 && y > end + F * .14) break;
+      }
+      if (end < 0) continue;
+      // its end: the cut's, a little uneven, some locks shorter where a cut parts (a curl's springing up, shorter still)
+      let stop = end - F * (.004 + .045 * how.ends) * r();
+      if (r() < how.apart * .4) stop -= F * how.apart * (.14 + .14 * how.see * 4) * r();
+      else if (r() < how.wisp) stop += F * how.wisp * .8 * r();
+      // (curls spring up into a mass as they grow; they never hang in single ringlets far below the rest)
+      if (curls) stop = Math.max(end - F * .2, Math.min(stop, end) - F * .14 * r());
+      if (stop - hl < F * .05) continue;
+      all.push({ c, y0: yr, hw: wl * (curls ? .62 : .6), hl, band: F * (r() - .5) * .1, shine: .6 + .6 * r(), stop, end, k: localAt(xr, hl - F * (.15 + .3 * r())) * (.975 + .05 * r()), way: wi, stray: r() });
+    }
+  });
+  if (all.length < 6) return null;
+  const xAt = (/** @type {typeof all[number]} */ L, /** @type {number} */ y) => { const t = Math.max(0, Math.min(L.c.length - 1.001, (y - L.y0) / step)), i = Math.floor(t); return L.c[i] + (L.c[i + 1] - L.c[i]) * (t - i); };
+  const hwAt = (/** @type {typeof all[number]} */ L, /** @type {number} */ y) => { const g = Math.min(gather, (L.stop - L.hl) * .7); return L.hw * (1 - clump * sm((y - (L.stop - g)) / g)); };
+  const out = make(W, H), o = ctx(out); o.lineCap = 'round'; o.lineJoin = 'round';
+  const toward = (/** @type {number[]} */ a, /** @type {number[]} */ b, /** @type {number} */ t) => a.map((v, i) => v + (b[i] - v) * t);
+  const glint = lum(light) >= 80 ? light : light.map(v => Math.min(255, v * 80 / Math.max(4, lum(light))));
+  // light hair's shadows are lighter: it lets light through
+  const deep = 1 - Math.min(.7, lum(body) / 255 * .9);
+  // light down a lock: in shadow where it leaves the hair, catching the light where it bends forward, its body, a little
+  // darker and finer at its end
+  const lightOf = (/** @type {typeof all[number]} */ L, /** @type {number} */ a0, /** @type {number} */ k, /** @type {number} */ lift) => {
+    const g = o.createLinearGradient(0, L.y0, 0, L.stop + 1), span = L.stop + 1 - L.y0;
+    let last = 0; const put = (/** @type {number} */ y, /** @type {number[]} */ c, /** @type {number} */ a, /** @type {number} */ up) => { last = Math.max(last, Math.max(0, Math.min(1, (y - L.y0) / span))); g.addColorStop(last, css(toward(c, glint, lift * up).map(v => v * k * L.k), a * a0)); };
+    const b0 = L.hl + Math.max(F * .14, L.band + F * .2);
+    put(L.y0, toward(dark, body, .25), 1, 0); put(L.hl + F * .08, toward(dark, body, .7), 1, .25); put(b0, toward(body, light, (.2 + how.sheen * 1.6) * L.shine), 1, 1);
+    put(b0 + F * .14, toward(body, light, .15), 1, .6); put(Math.max(b0 + F * .2, L.hl + F * .55), body, 1, .3); put(L.stop - F * (.03 + how.taper * .3), body, 1 - how.see * .4, .2); put(L.stop + 1, toward(body, dark, .2 * deep), (1 - how.see * .6) * .45, .1);
+    return g;
+  };
+  const exitOf = (/** @type {typeof all[number]} */ L, /** @type {number} */ s) => {
+    for (let y = Math.max(L.hl + F * .04, L.end - F * .6); y < L.end + F * .6; y += step) if (!inside(xAt(L, y) + s * hwAt(L, y) * .85, y)) return Math.min(L.end + F * .25, y) - (L.end - L.stop);
+    return L.stop;
+  };
+  const endsOf = (/** @type {typeof all[number]} */ L) => { const lo = L.y0 + F * .06; return [Math.max(lo, exitOf(L, -1) - point), Math.max(lo, exitOf(L, 1) - point)]; };
+  const outline = (/** @type {typeof all[number]} */ L) => {
+    const [tl, tr] = endsOf(L), p = new Path2D(), right = [];
+    p.moveTo(xAt(L, L.y0) - hwAt(L, L.y0), L.y0);
+    for (let y = L.y0 + step; y < tl; y += step) p.lineTo(xAt(L, y) - hwAt(L, y), y);
+    for (let y = L.y0; y < tr; y += step) right.push(xAt(L, y) + hwAt(L, y), y);
+    const ax = xAt(L, tl) - hwAt(L, tl), bx = xAt(L, tr) + hwAt(L, tr), my = (tl + tr) / 2 + point, mx = xAt(L, my), q = Math.max(0, Math.min(1, (round - 1.4) / 1.2));
+    p.lineTo(ax, tl); p.quadraticCurveTo(ax + (mx - ax) * (1 - q) * .5, my - (my - tl) * (1 - q) * .5 + (q ? 0 : 0), mx, my); p.quadraticCurveTo(bx + (mx - bx) * (1 - q) * .5, my - (my - tr) * (1 - q) * .5, bx, tr);
+    for (let i = right.length - 2; i >= 0; i -= 2) p.lineTo(right[i], right[i + 1]);
+    p.closePath(); return p;
+  };
+  const order = all.map((_, i) => i).sort(() => r() - .5), shadowOf = css(dark.map(v => v * .45), .5 * deep);
+  ways.forEach((way, wi) => {
+    o.save(); o.beginPath(); o.rect(Math.max(-1, way.from), 0, Math.min(W + 2, way.to) - Math.max(-1, way.from), H); o.clip();
+    const mine = order.map(i => all[i]).filter(L => L.way === wi);
+    if (!curls) for (const L of mine) {
+      const g = Math.min(gather, (L.stop - L.hl) * .7), e = Math.min(...endsOf(L)) - g * .5; if (e - L.y0 < F * .1) continue;
+      o.beginPath(); o.moveTo(xAt(L, L.y0) - L.hw * 1.5, L.y0);
+      for (let y = L.y0; y < e; y += step) o.lineTo(xAt(L, y) - L.hw * 1.5, y);
+      for (let y = e; y > L.y0; y -= step) o.lineTo(xAt(L, y) + L.hw * 1.5, y);
+      o.closePath(); o.fillStyle = lightOf(L, 1, .62 + .25 * (1 - deep), 0); o.fill();
+    }
+    for (const L of mine) {
+      // its body, with a little shadow on what is behind it; curls filled with the person's own, in the same light
+      const p = outline(L);
+      o.save(); o.shadowColor = shadowOf; o.shadowBlur = Math.max(1, F * .03); o.shadowOffsetY = F * .012; o.fillStyle = lightOf(L, 1, 1, 0); o.fill(p); o.restore();
+      if (curls) {
+        o.save(); o.clip(p);
+        const bx = xAt(L, L.y0) - L.hw * 2 - F * .3, by = L.y0;
+        o.drawImage(curls, -r() * Math.max(0, curls.width - L.hw * 4 - F * .6) + bx, -r() * Math.max(0, curls.height - (L.stop - L.y0) - 2) + by);
+        // the same light over them: in shadow at the root, the light where it bends forward, darker underneath
+        const g = o.createLinearGradient(0, L.y0, 0, L.stop);
+        const at = (/** @type {number} */ y) => Math.max(0, Math.min(1, (y - L.y0) / (L.stop - L.y0)));
+        g.addColorStop(0, css(dark, .3)); g.addColorStop(at(L.hl + F * .1), css(dark, .06)); g.addColorStop(at(L.hl + F * .22), css(light, .12)); g.addColorStop(at(L.hl + F * .4), css(body, 0)); g.addColorStop(1, css(dark, .18));
+        o.fillStyle = g; o.fillRect(bx - F, L.y0, L.hw * 4 + F * 2.6, L.stop - L.y0 + 2);
+        o.restore();
+      }
+    }
+    // the grain: strands over each lock, gathering with it, some in shadow, some in the light; then a few strays past its end
+    if (!curls) for (const L of mine) {
+      const n = Math.max(3, Math.round(L.hw * 2 / Math.max(1.1, F * .014))), te = endsOf(L);
+      for (let s = 0; s < n; s++) {
+        const d = ((s + .2 + .6 * r()) / n) * 2 - 1, endY = te[0] + (te[1] - te[0]) * (d + 1) / 2 + point * (1 - Math.pow(Math.abs(d), 1.4)) - F * .015 * r(), v = r(), sy = L.y0 + F * .06 * r();
+        if (endY - sy < F * .1) continue;
+        const k = v < .34 ? .62 + .18 * (1 - deep) + .1 * r() : 1, lift = v > .74 ? (.5 + .4 * r()) * (.5 + .5 * deep) * (sweeps ? .5 : 1) : 0;
+        o.strokeStyle = lightOf(L, .3 + .4 * r(), k, lift); o.lineWidth = Math.max(.6, F * (.006 + .006 * r()));
+        o.beginPath(); o.moveTo(xAt(L, sy) + d * hwAt(L, sy) * 1.12, sy);
+        for (let y = sy + step; y < endY; y += step) o.lineTo(xAt(L, y) + d * hwAt(L, y) * 1.12, y);
+        o.stroke();
+      }
+      if (L.stray < how.wisp * 1.5) {
+        const sy = L.stop - F * .3, ey = L.stop + F * (.03 + .08 * r()), d = (r() - .5) * .6;
+        o.strokeStyle = css(body.map(v => v * L.k), .5); o.lineWidth = Math.max(.5, F * .005);
+        o.beginPath(); o.moveTo(xAt(L, sy) + d * L.hw, sy); for (let y = sy + step; y < ey; y += step) o.lineTo(xAt(L, y) + d * hwAt(L, y), y); o.stroke();
+      }
+    }
+    o.restore();
+  });
+  // out of the hair: each column fading in from a little above its hairline, where the fringe's roots are in the hair already there
+  const roots = make(W, H), rc = ctx(roots);
+  for (let i = 0; i < rw; i += 2) {
+    const hl = crown[i], g = rc.createLinearGradient(0, hl - F * .3, 0, hl); g.addColorStop(0, '#0000'); g.addColorStop(1, '#000');
+    rc.fillStyle = g; rc.fillRect(rx0 + i, hl - F * .3, 2, H);
   }
-  ox.putImageData(img, rx0, ry0);
-  /** @type {any} */ (out).hairMean = mid;
+  rc.fillStyle = '#000'; rc.fillRect(0, 0, rx0, H); rc.fillRect(rx1, 0, W - rx1, H);
+  const fade = rc.createLinearGradient(x0, 0, x1, 0), fw = Math.min(.3, F * .3 / Math.max(1, x1 - x0));
+  fade.addColorStop(0, '#0000'); fade.addColorStop(fw, '#000'); fade.addColorStop(1 - fw, '#000'); fade.addColorStop(1, '#0000');
+  rc.globalCompositeOperation = 'destination-in'; rc.fillStyle = fade; rc.fillRect(0, 0, W, H);
+  o.globalCompositeOperation = 'destination-in'; o.drawImage(roots, 0, 0); o.globalCompositeOperation = 'source-over';
+  /** @type {any} */ (out).hairMean = lum(body);
   return out;
 }
 
@@ -477,8 +559,8 @@ function reachOf(f, mask) {
   reaches.set(mask, v); return v;
 }
 /**
- * A fringe: the person's own hair brought forward over the shape it covers (`combed`), its shadow on the forehead, dyed
- * as the rest of their hair is if the look dyes it. Only where the picture's hair was found: there is nothing to comb a
+ * A fringe: locks of the person's own hair brought forward over the shape it covers (`locks`), its shadow on the forehead,
+ * dyed as the rest of their hair is if the look dyes it. Only where the picture's hair was found: there is nothing to comb a
  * fringe from without it, and it is left to the pencil. @returns {boolean} whether it was painted
  */
 function fringe(/** @type {CanvasRenderingContext2D} */ x, /** @type {HTMLCanvasElement} */ layer, f, q, t, r, k, at, pic, box) {
@@ -487,6 +569,8 @@ function fringe(/** @type {CanvasRenderingContext2D} */ x, /** @type {HTMLCanvas
   const shape = make(layer.width, layer.height), sx = ctx(shape); at(sx);
   sx.fillStyle = '#fff';
   for (const c of g0.cover) sx.fill(line(c));
+  const tf = sx.getTransform(), pts = g0.cover.flat().map(p => [tf.a * p.x + tf.c * p.y + tf.e, tf.b * p.x + tf.d * p.y + tf.f]);
+  const bb = [Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1])), Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))];
   // each cut's ends: how ragged, how far strands part, how much shows through, how far back it is combed from, how long
   // its ends thin out over, how far single strands stray past them, how much light it catches as it falls
   const how = /** @type {Record<string, { ends: number, apart: number, see: number, back: number, taper: number, wisp: number, sheen: number }>} */ ({
@@ -497,11 +581,11 @@ function fringe(/** @type {CanvasRenderingContext2D} */ x, /** @type {HTMLCanvas
   const ways = g0.ways.map(w => ({ lean: w.lean, curve: w.curve, from: (w.from - box[0]) * k, to: (w.to - box[0]) * k }));
   // weeks on, it has grown: longer (the hair with it), and its line gone softer and less even
   const g = Math.max(0, q.shape?.grow || 0), cut = g ? { ...how, ends: how.ends + g * 1.6, apart: Math.min(1, how.apart + g * .9), wisp: how.wisp + g * .5, taper: how.taper + g * .35 } : how;
-  const hair = combed(pic, f, t.mask, at, soft(shape, m.F * k * .035), ways, m.F * k * 2.4, m.F * k, { ...cut, straight: straightOf(pic, f, t.mask), h0: (m.hair - box[1]) * k, reach: reachOf(f, t.mask) + g }, r, t.skin);
+  const hair = locks(pic, f, t.mask, at, shape, ways, m.F * k, { ...cut, straight: straightOf(pic, f, t.mask), h0: (m.hair - box[1]) * k, reach: reachOf(f, t.mask) + g, cx: (m.cx - box[0]) * k, half: m.bw * k / 2 }, r, t.hair, bb);
   if (!hair) return false;
   // its shadow on the forehead, a little below and softer, then the hair (dyed, if the look dyes it)
   const sh = make(layer.width, layer.height), shx = ctx(sh);
-  shx.drawImage(soft(hair, m.F * k * .06), 0, m.F * k * .05); shx.globalCompositeOperation = 'source-in'; shx.fillStyle = css(shade(t.skin.dark, -.55), .38); shx.fillRect(0, 0, sh.width, sh.height);
+  shx.drawImage(soft(hair, m.F * k * .08), 0, m.F * k * .06); shx.globalCompositeOperation = 'source-in'; shx.fillStyle = css(shade(t.skin.dark, -.55), .32); shx.fillRect(0, 0, sh.width, sh.height);
   shx.globalCompositeOperation = 'destination-out'; shx.drawImage(hair, 0, 0);
   // dyed as the rest of the hair is (the layer's own alpha says where the hair is), but for its own roots, weeks on
   if (t.dye) {

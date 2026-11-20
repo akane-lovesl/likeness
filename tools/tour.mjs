@@ -290,7 +290,8 @@ await scene('marks', 'Drawn on, a reference, and two looks at once', page, async
   await mirror.locator('.mr-token--marks').click();
   await mirror.locator('.mr-token--ref').click();
   await mirror.locator('.mr-ask__input').fill('');
-  await mirror.locator('.mr-part[data-part="lips"]').click(); await sleep(400); await mirror.locator('.mr-style[data-style="red"]').click(); await sleep(400);
+  // (from the dock's pills if a part is chosen, else from the face's notes)
+  await mirror.locator(((await mirror.locator('.mr-parts').isVisible()) ? '.mr-part' : '.mr-note') + '[data-part="lips"]').click(); await sleep(400); await mirror.locator('.mr-style[data-style="red"]').click(); await sleep(400);
   await mirror.locator('.mr-ask__go').click(); await sleep(1600); await shot('a second look, asked while the first is made');
   const pill = mirror.locator('.act');
   if (await pill.isVisible().catch(() => false)) { await pill.click(); await sleep(1100); await shot('In the studio: each, and how far it has got'); await page.keyboard.press('Escape'); await sleep(600); }

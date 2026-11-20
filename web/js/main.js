@@ -38,5 +38,5 @@ stage.addEventListener('pointerdown', e => {
 const asked = new URLSearchParams(location.search);
 if (!asked.has('desk') && !asked.has('skipwelcome')) {
   showBook();
-  if (asked.has('welcome') || !navigator.webdriver) setTimeout(() => welcome({ force: asked.has('welcome') }), 700);
+  if (asked.has('welcome') || !navigator.webdriver) welcome({ force: asked.has('welcome') });
 }

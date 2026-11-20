@@ -3,8 +3,9 @@
  * returns its outline as a mask. Nothing is sent anywhere. Where the model cannot load, a soft circle stands in.
  */
 import { make } from './painter.js';
+import { assetUrl } from '../core/dom.js';
 
-const VENDOR = new URL('../../vendor/mediapipe/', import.meta.url).href;
+const VENDOR = assetUrl('vendor/mediapipe/').href;
 let loading = null;
 
 /** MediaPipe writes its start-up notes to stderr, which the browser shows as errors. They are notes. */

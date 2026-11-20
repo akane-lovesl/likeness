@@ -63,8 +63,16 @@ export const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 
 
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const frame = () => new Promise(r => requestAnimationFrame(() => r(undefined)));
+/** Yield to the current frame before preparing a more expensive visual result. */
+export const afterPaint = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 export const stage = () => /** @type {HTMLElement} */ (document.getElementById('stage'));
 export const screens = () => /** @type {HTMLElement} */ (document.getElementById('screens'));
+const versions = JSON.parse(document.getElementById('studio-versions')?.textContent || '{}');
+/** A site asset keyed by the files in its group, or an ordinary relative URL on the static edition. @param {string} path */
+export const assetUrl = path => {
+  const version = versions[path.split('/')[0]];
+  return new URL(version ? '/' + version + '/' + path : path, document.baseURI);
+};
 export const clamp = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, v));
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const uid = (p = '') => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -130,8 +138,10 @@ export function sheet(build, { cls = '', label = '' } = {}) {
     const close = value => {
       if (done) return; done = true;
       window.removeEventListener('keydown', onKey, true);
+      scrim.inert = panel.inert = true;
       scrim.classList.remove('is-in'); panel.classList.remove('is-in'); panel.style.transform = '';
-      setTimeout(() => { scrim.remove(); panel.remove(); resolve(value); }, reduced ? 0 : 380);
+      resolve(value);
+      setTimeout(() => { scrim.remove(); panel.remove(); }, reduced ? 0 : 200);
     };
     body.append(...build(close, panel));
     scrim.addEventListener('click', () => close());
@@ -140,8 +150,9 @@ export function sheet(build, { cls = '', label = '' } = {}) {
       move: d => { panel.style.transform = `translateY(${Math.max(0, d.dy)}px)`; },
       end: d => { panel.classList.remove('is-dragging'); if (d.dy > 90 || d.vy > 600) close(); else panel.style.transform = ''; },
     });
+    scrim.classList.add('is-in');
+    panel.classList.add('is-in');
     stage().append(scrim, panel);
-    requestAnimationFrame(() => requestAnimationFrame(() => { scrim.classList.add('is-in'); panel.classList.add('is-in'); }));
   });
 }
 

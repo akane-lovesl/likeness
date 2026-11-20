@@ -6,9 +6,16 @@
  */
 import { make } from './painter.js';
 import { quiet } from './segment.js';
+import { assetUrl } from '../core/dom.js';
 
-const VENDOR = new URL('../../vendor/mediapipe/', import.meta.url).href;
+const VENDOR = assetUrl('vendor/mediapipe/').href;
 let loading = /** @type {Promise<any> | null} */ (null);
+let visionFiles = /** @type {Promise<{vision: any, files: any}> | null} */ (null);
+function visionKit() {
+  visionFiles ||= import(VENDOR + 'vision_bundle.mjs').then(async vision => ({ vision, files: await vision.FilesetResolver.forVisionTasks(VENDOR + 'wasm') }));
+  visionFiles.catch(() => { visionFiles = null; });
+  return visionFiles;
+}
 
 /** The outline of the face, in order round it from the top of the forehead. */
 export const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
@@ -26,8 +33,7 @@ export const PARTS = ['bangs', 'brows', 'lashes', 'lips', 'beard', 'colour'];
 function loader() {
   loading ||= (async () => {
     quiet();
-    const vision = await import(VENDOR + 'vision_bundle.mjs');
-    const files = await vision.FilesetResolver.forVisionTasks(VENDOR + 'wasm');
+    const { vision, files } = await visionKit();
     return vision.FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: VENDOR + 'face_landmarker.task', delegate: 'CPU' }, runningMode: 'IMAGE', numFaces: 1 });
   })();
   loading.catch(() => { loading = null; });
@@ -39,8 +45,7 @@ let hairLoading = /** @type {Promise<any> | null} */ (null);
 function hairModel() {
   hairLoading ||= (async () => {
     quiet();
-    const vision = await import(VENDOR + 'vision_bundle.mjs');
-    const files = await vision.FilesetResolver.forVisionTasks(VENDOR + 'wasm');
+    const { vision, files } = await visionKit();
     return vision.ImageSegmenter.createFromOptions(files, { baseOptions: { modelAssetPath: VENDOR + 'hair_segmenter.tflite', delegate: 'CPU' }, runningMode: 'IMAGE', outputCategoryMask: false, outputConfidenceMasks: true });
   })();
   hairLoading.catch(() => { hairLoading = null; });
@@ -135,8 +140,7 @@ let videoLoading = /** @type {Promise<any> | null} */ (null);
 function videoModel() {
   videoLoading ||= (async () => {
     quiet();
-    const vision = await import(VENDOR + 'vision_bundle.mjs');
-    const files = await vision.FilesetResolver.forVisionTasks(VENDOR + 'wasm');
+    const { vision, files } = await visionKit();
     const make = (/** @type {string} */ delegate) => vision.FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: VENDOR + 'face_landmarker.task', delegate }, runningMode: 'VIDEO', numFaces: 1 });
     if (softwareGL()) return make('CPU');
     try { return await make('GPU'); } catch { return make('CPU'); }
@@ -243,8 +247,7 @@ let hairVideoLoading = /** @type {Promise<any> | null} */ (null);
 export async function hairFollower() {
   hairVideoLoading ||= (async () => {
     quiet();
-    const vision = await import(VENDOR + 'vision_bundle.mjs');
-    const files = await vision.FilesetResolver.forVisionTasks(VENDOR + 'wasm');
+    const { vision, files } = await visionKit();
     return vision.ImageSegmenter.createFromOptions(files, { baseOptions: { modelAssetPath: VENDOR + 'hair_segmenter.tflite', delegate: 'CPU' }, runningMode: 'VIDEO', outputCategoryMask: false, outputConfidenceMasks: true });
   })();
   hairVideoLoading.catch(() => { hairVideoLoading = null; });

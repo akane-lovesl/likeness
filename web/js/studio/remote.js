@@ -13,6 +13,21 @@ const json = async res => {
 const post = (path, body) => fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(json);
 const sent = new Map();
 
+async function postTurn(body, retry) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await fetch('api/turns', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body), ...(retry ? { signal: AbortSignal.timeout(15000) } : {}),
+      });
+      return await json(response);
+    } catch (error) {
+      if (!retry || attempt >= 2 || (error.status && ![502, 503, 504].includes(error.status))) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
+}
+
 /** Uploads a picture once per session; the studio keeps it under private/. */
 export async function upload(key, blob, kind = 'image') {
   if (key && sent.has(key)) return sent.get(key);
@@ -22,7 +37,7 @@ export async function upload(key, blob, kind = 'image') {
   return asset;
 }
 
-async function* follow(job) {
+async function* follow(job, pollOnly) {
   const queue = [], wake = { now: () => {} }, push = ev => { queue.push(ev); wake.now(); };
   let source = null, polling = false, seen = 0, finished = false;
   const poll = async () => {
@@ -30,12 +45,14 @@ async function* follow(job) {
     while (!finished) {
       const res = await fetch(`api/jobs/${job}`).catch(() => null);
       if (res?.status === 404) { push({ type: 'failed', message: 'The studio was restarted and this turn went with it.', hint: 'Try again.' }); return; }
+      if (res?.status === 401 || res?.status === 403) { push({ type: 'failed', message: 'Reopen the studio with your access link.' }); return; }
       const state = res?.ok ? await res.json().catch(() => null) : null;
       if (state) { state.events.slice(seen).forEach(push); seen = state.events.length; }
       await new Promise(r => setTimeout(r, 700));
     }
   };
-  try {
+  if (pollOnly) poll();
+  else try {
     source = new EventSource(`api/jobs/${job}/events`);
     for (const type of ['accepted', 'stage', 'plan', 'note', 'progress', 'partial', 'result', 'reply', 'done', 'failed']) source.addEventListener(type, e => { seen++; push({ type, ...JSON.parse(/** @type {MessageEvent} */ (e).data) }); });
     source.onerror = () => { source.close(); if (!finished && !polling) poll(); };
@@ -49,8 +66,8 @@ async function* follow(job) {
 }
 
 /** A job's events as the app wants them: pictures fetched, failures thrown. */
-async function* events(job) {
-  for await (const ev of follow(job)) {
+async function* events(job, pollOnly) {
+  for await (const ev of follow(job, pollOnly)) {
     if (ev.type === 'partial') yield { type: 'partial', index: ev.index, blob: await fetchBlob(ev.url) };
     else if (ev.type === 'result') yield { type: 'result', index: ev.index, blob: await fetchBlob(ev.url), w: ev.w, h: ev.h, provenance: ev.provenance, prompt: ev.prompt };
     else if (ev.type === 'failed') throw Object.assign(new Error(ev.message || 'The studio could not finish this.'), { hint: ev.hint, cancelled: ev.cancelled });
@@ -60,7 +77,7 @@ async function* events(job) {
 
 const fetchBlob = url => fetch(url).then(r => { if (!r.ok) throw new Error('A picture went missing on the way back.'); return r.blob(); });
 
-export function remote() {
+export function remote(pollOnly = false) {
   const jobs = new Map(), stopped = new Set();
   return {
     kind: 'studio',
@@ -68,7 +85,7 @@ export function remote() {
     async *turn(spec, inputs) {
       let posted = null;
       for (let attempt = 0; !posted; attempt++) {
-        try { posted = await send(spec, inputs); } catch (e) {
+        try { posted = await send(spec, inputs, pollOnly); } catch (e) {
           if (e.status === 409 && attempt === 0) { sent.clear(); continue; }   // the studio was restarted elsewhere: send the pictures again
           throw e;
         }
@@ -77,12 +94,12 @@ export function remote() {
       jobs.set(spec.id, job);
       if (stopped.has(spec.id)) stopJob(job);   // Stop was pressed while the pictures were still on their way
       yield { type: 'accepted', eta, job };
-      yield* events(job);
+      yield* events(job, pollOnly);
     },
     /** A turn already under way (the page was reloaded): its events again from the first. */
     async *resume(job) {
       jobs.set(job, job);
-      yield* events(job);
+      yield* events(job, pollOnly);
     },
     cancel(id, job = null) { const known = jobs.get(id) || job; if (known) stopJob(known); else stopped.add(id); },
     /** A room from words (and optionally a palette), invented by the studio's model. */
@@ -97,7 +114,7 @@ export function remote() {
 const stopJob = job => fetch(`api/jobs/${job}/cancel`, { method: 'POST' }).catch(() => {});
 
 /** Sends a turn's pictures (each once) and the turn itself. */
-async function send(spec, inputs) {
+async function send(spec, inputs, retry = false) {
   const handles = {};
   for (const [id, inp] of Object.entries(inputs)) handles[inp.handle] = (await upload(id, inp.blob)).id;
   const asset = id => (id && inputs[id] ? handles[inputs[id].handle] : null);
@@ -113,5 +130,5 @@ async function send(spec, inputs) {
     room: { id: spec.room.id, name: spec.room.name, line: spec.room.line, colors: spec.room.colors, voice: spec.room.voice?.done || [] }, mood: spec.mood || null,
     taste: spec.taste || '',
   };
-  return post('api/turns', body);
+  return postTurn(body, retry);
 }

@@ -30,7 +30,7 @@ export async function canLive() {
 /** The parts a live sketch can show, in the order they are offered. */
 const LIVE = ['bangs', 'brows', 'lashes', 'lips', 'beard', 'cut', 'colour'];
 /** How long the picture takes to come apart into tiles, or back. */
-const GRID_MS = 560;
+const GRID_MS = 320;
 // a face read aside is of a frame a moment old: it is carried on the way it was moving, for up to this long (ms)
 const AHEAD = 100;
 /**
@@ -333,6 +333,7 @@ export function openLive(o) {
     const paints = new Map();
     /** @type {ReturnType<typeof coloursOf> | null} */ let tone = null;
     let toneAt = -1e9, cost = 40, nextPaint = 0, ticks = 0, paintedTick = -1;
+    let paintScale = .88;
     const corners = (/** @type {any} */ f) => [f.pts[33], f.pts[263]];
     /** The painted parts of a look, as a key. @param {Pick[]} ps */
     const keyOf = (ps) => ps.filter(q => PAINTED.has(q.part) || q.part === 'colour').map(q => q.part + ':' + q.style.id + ':' + JSON.stringify(q.shape || {})).join('|');
@@ -360,7 +361,8 @@ export function openLive(o) {
       if ((!had || now >= nextPaint) && paintedTick !== ticks) {
         paintedTick = ticks;
         const t0 = performance.now(), snap = P.make(base.width, base.height); ctx(snap).drawImage(base, 0, 0);
-        const got = paintNow(snap, f, ps, px), took = performance.now() - t0;
+        const got = paintNow(snap, f, ps, Math.max(140, px * paintScale)), took = performance.now() - t0;
+        paintScale = Math.max(.52, Math.min(1, paintScale * Math.max(.86, Math.min(1.04, Math.sqrt(22 / Math.max(1, took))))));
         cost = cost * .6 + took * .4; nextPaint = now + Math.max(100, cost * 3); el.dataset.paint = String(Math.round(cost));
         if (got) paints.set(key, { ...got, e: corners(f), at: now, used: now });
       }

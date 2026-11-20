@@ -17,9 +17,10 @@ export const studio = {
 
 export async function connect() {
   try {
-    const res = await fetch('studio.json', { cache: 'no-store', signal: AbortSignal.timeout(2500) });
-    const info = res.ok ? await res.json() : null;
-    if (info?.edition === 'live' && info.engine) { studio.mode = info.engine.kind === 'simulator' ? 'simulator' : 'workstation'; studio.info = info; studio.engine = remote(); }
+    const initial = document.getElementById('studio-state');
+    const info = initial ? JSON.parse(initial.textContent || 'null')
+      : await fetch('studio.json', { cache: 'no-store', signal: AbortSignal.timeout(2500) }).then(res => res.ok ? res.json() : null);
+    if (info?.edition === 'live' && info.engine) { studio.mode = info.engine.kind === 'simulator' ? 'simulator' : 'workstation'; studio.info = info; studio.engine = remote(info.events === 'poll'); }
   } catch { /* no studio answered: showcase */ }
   document.documentElement.dataset.mode = studio.mode;
   return studio;

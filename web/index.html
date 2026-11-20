@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
 <meta name="theme-color" content="#130f0d">
 <title>Likeness</title>
+<!-- studio-state -->
 <meta name="description" content="Try a look on before you commit to it: bangs, brows, colour, a cut. Pick it on your own face, see four takes, and turn it to every angle.">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
@@ -18,7 +19,8 @@
 <script>
   /* Paint the last room before anything else loads, so a reload never flashes the default one. */
   try {
-    const last = JSON.parse(localStorage.getItem('likeness.paint') || 'null');
+    const device = JSON.parse(document.getElementById('studio-state')?.textContent || '{}')?.storage;
+    const last = JSON.parse(localStorage.getItem(device ? 'likeness.' + device + '.paint' : 'likeness.paint') || 'null');
     if (last) { for (const [k, v] of Object.entries(last.vars)) document.documentElement.style.setProperty(k, v); Object.assign(document.documentElement.dataset, last.data); }
   } catch { /* first visit */ }
 </script>

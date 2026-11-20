@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import secrets
 import time
 from pathlib import Path
@@ -13,12 +14,14 @@ from PIL import Image, ImageOps
 
 MAX_UPLOAD = 24 * 2**20
 KINDS = ("image", "mask", "made", "partial")
+ASSET_ID = re.compile(r"[0-9a-f]{16}(?:[0-9a-f]{16})?")
 
 
 class Store:
-    def __init__(self, home: Path) -> None:
+    def __init__(self, home: Path, *, isolated: bool = False) -> None:
         self.dir = home / "assets"
         self.dir.mkdir(parents=True, exist_ok=True)
+        self.isolated = isolated
 
     def _note(self, asset_id: str) -> Path:
         return self.dir / f"{asset_id}.json"
@@ -37,7 +40,7 @@ class Store:
     def add_image(self, image: Image.Image, kind: str = "made", **extra) -> dict:
         if kind not in KINDS:
             raise ValueError(f"Unknown kind of asset: {kind}")
-        asset_id = secrets.token_hex(8)
+        asset_id = secrets.token_hex(16 if self.isolated else 8)
         if kind == "mask":
             image = image.convert("LA").getchannel("A") if image.mode in ("LA", "RGBA", "PA") else image.convert("L")
             name, fmt = f"{asset_id}.png", "PNG"
@@ -53,14 +56,19 @@ class Store:
         return note
 
     def get(self, asset_id: str) -> dict | None:
-        if not asset_id or not asset_id.isalnum():
+        if not asset_id or not ASSET_ID.fullmatch(asset_id):
             return None
         path = self._note(asset_id)
-        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        if path.resolve().parent != self.dir.resolve():
+            return None
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
     def path(self, asset_id: str) -> Path | None:
         note = self.get(asset_id)
-        return self.dir / note["file"] if note else None
+        if not note or note.get("file") not in (f"{asset_id}.png", f"{asset_id}.jpg"):
+            return None
+        path = self.dir / note["file"]
+        return path if path.resolve().parent == self.dir.resolve() else None
 
     def open(self, asset_id: str) -> Image.Image:
         path = self.path(asset_id)

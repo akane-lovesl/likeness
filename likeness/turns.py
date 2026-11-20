@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 Op = Literal["create", "edit", "restyle", "reference", "blend", "region", "backdrop", "remove", "vary", "angles"]
 Pace = Literal["quick", "fine", "deep"]
+Handle = Annotated[str, StringConstraints(pattern=r"^[A-Z]{1,8}$")]
 
 
 class Ref(BaseModel):
@@ -57,7 +58,7 @@ class Turn(BaseModel):
     text: str = Field("", max_length=4000)
     pace: Pace = "fine"
     n: int = Field(1, ge=1, le=4)
-    handles: dict[str, str] = Field(default_factory=dict)   # "A" -> asset id
+    handles: dict[Handle, str] = Field(default_factory=dict, max_length=12)   # "A" -> asset id
     intent: Intent = Field(default_factory=Intent)
     look: LookIn | None = None
     backdrop: BackdropIn | None = None

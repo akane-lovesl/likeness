@@ -5,7 +5,7 @@
  * A live studio sends back four takes to scrub through and keep, and then every angle of the one kept. In the
  * showcase the change is sketched over the face instead, and says so.
  */
-import { h, icon, toast, chooseFiles, stage, clamp, fitting } from '../core/dom.js';
+import { h, icon, toast, chooseFiles, stage, clamp, fitting, afterPaint } from '../core/dom.js';
 import { drag, flip, spring, reduced } from '../core/motion.js';
 import { on } from '../core/bus.js';
 import { progressAt } from '../core/estimate.js';
@@ -283,6 +283,7 @@ export function openMirror(o) {
   let sizing = 0;
   function fit(soon = false) {
     const r = stageEl.getBoundingClientRect(), ar = base ? base.width / base.height : 3 / 4;
+    if (!r.width || !r.height) return;
     const row = takesRow.getBoundingClientRect().height, hh = Math.max(80, r.height - row - r.width * .04);
     let fw = Math.min(r.width * .84, hh * ar), fh = fw / ar; if (fh > hh) { fh = hh; fw = fh * ar; }
     frame.style.width = fw.toFixed(1) + 'px'; frame.style.height = fh.toFixed(1) + 'px';
@@ -301,9 +302,12 @@ export function openMirror(o) {
     return new Promise(done => {
       if (!face || reduced) { done(undefined); return; }
       const f = face, x = ctx(read), k = read.width / f.w, ct = contoursOf(f), [, by, , bh] = f.box, r = dpr();
+      let last = -Infinity;
       const lines = [ct.face, ...ct.brows, ...ct.eyes, ...ct.lips], t0 = performance.now();
       const tick = (/** @type {number} */ now) => {
-        if (!el.isConnected) { done(undefined); return; }
+        if (!el.isConnected || part) { done(undefined); return; }
+        if (now - last < 32) { requestAnimationFrame(tick); return; }
+        last = now;
         const t = now - t0, scan = by - bh * .12 + (t - 80) / 760 * bh * 1.3;
         x.clearRect(0, 0, read.width, read.height);
         if (t < 1150) {
@@ -860,7 +864,10 @@ export function openMirror(o) {
   async function paintWash() {
     // (while fitting, the lenses show the look: it is painted here again once the fitting is over)
     if (trialing) { washing++; return; }
-    const n = ++washing, now = lookNow(), wk = timing ? weeks : 0;
+    const n = ++washing;
+    await afterPaint();
+    if (n !== washing || !el.isConnected) return;
+    const now = lookNow(), wk = timing ? weeks : 0;
     const w = face && base && now.some(q => tintOf(q.part, q.style.id)) ? await washOf(base, face, now, wk) : null;
     if (n !== washing) return;
     // then what is painted from the picture itself, in its own colours (or the colour the look dyes the hair, its roots
@@ -1378,6 +1385,7 @@ export function openMirror(o) {
     const cleanup = () => { off(); offEv(); clearInterval(tick); };
     stops.push(cleanup);
     try {
+      await afterPaint();
       const it = await start(it => { job.item = it; check(it); });
       job.item ||= it; check(it);
       if (it.state === 'failed' && current === self) toast(it.error || 'That did not work', 3200);
@@ -1695,7 +1703,7 @@ export function openMirror(o) {
     else {
       try { turn = turner(turnView, face); } catch { turn = null; }
       if (turn && base) { const f = face; hairOf(base).then(m => { if (m) turn?.hair(m, f); }); }
-      if (!known) await reading();
+      if (!known) void reading();
     }
     placeNotes(); paintPicks(); menu();
     turnBtn.hidden = !(live || person?.looks.some(l => l.angles?.length) || o.turns?.length === 3);

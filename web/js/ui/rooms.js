@@ -3,7 +3,7 @@
  * moves in, the new room growing from your finger in its own shape. You can also invent a room from a few words
  * or from a picture's colours.
  */
-import { h, icon, sheet, toast, sleep, rng } from '../core/dom.js';
+import { h, icon, sheet, toast, afterPaint, rng } from '../core/dom.js';
 import { reduced } from '../core/motion.js';
 import { hsl } from '../core/color.js';
 import { glyph } from '../room/ornaments.js';
@@ -48,11 +48,11 @@ export function openRooms(e = null) {
     const grid = h('div.rooms');
     const paintGrid = () => grid.replaceChildren(...allRooms().map(r => postcard(r, {
       current: r.id === atmosphere.room.id,
-      onPick: (room, ev) => { close(); setTimeout(() => changeRoom(room, { x: ev.clientX, y: ev.clientY }), 60); },
+      onPick: (room, ev) => { close(); changeRoom(room, { x: ev.clientX, y: ev.clientY }); },
       onForget: r.mine ? async room => { await forgetRoom(room.id); paintGrid(); toast('Room forgotten'); } : null,
     })));
     paintGrid();
-    const maker = makerEl(room => { paintGrid(); close(); setTimeout(() => changeRoom(room, null), 60); });
+    const maker = makerEl(room => { close(); changeRoom(room, null); });
     return [
       h('div.sheet__head', null, h('h2.t-title', null, 'Rooms'), h('span.t-mono.t-soft', null, `${allRooms().length} to choose from`)),
       h('p.t-lede', { style: { marginBottom: '4cqw' } }, 'Where would you like to be?'),
@@ -92,11 +92,11 @@ function readingEl(text) {
   const heard = [...counts].map(([k, n]) => HEARD[k][n > 1 ? 1 : 0]);
   const timer = setTimeout(() => { caption.textContent = studio.mode === 'workstation' ? 'The studio is imagining it…' : 'Mixing the colours…'; }, lit);
   return {
-    el, ms: lit + (reduced ? 0 : 450),
+    el,
     done() { clearTimeout(timer); el.classList.add('is-poured'); caption.textContent = heard.length ? 'Heard ' + listed(heard) : 'Nothing I know yet, so colours from the sound of the words'; },
   };
 }
-const dreaming = (/** @type {string} */ label) => ({ el: h('div.maker__dreaming', null, h('span', { html: glyph('sparkle') }), h('span', null, label)), ms: reduced ? 0 : 700, done() {} });
+const dreaming = (/** @type {string} */ label) => ({ el: h('div.maker__dreaming', null, h('span', { html: glyph('sparkle') }), h('span', null, label)), done() {} });
 
 /**
  * Invent a room from words, or from a picture's colours. Every source can be asked again: "Another take" settles the
@@ -111,19 +111,19 @@ function makerEl(onMoveIn) {
   /** @type {((take: number) => Promise<any>) | null} */ let source = null;
   let take = 0, run = 0;
 
-  /** @param {(take: number) => Promise<any>} src @param {{ el: HTMLElement, ms: number, done: () => void }} reading */
+  /** @param {(take: number) => Promise<any>} src @param {{ el: HTMLElement, done: () => void }} reading */
   async function begin(src, reading) {
     const mine = ++run;
     source = src; take = 0;
     out.replaceChildren(reading.el);
     out.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
-    const t0 = performance.now();
     let room = null, err = null;
-    try { room = await src(0); } catch (e) { err = e; }
-    await sleep(Math.max(0, reading.ms - (performance.now() - t0)));
+    await afterPaint();
     if (mine !== run) return;
-    if (!room) { out.replaceChildren(h('p.t-soft', null, /** @type {any} */ (err)?.message || 'That room would not come.')); return; }
+    try { room = await src(0); } catch (e) { err = e; }
     reading.done();
+    if (mine !== run || !out.isConnected) return;
+    if (!room) { out.replaceChildren(h('p.t-soft', null, /** @type {any} */ (err)?.message || 'That room would not come.')); return; }
     sound.play('arrive');
     present(room, 'is-arriving');
   }
@@ -133,11 +133,12 @@ function makerEl(onMoveIn) {
     take++;
     out.querySelector('.postcard')?.classList.add('is-leaving');
     sound.play('tap');
-    const t0 = performance.now();
     let room = null;
+    await afterPaint();
+    if (mine !== run) return;
     try { room = await source(take); } catch { /* keep the last one */ }
-    await sleep(Math.max(0, (reduced ? 0 : 240) - (performance.now() - t0)));
-    if (mine !== run || !room) return;
+    if (mine !== run || !out.isConnected) return;
+    if (!room) { out.querySelector('.postcard')?.classList.remove('is-leaving'); return; }
     present(room, 'is-shuffled');
   }
   /** @param {any} room @param {string} how */

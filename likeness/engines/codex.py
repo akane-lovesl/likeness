@@ -48,6 +48,10 @@ MARK = re.compile(r"^[\s>*_\x60]*(PLAN|DONE|FAILED)\b[\s:*_\x60]*(\{.*\})[\s*_\x
 NUMBERED = re.compile(r"^(\d+)\.(png|jpe?g|webp)$", re.I)
 PICTURES = {".png", ".jpg", ".jpeg", ".webp"}
 KEEP = 40
+LOCAL_FILE = re.compile(r'''(?ix)
+    (?: [a-z]:[\\/] | \\\\ | file:/+ | /(?:home|Users|private|mnt|tmp|var)/ )
+    [^\s"'<>]*
+''')
 
 
 def _composite_region(generated: Image.Image, original: Image.Image, mask: Image.Image) -> Image.Image:
@@ -429,14 +433,13 @@ class Codex:
                 region = guide.convert("RGB"), mask
         code = self._run(argv, text, folder, follow, work, turn.n, float(pace.get("timeout") or 600), region)
         if follow.failed:
-            raise EngineError(*follow.failed)
+            raise EngineError(*(LOCAL_FILE.sub("a local file", part) for part in follow.failed))
         if not work.results:
             stderr = (folder / "stderr.log").read_text(encoding="utf-8", errors="replace")[-2000:]
             if re.search(r"log ?in|auth|unauthori[sz]ed|401", stderr + follow.error, re.I):
                 raise EngineError("Codex is not signed in on the workstation.", "Run  codex login  there, then try again.")
             if follow.error or code:
-                reason = follow.error or (stderr.strip().splitlines() or ["no reason given"])[-1]
-                raise EngineError(f"Codex stopped without a picture: {reason[:200]}", "Try again; if it keeps happening, the job's folder in private/jobs has the whole story.")
+                raise EngineError("Codex stopped without a picture.", "Try again. If it keeps happening, check the Studio on the workstation.")
             raise EngineError("The studio finished without a picture.", "Try again, perhaps in fewer words.")
         if len(work.results) < turn.n:
             work.note(f"{len(work.results)} of {turn.n} came back")
@@ -450,10 +453,10 @@ class Codex:
         try:
             proc = subprocess.Popen(argv, cwd=folder, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors, text=True, encoding="utf-8",
                                     errors="replace", start_new_session=os.name != "nt")
-        except OSError as error:
+        except OSError:
             events.close()
             errors.close()
-            raise EngineError("Codex could not be started on the workstation.", f"Check [codex] command in studio.toml ({error}).") from None
+            raise EngineError("Codex could not be started on the workstation.", "Check the Studio's command on the workstation.") from None
 
         def feed() -> None:
             try:
@@ -516,8 +519,8 @@ class Codex:
             done = subprocess.run(argv, input=text, cwd=folder, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=float(settings["timeout"]))
         except subprocess.TimeoutExpired:
             raise EngineError("The studio took too long to answer.", "Try again in a moment.") from None
-        except OSError as error:
-            raise EngineError("Codex could not be started on the workstation.", str(error)) from None
+        except OSError:
+            raise EngineError("Codex could not be started on the workstation.", "Check the Studio's command on the workstation.") from None
         (folder / "events.jsonl").write_text(done.stdout, encoding="utf-8")
         (folder / "stderr.log").write_text(done.stderr, encoding="utf-8")
         answer = folder / "answer.json"

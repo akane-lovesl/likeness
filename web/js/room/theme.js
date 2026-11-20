@@ -7,7 +7,7 @@ import { dressSet } from './set.js';
 import { mix, alpha, ensure, readable } from '../core/color.js';
 import { reduced } from '../core/motion.js';
 import { emit } from '../core/bus.js';
-import { sleep } from '../core/dom.js';
+import { settings } from '../core/store.js';
 
 const TEXTURES = {
   grain: { image: 'var(--grain)', a: [.14, .09], blend: ['multiply', 'screen'], size: '220px' },
@@ -55,7 +55,7 @@ export function paint(room) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', room.colors.ground);
   dressSet(room);
   atmosphere.room = room;
-  try { localStorage.setItem('likeness.paint', JSON.stringify({ vars, data })); } catch { /* private mode */ }
+  settings.set('paint', { vars, data });
 }
 
 /** Sets how fast everything moves, from the mood of the day. */
@@ -64,25 +64,37 @@ export function setTempo(moodTempo = 1) {
   if (atmosphere.room) document.documentElement.style.setProperty('--tempo', ((MOTION[atmosphere.room.motion] || MOTION.calm).tempo * moodTempo).toFixed(3));
 }
 
-const fontsFor = room => Promise.race([Promise.all((TYPES[room.type] || TYPES.editorial).faces.map(f => document.fonts.load(f).catch(() => null))), sleep(700)]);
+const fontsFor = room => Promise.all((TYPES[room.type] || TYPES.editorial).faces.map(f => document.fonts.load(f).catch(() => null)));
 
-let busy = Promise.resolve();
+let transition = /** @type {any} */ (null);
 /**
  * Enters a room. With an origin (client coordinates), the new room grows from there in its own shape.
  * @param {any} room @param {{ origin?: { x: number, y: number } | null, instant?: boolean }} [o]
  */
-export function enterRoom(room, { origin = null, instant = false } = {}) {
-  busy = busy.then(async () => {
-    await fontsFor(room);
-    const d = /** @type {any} */ (document), html = document.documentElement;
-    const apply = () => { paint(room); emit('room', room); };
-    if (instant || reduced || !d.startViewTransition) { if (!d.startViewTransition) html.classList.add('no-vt'); apply(); return; }
-    html.dataset.wipe = room.wipe || 'ink';
-    const vt = d.startViewTransition(apply);
-    try { await vt.ready; wipe(room.wipe, origin || { x: innerWidth / 2, y: innerHeight * .3 }); await vt.finished; } catch { /* skipped */ }
+export async function enterRoom(room, { origin = null, instant = false } = {}) {
+  const d = /** @type {any} */ (document), html = document.documentElement;
+  const apply = () => { paint(room); emit('room', room); };
+  const previous = transition;
+  previous?.skipTransition();
+  transition = null;
+  void fontsFor(room);
+  if (instant || reduced || !d.startViewTransition) {
     delete html.dataset.wipe;
-  });
-  return busy;
+    if (!d.startViewTransition) html.classList.add('no-vt');
+    apply();
+    return;
+  }
+  html.dataset.wipe = room.wipe || 'ink';
+  const next = d.startViewTransition(() => { if (transition === next) apply(); });
+  transition = next;
+  try {
+    await next.ready;
+    if (transition === next) wipe(room.wipe, origin || { x: innerWidth / 2, y: innerHeight * .3 });
+  } catch { /* skipped */ }
+  finally {
+    await next.finished.catch(() => {});
+    if (transition === next) { transition = null; delete html.dataset.wipe; }
+  }
 }
 
 /** The reveal itself, on the new snapshot of the page. */

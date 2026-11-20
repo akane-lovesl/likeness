@@ -36,7 +36,7 @@ export function welcome({ force = false } = {}) {
   if ((!force && welcomed()) || root.querySelector('.wl')) return;
   const el = h('div.wl', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Welcome to Likeness' });
   root.append(el);
-  requestAnimationFrame(() => el.classList.add('is-in'));
+  el.classList.add('is-in');
   let ended = false;
   const stops = /** @type {(() => void)[]} */ ([]);
   /** @param {Sat | null} [then] */
@@ -44,8 +44,10 @@ export function welcome({ force = false } = {}) {
     if (ended) return; ended = true;
     settings.set('welcomed', true);
     stops.forEach(f => f());
+    el.inert = true;
+    if (then) emit('sitting', then);
     el.classList.remove('is-in');
-    setTimeout(() => { el.remove(); if (then) emit('sitting', then); }, reduced ? 0 : 420);
+    setTimeout(() => el.remove(), reduced ? 0 : 200);
   };
   const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === 'Escape' && el.isConnected) { e.preventDefault(); end(); } };
   window.addEventListener('keydown', onKey); stops.push(() => window.removeEventListener('keydown', onKey));
@@ -81,6 +83,7 @@ function sitting(el, people, end, stops) {
     before, after, h('i.wl-hero__light', { 'aria-hidden': 'true' }), say, h('span.wl-sit__drag', { 'aria-hidden': 'true' }, 'Drag across: before, after'));
   const ask = h('p.wl-sit__ask'), looks = h('div.wl-sit__looks', { role: 'group', 'aria-label': 'Looks' });
   const next = h('button.wl-sit__next', { type: 'button', onclick: () => { stop(); person(who + 1); } }, 'Someone else');
+  const nextButtonBusy = busy => next.toggleAttribute('aria-busy', busy);
   const go = h('button.wl-go', { type: 'button', onclick: () => end({ act: 'me', ...now() }) }, 'Try it on me');
   const around = h('button.wl-sit__around', { type: 'button', onclick: () => end({ act: 'look', ...now() }) }, 'Look around');
   const skip = h('button.wl-sit__skip', { type: 'button', onclick: () => end() }, 'Skip');
@@ -127,12 +130,13 @@ function sitting(el, people, end, stops) {
     const step = ++motion, next = ((i % people.length) + people.length) % people.length;
     const p = people[next], l = p.looks[0];
     stopGlide();
-    hero.classList.remove('is-in');
-    await Promise.all([load(p.portrait), load(l.image), wait(reduced ? 0 : 380)]);
+    nextButtonBusy(true);
+    await load(p.portrait);
     if (!el.isConnected || step !== motion) return;
     who = next; look = 0;
     before.src = p.portrait; after.src = l.image; set(0); paintLooks();
     hero.classList.add('is-in');
+    nextButtonBusy(false);
     p.looks.slice(1).forEach(k => load(k.image));
     if (reduced) { set(ON); return; }
     await wait(900); if (!el.isConnected || step !== motion) return;
@@ -141,6 +145,7 @@ function sitting(el, people, end, stops) {
   /** One of this face's looks: from the one on now, it sweeps in; then the face as it was is under it again. @param {number} j */
   async function choose(j) {
     const step = ++motion, p = P(), l = p.looks[j]; if (!l) return;
+    nextButtonBusy(false);
     hero.classList.add('is-in');
     if (j === look && x >= 1) { await glide(0, 520); await wait(160); if (step === motion) await glide(ON, 900); return; }
     await load(l.image); if (!el.isConnected || step !== motion) return;
@@ -167,7 +172,7 @@ function sitting(el, people, end, stops) {
   const at = (/** @type {PointerEvent} */ e) => { const r = hero.getBoundingClientRect(); return Math.max(0, Math.min(ON, (e.clientX - r.left) / r.width)); };
   hero.addEventListener('pointerdown', e => {
     if (e.button) return;
-    stop(); motion++; dragging = e.pointerId; hero.setPointerCapture(e.pointerId); before.src = P().portrait; hero.classList.add('is-in', 'is-dragged', 'was-dragged');
+    stop(); motion++; nextButtonBusy(false); dragging = e.pointerId; hero.setPointerCapture(e.pointerId); before.src = P().portrait; hero.classList.add('is-in', 'is-dragged', 'was-dragged');
     glide(at(e), 140);
   });
   hero.addEventListener('pointermove', e => { if (dragging !== e.pointerId) return; stopGlide(); hero.classList.add('is-moving'); set(at(e)); });
@@ -175,7 +180,7 @@ function sitting(el, people, end, stops) {
   hero.addEventListener('pointerup', lift); hero.addEventListener('pointercancel', lift);
   hero.addEventListener('keydown', e => {
     const k = { ArrowLeft: -.1, ArrowRight: .1, Home: -9, End: 9 }[e.key]; if (k === undefined) return;
-    e.preventDefault(); stop(); motion++; before.src = P().portrait; hero.classList.add('is-in'); glide(Math.max(0, Math.min(ON, x + k)), 160);
+    e.preventDefault(); stop(); motion++; nextButtonBusy(false); before.src = P().portrait; hero.classList.add('is-in'); glide(Math.max(0, Math.min(ON, x + k)), 160);
   });
   stops.push(() => { tour++; motion++; stopGlide(); });
   round();

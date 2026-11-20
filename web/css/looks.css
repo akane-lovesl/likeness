@@ -16,8 +16,8 @@ html:not([data-dark]) :is(.book, .mr, .lv) { --lk-deep: color-mix(in srgb, var(-
 /* —— the Lookbook —— */
 .book { z-index: 82; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-columns: minmax(0, 1fr); overflow: hidden;
   background: radial-gradient(95% 52% at 50% 40%, var(--lk-bg-2) 0%, var(--lk-bg) 64%, color-mix(in srgb, var(--lk-bg) 86%, #000) 100%);
-  transition: opacity .5s var(--lk-ease), scale .6s var(--lk-ease), visibility 0s; }
-.book.is-away { opacity: 0; scale: 1.05; pointer-events: none; visibility: hidden; transition: opacity .45s var(--lk-ease), scale .6s var(--lk-ease), visibility 0s .6s; }
+  transition: opacity .2s var(--lk-ease), scale .24s var(--lk-ease), visibility 0s; }
+.book.is-away { opacity: 0; scale: 1.02; pointer-events: none; visibility: hidden; transition: opacity .2s var(--lk-ease), scale .24s var(--lk-ease), visibility 0s .24s; }
 .lb-light { position: absolute; left: 50%; top: 40%; width: 150cqw; height: 150cqw; margin: -75cqw 0 0 -75cqw; border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--lk-accent) calc(var(--lk-lamp) * 100%), transparent), color-mix(in srgb, var(--lk-accent) 4%, transparent) 55%, transparent); animation: lk-breathe 9s ease-in-out infinite; }
 .lb-bar { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; column-gap: 2.6cqw; row-gap: 2.2cqw; padding: 5.2cqw 5cqw 0; }
@@ -44,6 +44,8 @@ html:not([data-dark]) :is(.book, .mr, .lv) { --lk-deep: color-mix(in srgb, var(-
 
 .lb-orbit { position: relative; perspective: 150cqw; perspective-origin: 50% 44%; touch-action: pan-y; cursor: grab; outline: none; user-select: none; }
 .lb-orbit:active { cursor: grabbing; }
+.lb-ask__photo[aria-busy="true"] { border-color: var(--lk-accent); }
+.lb-whose button[aria-busy="true"] { color: var(--lk-accent); }
 .lb-orbit:focus-visible .lb-card.is-front { outline: .5cqw solid var(--lk-accent); }
 .lb-orbit::after { content: ''; position: absolute; left: 16%; right: 16%; bottom: 3%; height: 9cqw; pointer-events: none; background: radial-gradient(closest-side, var(--lk-shadow), transparent); }
 .lb-ring { position: absolute; left: 50%; top: 48%; width: 0; height: 0; transform-style: preserve-3d; }
@@ -599,6 +601,8 @@ img.mr-token__plate { object-fit: cover; }
 /* —— the welcome: a sitting. A face, the looks it was made in, the light under a finger; then on you, or around —— */
 .wl { position: absolute; inset: 0; z-index: 97; opacity: 0; transition: opacity .45s cubic-bezier(.2, .8, .2, 1); color: var(--ink); -webkit-tap-highlight-color: transparent; }
 .wl.is-in { opacity: 1; }
+@starting-style { .wl.is-in { opacity: 0; } }
+.wl-sit__next[aria-busy] { color: var(--accent); }
 /* without the studio's people: what it is for, in a line and three steps */
 .wl-title { position: absolute; inset: 0; display: grid; align-content: center; gap: 4cqw; padding: 10cqw 9cqw; backdrop-filter: blur(6px);
   background: radial-gradient(120% 70% at 50% 28%, color-mix(in srgb, var(--ground-2) 90%, transparent), color-mix(in srgb, var(--ground) 96%, transparent) 72%); }

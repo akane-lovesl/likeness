@@ -4,13 +4,13 @@
  * Pick a face or bring your own, and the mirror opens on it. The studio's portraits are read on the device and can
  * wear any combination of looks. Without a catalog, the ring shows style plates.
  */
-import { h, icon, stage, fitting } from '../core/dom.js';
+import { h, icon, stage, fitting, toast, assetUrl, afterPaint } from '../core/dom.js';
 import { spring, drag, reduced } from '../core/motion.js';
 import { studio } from '../studio/studio.js';
 import { PARTS, partById, styleOf, plateSVG, tintOf, lookName } from './vocab.js';
 import { faceFrom, shapesOf, faceOf, hairOf, maskOf, LIPS, MOUTH } from '../studio/face.js';
 import * as P from '../studio/painter.js';
-import { app, printById } from '../state.js';
+import { app, printById, urlOf } from '../state.js';
 import { on, emit } from '../core/bus.js';
 import { markup, controlsOf } from './markup.js';
 import { paintLook, coloursOf, paints } from './paint.js';
@@ -31,12 +31,14 @@ import { atmosphere } from '../room/theme.js';
 /** @typedef {({ kind: 'photo', person: Person, look: Look, seen?: Seen, sketch?: string } & Worn) | ({ kind: 'sitter', sitter: Sitter, part: string, style: string, more?: Worn1[] } & Worn) | ({ kind: 'plate', part: string, style: string } & Worn)} Card */
 /** @typedef {{ face: import('../studio/face.js').Face, hair: string | null }} Seen a render's face (and hair, where a colour is among its looks), read on the device */
 
-const BASE = new URL('../../examples/', import.meta.url);
+const BASE = assetUrl('examples/');
 /** @type {Promise<{ by: string | null, kind: string, people: Person[], draw: boolean }> | null} */
 let manifest = null;
 /** The studio's example portraits, and the looks rendered on each. */
 export function examples() {
-  manifest ||= fetch(new URL('manifest.json', BASE), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : { draw: r.headers.get('X-Likeness-Examples') === 'drawn' })).catch(() => null).then(m => ({
+  const embedded = document.getElementById('example-catalog');
+  manifest ||= (embedded ? Promise.resolve().then(() => JSON.parse(embedded.textContent || 'null'))
+    : fetch(new URL('manifest.json', BASE)).then(r => (r.ok ? r.json() : { draw: r.headers.get('X-Likeness-Examples') === 'drawn' }))).catch(() => null).then(m => ({
     by: m?.by || null, kind: m?.kind === 'render' ? 'render' : 'simulated',
     draw: m?.draw === true,
     // every address made whole, against the folder the manifest is in
@@ -46,7 +48,7 @@ export function examples() {
 }
 const at = (/** @type {string} */ path) => new URL(path, BASE).href;
 
-const SITTERS = new URL('../../sitters/', import.meta.url);
+const SITTERS = assetUrl('sitters/');
 /** @type {Promise<Sitter[]> | null} */
 let sitting = null;
 /** The drawn sitters, with their faces and hair read already (tools/sitters.mjs), so no model is needed to dress them. */
@@ -72,10 +74,12 @@ const titleOf = (c) => {
 };
 
 let book = /** @type {HTMLElement | null} */ (null);
+let bookRefresh = /** @type {(() => void) | null} */ (null);
 /** The Lookbook in front: made the first time, brought back after that (from the desk). */
 export function showBook() {
   if (!book) { book = lookbook().el; stage().append(book); }
   book.classList.remove('is-away'); book.removeAttribute('inert');
+  bookRefresh?.();
 }
 const open = openMirror;
 
@@ -90,7 +94,7 @@ function lookbook() {
   const me = /** @type {HTMLImageElement} */ (h('img.lb-whose__me', { alt: '' }));
   const whoseEl = h('div.lb-whose', { hidden: true, role: 'group', 'aria-label': 'Whose faces the looks are on' },
     h('button', { type: 'button', 'data-who': 'them', 'aria-pressed': 'true', onclick: () => whose(false) }, 'Them'),
-    h('button', { type: 'button', 'data-who': 'you', 'aria-pressed': 'false', onclick: () => whose(true) }, me, 'You'));
+    h('button', { type: 'button', 'data-who': 'you', 'aria-pressed': 'false', onclick: () => showYou() }, me, 'You'));
   // the room the whole app is dressed in, its colours on the button: Rooms, from the first screen
   const roomBtn = h('button.lb-bar__room', { type: 'button', 'aria-label': 'Rooms: how the app is dressed', onclick: (/** @type {MouseEvent} */ e) => openRooms(e) }, h('span.lb-bar__swatch', { 'aria-hidden': 'true' }, h('i'), h('i'), h('i')));
   const paintSwatch = () => { const r = atmosphere.room; if (!r) return; roomBtn.querySelectorAll('i').forEach((d, k) => { /** @type {HTMLElement} */ (d).style.background = [r.colors.accent, r.colors.accent2, r.colors.ink][k]; }); roomBtn.title = 'Rooms · ' + r.name; };
@@ -125,7 +129,8 @@ function lookbook() {
       if (c.kind === 'photo') {
         c.seen ||= seen.get(c.person.portrait);
         const label = tagOf(c);
-        card.append(...photoCard(c), h('span.lb-card__glint'), h('span.lb-card__tag', { hidden: label === 'GPT Image' }, label));
+        const priority = i === 0 ? 'high' : i < 3 || i >= list.length - 2 ? 'auto' : 'low';
+        card.append(...photoCard(c, priority), h('span.lb-card__glint'), h('span.lb-card__tag', { hidden: label === 'GPT Image' }, label));
         if (c.seen) card.classList.add('has-face');
       }
       else if (c.kind === 'sitter') card.append(sitterCard(c), h('span.lb-card__tag', null, c.sitter.id === 'you' || c.sitter.person ? 'Sketch' : 'Drawn'));
@@ -158,6 +163,7 @@ function lookbook() {
       if (input.value.trim()) wear(input.value);
     }
   }
+  bookRefresh = () => { if (cards.length) readFaces(); };
   /** How wide a card is drawn. */
   const cardW = () => parseFloat(ring.style.getPropertyValue('--cw')) || 220;
   function layout() {
@@ -284,7 +290,7 @@ function lookbook() {
       const p = partById(part);
       styles.replaceChildren(...(p?.styles || []).map((s, i) => h('button.lb-style', { type: 'button', role: 'option', 'data-style': s.id, style: { '--d': (i * 55) + 'ms' }, 'aria-selected': String(picks.some(q => q.part === part && q.style.id === s.id)), onclick: () => pick(part, s.id) },
         h('span.lb-style__plate', { html: plateSVG(part, s.id) }), h('span.lb-style__name', null, s.name))));
-      if (!reduced) styles.animate([{ opacity: 0, translate: '0 30%' }, { opacity: 1, translate: '0 0' }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      if (!reduced) styles.animate([{ opacity: .8, translate: '0 6%' }, { opacity: 1, translate: '0 0' }], { duration: 140, easing: 'cubic-bezier(.2,.8,.2,1)' });
     }
     hintNow();
     if (!mixing()) redeal();
@@ -319,9 +325,14 @@ function lookbook() {
   }
   /** Your face, for the look: the live mirror where there is a camera (a photo can be chosen from it), else a photo. */
   async function pickPhoto(/** @type {HTMLElement} */ from = photoBtn) {
-    const got = /** @type {{ print: any, picks: any[], from?: Element, face?: any, turns?: import('./live.js').Side[] } | null} */ ((await canLive()) ? await openLive({ picks: livePicks(), keep: picks, fallback: bringPhoto, from }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
+    if (photoBtn.hasAttribute('aria-busy')) return;
+    photoBtn.setAttribute('aria-busy', 'true');
+    let got;
+    try {
+      got = /** @type {{ print: any, picks: any[], from?: Element, face?: any, turns?: import('./live.js').Side[] } | null} */ ((await canLive()) ? await openLive({ picks: livePicks(), keep: picks, fallback: bringPhoto, from }) : await bringPhoto().then(p => (p ? { print: p, picks } : null)));
+    } finally { photoBtn.removeAttribute('aria-busy'); }
     if (!got) return;
-    photo = got.print; if (got.turns) turnsFor.set(got.print, got.turns); photoBtn.replaceChildren(h('img', { src: URL.createObjectURL(photo.blob), alt: '' })); photoBtn.classList.add('has-photo');
+    photo = got.print; if (got.turns) turnsFor.set(got.print, got.turns); photoBtn.replaceChildren(h('img', { src: urlOf(photo), alt: '' })); photoBtn.classList.add('has-photo');
     open({ print: photo, picks: got.picks, words: input.value, from: got.from || from, face: got.face, turns: got.turns });
   }
   // the welcome's sitting, finished: the look it ended on, put on you; or the ring turned to the face wearing it
@@ -448,7 +459,12 @@ function lookbook() {
     emit('desk-ask', { text: text.trim(), flight, away });
   }
   input.addEventListener('input', listen);
-  function away() { el.classList.add('is-away'); el.setAttribute('inert', ''); }
+  function away() {
+    anim?.stop();
+    reads++;
+    el.classList.add('is-away');
+    el.setAttribute('inert', '');
+  }
 
   // the line, saying what could be asked, one thing after another. Over the studio's own pictures it names the looks
   // they wear and the ring turns to each: they are the real thing, and nothing is sketched over them
@@ -470,6 +486,9 @@ function lookbook() {
   // —— you, in the ring: once there is a photo of you, every look in it can be on you ——
   /** @type {Sitter | null} */ let you = null;
   /** @type {any} */ let youOf = null, pending = null;
+  /** @type {Promise<void> | null} */ let readingYou = null;
+  /** @type {any} */ let savedPhoto = null;
+  let youChoice = 0;
   let onYou = false, wantYou = false;
   /** The sides of you caught with a photo, for the mirror to turn through. @type {WeakMap<object, any[]>} */
   const turnsFor = new WeakMap();
@@ -477,6 +496,7 @@ function lookbook() {
   /** The ring's cards dealt again, the same looks on whoever the ring is on now. */
   async function redeal() {
     const step = ++dealing, m = await examples(), ss = m.draw ? await sitters() : [];
+    if (cards.length) await afterPaint();
     if (step !== dealing) return;
     const whoseFace = onYou ? you : null;
     const mixed = mixing() ? lookCards(m, ss, said(), whoseFace, redealSoon) : [];
@@ -509,46 +529,72 @@ function lookbook() {
   hintNow();
   /** Whose faces the ring's looks are on. @param {boolean} yours */
   function whose(yours) {
+    youChoice++;
+    if (!yours) wantYou = false;
     onYou = yours && !!you;
+    if (!onYou) {
+      me.removeAttribute('src');
+      photoBtn.replaceChildren(h('span', { html: icon('camera') }));
+      photoBtn.classList.remove('has-photo');
+    }
+    else if (you) me.src = you.portrait;
     whoseEl.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String((/** @type {HTMLElement} */ (b).dataset.who === 'you') === onYou)));
     redeal();
+  }
+  async function showYou() {
+    if (!savedPhoto || savedPhoto === youOf) { whose(true); return; }
+    const button = whoseEl.querySelector('button[data-who="you"]');
+    button?.setAttribute('aria-busy', 'true');
+    const print = savedPhoto, choice = ++youChoice;
+    try {
+      await prepareYou(print);
+      if (choice === youChoice && youOf === print) whose(true);
+      else if (choice === youChoice && pending !== print) toast('No face found in that picture');
+    } finally { button?.removeAttribute('aria-busy'); }
   }
   /** Whether the mirror (or the camera) is over the ring. */
   const covered = () => !!stage().querySelector('section.mr, section.lv');
   /**
    * You as the ring's sitter, from a photo of you: the picture at the size the ring needs, your face read in it, your
-   * hair found (not a beard, not the brows), and a small round of your face for the switch. Shown at once when the
-   * photo is new and you come back to the ring; from an earlier visit, only offered.
+   * hair found (not a beard, not the brows). A saved portrait is read when its owner chooses You again.
    * @param {any} print
    */
-  async function prepareYou(print) {
-    if (youOf === print || pending === print) return;
+  function prepareYou(print) {
+    if (youOf === print) return Promise.resolve();
+    if (pending === print && readingYou) return readingYou;
     pending = print;
-    const c = await P.fromBlob(print.blob, 1024).catch(() => null);
-    const f = c && pending === print ? await faceOf(c).catch(() => null) : null;
-    const [portrait, mask] = c && f && pending === print ? await Promise.all([P.toBlob(c, 'image/jpeg', .9), maskOf(c, f, 'colour').catch(() => null)]) : [null, null];
-    if (pending !== print) return;
-    pending = null;
-    // no face found in it: the ring stays as it was
-    if (!c || !f || !portrait) return;
-    if (you) URL.revokeObjectURL(you.portrait);
-    youOf = print; you = { id: 'you', name: 'You', portrait: URL.createObjectURL(portrait), w: c.width, h: c.height, face: f, hair: mask ? mask.toDataURL('image/png') : null };
-    const [bx, by, bw, bh] = f.box, s = Math.max(bw, bh) * 1.3, t = document.createElement('canvas'); t.width = t.height = 96;
-    t.getContext('2d')?.drawImage(c, bx + bw / 2 - s / 2, by + bh * .45 - s / 2, s, s, 0, 0, 96, 96);
-    me.src = t.toDataURL('image/jpeg', .85);
-    whoseEl.hidden = false;
-    if (onYou) redeal(); else if (wantYou && !covered()) { wantYou = false; whose(true); }
+    readingYou = (async () => {
+      const c = await P.fromBlob(print.blob, 1024).catch(() => null);
+      const f = c && pending === print ? await faceOf(c).catch(() => null) : null;
+      const [portrait, mask] = c && f && pending === print ? await Promise.all([P.toBlob(c, 'image/jpeg', .9), maskOf(c, f, 'colour').catch(() => null)]) : [null, null];
+      if (pending !== print) return;
+      pending = null;
+      if (!c || !f || !portrait) return;
+      if (you) URL.revokeObjectURL(you.portrait);
+      youOf = print; you = { id: 'you', name: 'You', portrait: URL.createObjectURL(portrait), w: c.width, h: c.height, face: f, hair: mask ? mask.toDataURL('image/png') : null };
+      whoseEl.hidden = false;
+      if (onYou) whose(true); else if (wantYou && !covered()) { wantYou = false; whose(true); }
+    })();
+    return readingYou;
   }
   // a photo of you, kept (by the camera, or chosen): read once the mirror has settled, and the ring yours when you come back
   on('item', (/** @type {any} */ it) => {
     const p = it?.mine && it.type === 'prints' ? printById(it.prints?.[0]) : null;
-    if (p?.provenance?.kind === 'photo') { wantYou = true; setTimeout(() => prepareYou(p), 2400); }
+    if (p?.provenance?.kind === 'photo') { savedPhoto = p; wantYou = true; setTimeout(() => { if (savedPhoto === p) prepareYou(p); }, 2400); }
   });
-  on('print:gone', (/** @type {string} */ id) => { if (youOf?.id === id) { you = null; youOf = null; whoseEl.hidden = true; if (onYou) whose(false); } });
+  on('print:gone', (/** @type {string} */ id) => {
+    if (savedPhoto?.id === id) { savedPhoto = null; wantYou = false; }
+    if (photo?.id === id) {
+      photo = null; photoBtn.replaceChildren(h('span', { html: icon('camera') })); photoBtn.classList.remove('has-photo');
+    }
+    if (pending?.id === id) pending = null;
+    if (youOf?.id === id && you) { URL.revokeObjectURL(you.portrait); you = null; youOf = null; if (onYou) whose(false); }
+    whoseEl.hidden = !savedPhoto;
+  });
   new MutationObserver(() => { if (wantYou && you && !covered()) { wantYou = false; whose(true); } }).observe(stage(), { childList: true });
   // from an earlier visit, the last photo of you: offered, not shown
-  const last = [...app.prints.values()].filter(p => p?.provenance?.kind === 'photo').sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
-  if (last) setTimeout(() => prepareYou(last), 1800);
+  savedPhoto = [...app.prints.values()].filter(p => p?.provenance?.kind === 'photo').sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0] || null;
+  whoseEl.hidden = !savedPhoto;
   redeal();
   return { el };
 }
@@ -638,10 +684,13 @@ const held = (c) => c?.kind === 'photo' && !!c.seen;
 /**
  * A render's card: its portrait, and the look sweeping in over it. Once the face is read, both are framed on the head as
  * a sitter is (the sweep stays the card's own, so it crosses the card however close the lens is).
- * @param {Card & { kind: 'photo' }} c
+ * @param {Card & { kind: 'photo' }} c @param {'high' | 'auto' | 'low'} [priority]
  */
-function photoCard(c) {
-  if (!c.seen) return [h('img.lb-card__before', { src: c.person.portrait, alt: '', draggable: false }), h('img.lb-card__after', { src: c.look.image, alt: '', draggable: false })];
+function photoCard(c, priority = 'auto') {
+  if (!c.seen) {
+    return [h('img.lb-card__before', { fetchpriority: priority, decoding: 'async', src: c.person.portrait, alt: '', draggable: false }),
+      h('img.lb-card__after', { fetchpriority: priority === 'high' ? 'auto' : 'low', decoding: 'async', src: c.look.image, alt: '', draggable: false })];
+  }
   return [lensOf(c.seen.face, c.look.part, c.person.portrait), h('div.lb-card__after', null, lensOf(c.seen.face, c.look.part, c.look.image))];
 }
 /**
@@ -738,7 +787,7 @@ async function drain() {
     while (queue.length) {
       for (let i = queue.length - 1; i >= 0; i--) if (!queue[i].alive() || !queue[i].card.isConnected) queue.splice(i, 1)[0].done(null);
       if (!queue.length) break;
-      await new Promise(r => requestAnimationFrame(() => r(null)));
+      await afterPaint();
       const i = queue.findIndex(j => j.card.classList.contains('is-front')), [job] = queue.splice(Math.max(0, i), 1);
       if (!job) continue;
       if (!job.alive()) { job.done(null); continue; }
